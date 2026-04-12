@@ -1,7 +1,7 @@
 // Command metabolism runs one cycle of the epistemic metabolism loop:
 //
 //  1. Topology analysis identifies structurally fragile hypotheses
-//  2. arXiv sensor queries for external signal on each target
+//  2. Sensor queries for external signal on each target (arXiv and/or Wikipedia ZIM)
 //  3. Results are logged to .metabolism-log.json for calibration
 //
 // The core testable claim: structural vulnerability (single-source,
@@ -11,10 +11,12 @@
 //
 // Usage:
 //
-//	go run ./cmd/metabolism .                   # run one cycle
-//	go run ./cmd/metabolism --dry-run .         # show targets only
-//	go run ./cmd/metabolism --calibrate .       # analyze log
-//	go run ./cmd/metabolism --json .            # JSON output
+//	go run ./cmd/metabolism .                              # run one cycle (arXiv)
+//	go run ./cmd/metabolism --backend zim --zim /opt/zim/wikipedia.zim .  # Wikipedia ZIM
+//	go run ./cmd/metabolism --backend all --zim /opt/zim/wikipedia.zim .  # both backends
+//	go run ./cmd/metabolism --dry-run .                    # show targets only
+//	go run ./cmd/metabolism --calibrate .                  # analyze log
+//	go run ./cmd/metabolism --json .                       # JSON output
 package main
 
 import (
@@ -80,6 +82,7 @@ type Cycle struct {
 	Hypothesis  string         `json:"hypothesis"`
 	Prediction  string         `json:"prediction"`
 	Query       string         `json:"query"`
+	Backend     string         `json:"backend,omitempty"` // "arxiv" or "zim"; empty = arxiv (legacy)
 	VulnType    string         `json:"vuln_type"`
 	VulnCount   int            `json:"vuln_count"`
 	PapersFound int            `json:"papers_found"`
@@ -100,12 +103,26 @@ type PaperSummary struct {
 }
 
 func main() {
-	limit := flag.Int("limit", 5, "max papers per query")
+	limit := flag.Int("limit", 5, "max results per query")
 	dryRun := flag.Bool("dry-run", false, "show targets without querying")
 	calibrate := flag.Bool("calibrate", false, "analyze existing log instead of running a cycle")
 	resolve := flag.String("resolve", "", "resolve a hypothesis: HYPOTHESIS=corroborated|challenged|irrelevant")
 	jsonOut := flag.Bool("json", false, "output as JSON")
+	backend := flag.String("backend", "arxiv", "sensor backend: arxiv, zim, or all")
+	zimPath := flag.String("zim", "", "path to .zim file (required for zim backend)")
 	flag.Parse()
+
+	validBackends := map[string]bool{"arxiv": true, "zim": true, "all": true}
+	if !validBackends[*backend] {
+		fmt.Fprintf(os.Stderr, "metabolism: --backend must be arxiv, zim, or all (got %q)\n", *backend)
+		os.Exit(1)
+	}
+	useArxiv := *backend == "arxiv" || *backend == "all"
+	useZim := *backend == "zim" || *backend == "all"
+	if useZim && *zimPath == "" {
+		fmt.Fprintf(os.Stderr, "metabolism: --zim path required when backend includes zim\n")
+		os.Exit(1)
+	}
 
 	dir := "."
 	if flag.NArg() > 0 {
@@ -143,45 +160,66 @@ func main() {
 		return
 	}
 
-	// 2. Query arXiv for each target
+	// 2. Query sensors for each target
 	var cycles []Cycle
 	for i, t := range targets {
-		if i > 0 {
-			time.Sleep(5 * time.Second) // arXiv rate limit
-		}
-
-		papers, err := searchArxiv(t.Query, *limit)
-		if err != nil {
-			// Retry once after backoff on rate limit
-			if strings.Contains(err.Error(), "429") {
-				fmt.Fprintf(os.Stderr, "metabolism: rate limited, waiting 30s...\n")
-				time.Sleep(30 * time.Second)
-				papers, err = searchArxiv(t.Query, *limit)
+		// arXiv backend
+		if useArxiv {
+			if i > 0 {
+				time.Sleep(5 * time.Second) // arXiv rate limit
 			}
+
+			papers, err := searchArxiv(t.Query, *limit)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "metabolism: arxiv %q: %v\n", t.Query, err)
-				continue
+				if strings.Contains(err.Error(), "429") {
+					fmt.Fprintf(os.Stderr, "metabolism: rate limited, waiting 30s...\n")
+					time.Sleep(30 * time.Second)
+					papers, err = searchArxiv(t.Query, *limit)
+				}
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "metabolism: arxiv %q: %v\n", t.Query, err)
+				}
+			}
+			if err == nil {
+				var recent []PaperSummary
+				for _, p := range papers {
+					if p.Year >= 2024 {
+						recent = append(recent, p)
+					}
+				}
+				cycles = append(cycles, Cycle{
+					Timestamp:   time.Now(),
+					Hypothesis:  t.Hypothesis,
+					Prediction:  t.Prediction,
+					Query:       t.Query,
+					Backend:     "arxiv",
+					VulnType:    t.VulnType,
+					VulnCount:   t.VulnCount,
+					PapersFound: len(recent),
+					Papers:      recent,
+				})
 			}
 		}
 
-		// Filter to recent papers (2024+)
-		var recent []PaperSummary
-		for _, p := range papers {
-			if p.Year >= 2024 {
-				recent = append(recent, p)
+		// ZIM backend
+		if useZim {
+			articles, err := searchZim(dir, *zimPath, t.Query, *limit)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "metabolism: zim %q: %v\n", t.Query, err)
+			} else {
+				cycles = append(cycles, Cycle{
+					Timestamp:   time.Now(),
+					Hypothesis:  t.Hypothesis,
+					Prediction:  t.Prediction,
+					Query:       t.Query,
+					Backend:     "zim",
+					VulnType:    t.VulnType,
+					VulnCount:   t.VulnCount,
+					PapersFound: len(articles),
+					Papers:      articles,
+				})
 			}
 		}
-
-		cycles = append(cycles, Cycle{
-			Timestamp:   time.Now(),
-			Hypothesis:  t.Hypothesis,
-			Prediction:  t.Prediction,
-			Query:       t.Query,
-			VulnType:    t.VulnType,
-			VulnCount:   t.VulnCount,
-			PapersFound: len(recent),
-			Papers:      recent,
-		})
 	}
 
 	// 3. Append to log
@@ -204,17 +242,29 @@ func main() {
 	for _, c := range cycles {
 		total += c.PapersFound
 	}
-	fmt.Printf("[metabolism] cycle complete — %d targets, %d papers found\n\n", len(cycles), total)
+	fmt.Printf("[metabolism] cycle complete — %d targets, %d results found\n\n", len(cycles), total)
 	for _, c := range cycles {
 		signal := "no signal"
 		if c.PapersFound > 0 {
-			signal = fmt.Sprintf("%d papers", c.PapersFound)
+			label := "papers"
+			if c.Backend == "zim" {
+				label = "articles"
+			}
+			signal = fmt.Sprintf("%d %s", c.PapersFound, label)
 		}
-		fmt.Printf("  %s [%s]\n", c.Hypothesis, signal)
+		be := c.Backend
+		if be == "" {
+			be = "arxiv"
+		}
+		fmt.Printf("  %s [%s] (%s)\n", c.Hypothesis, signal, be)
 		fmt.Printf("    query: %q\n", c.Query)
 		fmt.Printf("    prediction: %s\n", c.Prediction)
 		for _, p := range c.Papers {
-			fmt.Printf("    → [%d] %s\n", p.Year, p.Title)
+			if p.Year > 0 {
+				fmt.Printf("    → [%d] %s\n", p.Year, p.Title)
+			} else {
+				fmt.Printf("    → %s\n", p.Title)
+			}
 		}
 	}
 
@@ -285,6 +335,51 @@ func searchArxiv(query string, limit int) ([]PaperSummary, error) {
 			ID:    e.ID,
 			Title: strings.Join(strings.Fields(e.Title), " "),
 			Year:  year,
+		})
+	}
+	return papers, nil
+}
+
+// searchZim shells out to script/zim-search.py for fulltext search.
+// Returns PaperSummary (reusing the type — Title is the article title,
+// ID is the ZIM path, Year is 0 for encyclopedia articles).
+//
+// The WINZE_ZIM_PYTHON env var overrides the Python interpreter (useful
+// when libzim is installed in a virtualenv, e.g. openzim-mcp's venv).
+// Falls back to "python3" on PATH.
+func searchZim(projectDir, zimPath, query string, limit int) ([]PaperSummary, error) {
+	python := os.Getenv("WINZE_ZIM_PYTHON")
+	if python == "" {
+		python = "python3"
+	}
+	script := filepath.Join(projectDir, "script", "zim-search.py")
+	cmd := exec.Command(python, script,
+		"--zim", zimPath,
+		"--query", query,
+		"--limit", fmt.Sprintf("%d", limit),
+	)
+	cmd.Stderr = os.Stderr
+
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("zim-search: %w", err)
+	}
+
+	var results []struct {
+		Title   string `json:"title"`
+		Path    string `json:"path"`
+		Snippet string `json:"snippet"`
+	}
+	if err := json.Unmarshal(out, &results); err != nil {
+		return nil, fmt.Errorf("parse zim results: %w", err)
+	}
+
+	var papers []PaperSummary
+	for _, r := range results {
+		papers = append(papers, PaperSummary{
+			ID:    "zim:" + r.Path,
+			Title: r.Title,
+			Year:  0, // encyclopedia, not dated
 		})
 	}
 	return papers, nil
@@ -461,18 +556,51 @@ func runCalibrate(dir string, jsonOut bool) {
 		}
 	}
 
+	// Per-backend stats
+	byBackend := map[string]*vulnStats{}
+	for _, c := range mlog.Cycles {
+		be := c.Backend
+		if be == "" {
+			be = "arxiv"
+		}
+		if byBackend[be] == nil {
+			byBackend[be] = &vulnStats{}
+		}
+		s := byBackend[be]
+		s.total++
+		s.totalPaper += c.PapersFound
+		if c.PapersFound > 0 {
+			s.withSignal++
+		}
+	}
+	if len(byBackend) > 1 {
+		fmt.Println("\n  by backend:")
+		for be, s := range byBackend {
+			fmt.Printf("    %-25s %.0f%% signal (%d/%d), avg %.1f results\n",
+				be, pct(s.withSignal, s.total), s.withSignal, s.total, avg(s.totalPaper, s.total))
+		}
+	}
+
 	// Hypothesis-level detail
 	fmt.Println("\n  per hypothesis:")
 	for _, c := range mlog.Cycles {
 		signal := "no signal"
 		if c.PapersFound > 0 {
-			signal = fmt.Sprintf("%d papers", c.PapersFound)
+			label := "papers"
+			if c.Backend == "zim" {
+				label = "articles"
+			}
+			signal = fmt.Sprintf("%d %s", c.PapersFound, label)
 		}
 		res := ""
 		if c.Resolution != "" {
 			res = " → " + c.Resolution
 		}
-		fmt.Printf("    %-40s [%s]%s  %s\n", c.Hypothesis, signal, res, c.Timestamp.Format("2006-01-02"))
+		be := c.Backend
+		if be == "" {
+			be = "arxiv"
+		}
+		fmt.Printf("    %-40s [%s] %-5s%s  %s\n", c.Hypothesis, signal, be, res, c.Timestamp.Format("2006-01-02"))
 	}
 }
 

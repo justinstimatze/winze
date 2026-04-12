@@ -146,6 +146,38 @@ go run ./cmd/sensor --backend all --limit 5 --json
 
 Edit the `queries` slice in `cmd/sensor/main.go` to match your domain. State is tracked in `.sensor-state.json` (gitignored) to avoid re-reporting seen papers.
 
+### Wikipedia ZIM setup (recommended)
+
+The metabolism loop can use a local Wikipedia ZIM file for offline fulltext search — no rate limits, better recall for non-STEM domains than arXiv.
+
+1. Download a ZIM file from [download.kiwix.org](https://download.kiwix.org/zim/wikipedia/):
+   ```bash
+   # ~20GB, nopic variant (text only, recommended)
+   wget https://download.kiwix.org/zim/wikipedia/wikipedia_en_all_nopic_2025-12.zim
+   mkdir -p /opt/zim && mv wikipedia_en_all_nopic_2025-12.zim /opt/zim/
+   ```
+
+2. Install Python libzim (used by `script/zim-search.py`):
+   ```bash
+   pip install libzim    # or: uvx install openzim-mcp /opt/zim
+   ```
+
+3. Run a metabolism cycle with the ZIM backend:
+   ```bash
+   go run ./cmd/metabolism --backend zim --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
+   ```
+
+   If libzim is in a virtualenv, set `WINZE_ZIM_PYTHON` to that interpreter:
+   ```bash
+   export WINZE_ZIM_PYTHON=/path/to/venv/bin/python
+   go run ./cmd/metabolism --backend zim --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
+   ```
+
+4. Run both backends together:
+   ```bash
+   go run ./cmd/metabolism --backend all --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
+   ```
+
 ## Gas Town integration (optional)
 
 Multi-agent curation workflow for autonomous KB maintenance via [Gas Town](https://github.com/gastownhall/gastown):

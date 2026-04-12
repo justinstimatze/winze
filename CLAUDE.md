@@ -63,15 +63,20 @@ most structurally fragile hypotheses.
 ### Metabolism (automated cycle)
 
 ```bash
-go run ./cmd/metabolism .              # run one cycle: topology → arXiv → log
-go run ./cmd/metabolism --dry-run .    # show targets without querying
-go run ./cmd/metabolism --calibrate .  # analyze accumulated cycle log
-go run ./cmd/metabolism --json .       # JSON output
+go run ./cmd/metabolism .                              # arXiv backend (default)
+go run ./cmd/metabolism --backend zim --zim FILE .     # Wikipedia ZIM backend
+go run ./cmd/metabolism --backend all --zim FILE .     # both backends
+go run ./cmd/metabolism --dry-run .                    # show targets without querying
+go run ./cmd/metabolism --calibrate .                  # analyze accumulated cycle log
+go run ./cmd/metabolism --json .                       # JSON output
 ```
 
-One cycle: topology identifies fragile hypotheses → arXiv sensor queries
-for external signal → results logged to `.metabolism-log.json` →
-calibration tracks whether structural fragility predicts curation gaps.
+One cycle: topology identifies fragile hypotheses → sensor queries (arXiv
+and/or Wikipedia ZIM) for external signal → results logged to
+`.metabolism-log.json` → calibration tracks whether structural fragility
+predicts curation gaps. ZIM backend requires `libzim` Python package and
+a .zim file (see README for setup). Set `WINZE_ZIM_PYTHON` if libzim is
+in a virtualenv.
 
 ### Skeptical ingest (sensor defense)
 
