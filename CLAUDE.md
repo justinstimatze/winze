@@ -74,9 +74,8 @@ go run ./cmd/metabolism --json .                       # JSON output
 One cycle: topology identifies fragile hypotheses → sensor queries (arXiv
 and/or Wikipedia ZIM) for external signal → results logged to
 `.metabolism-log.json` → calibration tracks whether structural fragility
-predicts curation gaps. ZIM backend requires `libzim` Python package and
-a .zim file (see README for setup). Set `WINZE_ZIM_PYTHON` if libzim is
-in a virtualenv.
+predicts curation gaps. ZIM backend uses gozim (pure Go, no Python needed).
+Builds a Bleve fulltext index on first use (persisted to `<zimfile>.bleve/`).
 
 ### Skeptical ingest (sensor defense)
 

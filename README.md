@@ -157,23 +157,14 @@ The metabolism loop can use a local Wikipedia ZIM file for offline fulltext sear
    mkdir -p /opt/zim && mv wikipedia_en_all_nopic_2025-12.zim /opt/zim/
    ```
 
-2. Install Python libzim (used by `script/zim-search.py`):
-   ```bash
-   pip install libzim    # or: uvx install openzim-mcp /opt/zim
-   ```
-
-3. Run a metabolism cycle with the ZIM backend:
+2. Run a metabolism cycle with the ZIM backend:
    ```bash
    go run ./cmd/metabolism --backend zim --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
    ```
+   On first run, gozim builds a Bleve fulltext index (persisted to `<zimfile>.bleve/`).
+   Subsequent searches are instant.
 
-   If libzim is in a virtualenv, set `WINZE_ZIM_PYTHON` to that interpreter:
-   ```bash
-   export WINZE_ZIM_PYTHON=/path/to/venv/bin/python
-   go run ./cmd/metabolism --backend zim --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
-   ```
-
-4. Run both backends together:
+3. Run both backends together:
    ```bash
    go run ./cmd/metabolism --backend all --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
    ```
@@ -198,7 +189,7 @@ Multi-agent curation workflow for autonomous KB maintenance via [Gas Town](https
 
 - **PKM / second-brain ingest:** Import from Obsidian vaults, Logseq graphs, Roam JSON exports, Notion exports, plain markdown Zettelkasten, and plain text directories. An `ingest` command that reads a directory of markdown notes, extracts entities and relationships via LLM, and emits `.go` corpus files with provenance pointing back to the source note. Goal: dump your existing knowledge base into winze in one pass, then let the type system and lint rules surface what's inconsistent.
 - **Query generation improvements:** Topology-derived sensor queries need domain-aware phrasing (current: literal keyword concatenation produces museum results when searching for anthropological theses).
-- **Pure Go ZIM reader ([gozim](https://github.com/justinstimatze/gozim)):** Eliminate the Python bridge for Wikipedia search. Bleve-backed fulltext index, zero CGO. In development.
+- **~~Pure Go ZIM reader~~** Done. [gozim](https://github.com/justinstimatze/gozim) integrated — Python bridge eliminated.
 - **Prediction schema:** `Predicts[Hypothesis, Event]`, `Credence[Hypothesis]` — encode falsifiable predictions and track calibration over time.
 - **Live visualization:** Gource-style real-time dashboard of agents committing to the KB.
 
