@@ -96,8 +96,16 @@ func saveState(path string, s SensorState) error {
 // arXiv backend
 
 func searchArxiv(query string, limit int) ([]Paper, error) {
-	u := fmt.Sprintf("http://export.arxiv.org/api/query?search_query=all:%s&start=0&max_results=%d&sortBy=submittedDate&sortOrder=descending",
-		url.QueryEscape(query), limit)
+	// arXiv API treats spaces as OR by default. Join terms with AND
+	// so multi-word queries match all terms.
+	terms := strings.Fields(query)
+	var parts []string
+	for _, t := range terms {
+		parts = append(parts, "all:"+url.QueryEscape(t))
+	}
+	searchQuery := strings.Join(parts, "+AND+")
+	u := fmt.Sprintf("https://export.arxiv.org/api/query?search_query=%s&start=0&max_results=%d&sortBy=submittedDate&sortOrder=descending",
+		searchQuery, limit)
 
 	resp, err := http.Get(u)
 	if err != nil {
@@ -195,12 +203,17 @@ func main() {
 	statePath := filepath.Join(*dir, ".sensor-state.json")
 	state := loadState(statePath)
 
-	queries := []string{
-		"predictive processing hierarchical prediction",
-		"superior pattern processing cognition",
-		"apophenia pattern recognition cognitive",
-		"forecasting calibration superforecasting",
-		"knowledge base consistency checking",
+	// Use positional args as queries if provided; otherwise fall back to
+	// the default patrol set for autonomous monitoring.
+	queries := flag.Args()
+	if len(queries) == 0 {
+		queries = []string{
+			"predictive processing hierarchical prediction",
+			"superior pattern processing cognition",
+			"apophenia pattern recognition cognitive",
+			"forecasting calibration superforecasting",
+			"knowledge base consistency checking",
+		}
 	}
 
 	useArxiv := *backend == "arxiv" || *backend == "all"

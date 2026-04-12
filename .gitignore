@@ -6,6 +6,8 @@
 /winze
 /benchmark
 /lint
+/sensor
+/topology
 
 # Generated configs (contain absolute paths)
 .mcp.json
