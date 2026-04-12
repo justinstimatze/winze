@@ -52,3 +52,8 @@
 # - linear.api-key
 # - github.org
 # - github.repo
+
+routing.mode: "explicit"
+prefix: hq
+issue-prefix: hq
+dolt.idle-timeout: "0"

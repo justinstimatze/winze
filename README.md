@@ -194,6 +194,14 @@ Multi-agent curation workflow for autonomous KB maintenance via [Gas Town](https
 - **LLM as expensive lint rule:** LLM judgment is one lint rule among many, not a separate architectural stage. Runs opt-in with an explicit token budget.
 - **Reification over schema extension:** Handle competing theories via Hypothesis entities + TheoryOf, not new role types.
 
+## Roadmap
+
+- **PKM / second-brain ingest:** Import from Obsidian vaults, Logseq graphs, Roam JSON exports, Notion exports, plain markdown Zettelkasten, and plain text directories. An `ingest` command that reads a directory of markdown notes, extracts entities and relationships via LLM, and emits `.go` corpus files with provenance pointing back to the source note. Goal: dump your existing knowledge base into winze in one pass, then let the type system and lint rules surface what's inconsistent.
+- **Query generation improvements:** Topology-derived sensor queries need domain-aware phrasing (current: literal keyword concatenation produces museum results when searching for anthropological theses).
+- **Pure Go ZIM reader ([gozim](https://github.com/justinstimatze/gozim)):** Eliminate the Python bridge for Wikipedia search. Bleve-backed fulltext index, zero CGO. In development.
+- **Prediction schema:** `Predicts[Hypothesis, Event]`, `Credence[Hypothesis]` — encode falsifiable predictions and track calibration over time.
+- **Live visualization:** Gource-style real-time dashboard of agents committing to the KB.
+
 ## Prior art
 
 | Project | Substrate | Consistency mechanism | Agent-writable? |

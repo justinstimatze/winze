@@ -41,3 +41,21 @@
 # Beads / Dolt files (added by bd init)
 .dolt/
 .beads-credential-key
+
+# Gas Town runtime state
+.dolt-data/
+daemon/
+settings/
+rigs.json
+
+# Stray Claude session dirs
+ /
+
+# Gas Town (added by gt)
+.runtime/
+.claude/
+.logs/
+__pycache__/
+state.json
+CLAUDE.md
+CLAUDE.local.md
