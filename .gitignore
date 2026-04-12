@@ -4,6 +4,7 @@
 
 # Binaries
 /winze
+/benchmark
 
 # Generated configs (contain absolute paths)
 .mcp.json

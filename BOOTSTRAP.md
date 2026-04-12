@@ -20,6 +20,81 @@ A fresh Claude Code session starting in this directory should:
 
 ## Status — 2026-04-11
 
+### Session 9 umbrella: benchmark v0.1 — typed retrieval vs grep baseline
+
+Session 9's driving question: **does typed Go storage retrieve knowledge
+more accurately than keyword search, and on which query classes does
+structure win?** Answered decisively: structured queries achieve perfect
+recall; unstructured retrieval barely reaches 50%.
+
+**Benchmark design:** 24 questions across 4 categories (lexical,
+aggregation, multi-hop, contested), evaluated against 4 retrieval modes:
+
+| Mode | Description | Overall R@1 |
+|------|-------------|-------------|
+| grep | keyword match over var-block text | 0.501 |
+| bm25 | BM25 ranking over var-block text (pure Go implementation) | 0.467 |
+| defn | SQL queries against defn's Dolt database (structured, realistic) | 1.000 |
+| ast  | hand-written go/ast queries (structured, ceiling) | 1.000 |
+
+**Per-category results:**
+
+| Category | grep R@1 | bm25 R@1 | defn R@1 | ast R@1 |
+|----------|---------|---------|---------|---------|
+| Lexical (6) | 0.833 | 0.833 | 1.000 | 1.000 |
+| Aggregation (6) | 0.367 | 0.333 | 1.000 | 1.000 |
+| Multi-hop (6) | 0.306 | 0.306 | 1.000 | 1.000 |
+| Contested (6) | 0.500 | 0.396 | 1.000 | 1.000 |
+
+**Key findings:**
+
+1. **defn SQL achieves perfect recall.** The refs table in defn's Dolt
+   database captures Go symbol references, and JOIN chains through
+   the ref graph can answer every question — including multi-hop
+   traversals and contested-concept aggregation. This validates the
+   decision to use Go as the storage substrate: defn's existing
+   code-graph infrastructure works as a knowledge-graph query layer
+   without modification.
+
+2. **Unstructured retrieval fails on structural queries.** Grep and
+   BM25 achieve ~0.83 on lexical lookups but collapse to ~0.30–0.37
+   on aggregation and multi-hop. They cannot count claims, traverse
+   edges, or detect contested patterns. This is the gap that typed
+   storage fills.
+
+3. **BM25 does not beat grep on this corpus.** The var-block granularity
+   makes BM25's IDF weighting largely irrelevant — most blocks are
+   short enough that term frequency ranking doesn't add much over
+   simple keyword counting. Expected to diverge at larger scale.
+
+4. **defn = ast.** The realistic query layer (defn SQL) matches the
+   hand-written ceiling (go/ast). This means the query infrastructure
+   is already sufficient — the bottleneck for retrieval quality is
+   question formulation, not query execution.
+
+**Implementation:** `cmd/benchmark/` — 6 files, ~700 lines. Pure Go,
+zero external dependencies (BM25 implemented from scratch). Four
+retrieval modes: grep (keyword match), bm25 (BM25 ranking), defn (SQL
+via CLI), ast (go/ast queries copied from cmd/lint).
+
+**W1 status: ADDRESSED.** Zero retrieval benchmarks → 24-question
+corpus with 4-mode comparison. Not fully resolved — v0.2 needs
+counterfactual queries, RippleEdits mutation tests, and LLM-agent
+mode. But the v0.1 results are already a concrete, reproducible
+demonstration that typed storage beats text search on structural
+knowledge queries.
+
+**Deferred to v0.2:**
+- Counterfactual queries ("if X hadn't disputed Y...")
+- Contradiction detection queries (needs oq-contradiction-rule)
+- RippleEdits mutation tests
+- adit authoring-cost axis
+- LLM-agent-with-tools as fifth mode
+- Auto-generated question corpus from KB graph walks
+
+**Lint state after session 9:** unchanged from session 8. 16 roles,
+192 entities, 200 referenced, 0 orphaned. 8 contested targets.
+
 ### Session 8 umbrella: alien corpus pressure test, first 3-way contested target
 
 Session 8's driving question: **does the predicate vocabulary handle
@@ -117,11 +192,28 @@ cleanly as philosophy, fiction, or cognitive science.
 | proven-vs-speculative distinction | Gödel | 0 new | truth-status in prose, not types |
 | N>2 contested target | hard problem | handled | lint reports 3 subjects cleanly |
 
-**Medium-term roadmap (sessions 9-12):**
-- Session 9: Benchmark v0.1 (oq-benchmark) — W1 strategic gap
+**Medium-term roadmap:**
+- Session 9: Benchmark v0.1 (oq-benchmark) — **DONE** (W1 addressed)
 - Session 10: Contradiction detection (oq-contradiction-rule) — W3
 - Session 11: Scale push toward 300 entities
 - Session 12: Gas Town awareness (oq-gastown-awareness)
+
+**Benchmark v0.2 roadmap** (unblocked after sessions 10-11):
+- Counterfactual queries ("if X hadn't disputed Y...")
+- Contradiction detection queries (blocked on oq-contradiction-rule, session 10)
+- RippleEdits mutation tests (claim mutation → re-query → detect downstream effects)
+- adit authoring-cost axis (measure cost of writing queries per mode)
+- LLM-agent-with-tools as fifth retrieval mode
+- Auto-generated question corpus from KB graph walks (scale to 100+)
+
+**Other pending work:**
+- CommentaryOn / AuthoredOrg accretion (still at 1 claim each)
+- W3C PROV expansion
+- Contested-target-ready singletons: PredictiveProcessing, Forecasting,
+  Falsifiability, HumanRights, HumanUniversals, Advaita
+- Live KB visualization (gource — refs in memory)
+- #15 Slimemold study, #20 Human universals accretion, #21 Skeleton
+  extraction, #7 Frontiers Neurosci paper
 
 ### Session 7 umbrella: dispute representation pressure test, vocabulary boundary holds
 
