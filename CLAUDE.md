@@ -53,6 +53,7 @@ named discipline.
 ```bash
 go run ./cmd/topology .              # structural vulnerability report
 go run ./cmd/topology --json .       # JSON with sensor_targets for automation
+go run ./cmd/topology --export-kb .  # slimemold-compatible KBClaim JSON
 ```
 
 Detectors: single-source, uncontested, thin-provenance, bridge-entity,

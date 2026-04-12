@@ -34,11 +34,20 @@ import (
 
 func main() {
 	jsonOut := flag.Bool("json", false, "output JSON instead of human-readable summary")
+	exportKB := flag.Bool("export-kb", false, "export claims as slimemold-compatible KBClaim JSON")
 	flag.Parse()
 
 	dir := "."
 	if flag.NArg() > 0 {
 		dir = flag.Arg(0)
+	}
+
+	if *exportKB {
+		if err := runExportKB(dir); err != nil {
+			fmt.Fprintf(os.Stderr, "topology: export-kb: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	report, err := analyze(dir)
@@ -107,6 +116,7 @@ type claimInfo struct {
 type provenanceInfo struct {
 	file     string
 	hasQuote bool
+	origin   string // Provenance.Origin field (e.g. "Wikipedia (zim 2025-12) / Tunguska_event")
 }
 
 // --- analysis ---
@@ -988,6 +998,7 @@ func collectProvenance(dir string) (map[string]provenanceInfo, error) {
 						continue
 					}
 					hasQuote := false
+					origin := ""
 					for _, elt := range cl.Elts {
 						kv, ok := elt.(*ast.KeyValueExpr)
 						if !ok {
@@ -997,11 +1008,14 @@ func collectProvenance(dir string) (map[string]provenanceInfo, error) {
 						if !ok {
 							continue
 						}
-						if key.Name == "Quote" {
+						switch key.Name {
+						case "Quote":
 							lit, ok := kv.Value.(*ast.BasicLit)
 							if ok && lit.Kind == token.STRING && len(lit.Value) > 2 {
 								hasQuote = true
 							}
+						case "Origin":
+							origin = basicLitString(kv.Value)
 						}
 					}
 					// Update: if any provenance in this file has a quote, mark it
@@ -1009,6 +1023,9 @@ func collectProvenance(dir string) (map[string]provenanceInfo, error) {
 					if !exists || hasQuote {
 						existing.file = e.Name()
 						existing.hasQuote = existing.hasQuote || hasQuote
+						if origin != "" {
+							existing.origin = origin
+						}
 						prov[e.Name()] = existing
 					}
 				}
@@ -1016,6 +1033,63 @@ func collectProvenance(dir string) (map[string]provenanceInfo, error) {
 		}
 	}
 	return prov, nil
+}
+
+// --- slimemold KB export ---
+
+// KBClaim is the slimemold-compatible claim format for the analyze_kb action.
+type KBClaim struct {
+	ID            string `json:"id"`
+	PredicateType string `json:"predicate_type"`
+	Subject       string `json:"subject"`
+	Object        string `json:"object"`
+	HasQuote      bool   `json:"has_quote"`
+	ProvenanceURL string `json:"provenance_url,omitempty"`
+}
+
+// KBExportPayload is the full slimemold MCP request for analyze_kb.
+type KBExportPayload struct {
+	Action   string    `json:"action"`
+	Project  string    `json:"project"`
+	KBClaims []KBClaim `json:"kb_claims"`
+}
+
+// runExportKB walks the winze corpus and emits a slimemold-compatible
+// analyze_kb payload. Uses the same AST extraction as topology analysis
+// but outputs KBClaim format instead of vulnerability reports.
+func runExportKB(dir string) error {
+	claims, err := collectClaims(dir)
+	if err != nil {
+		return fmt.Errorf("collect claims: %w", err)
+	}
+
+	provenance, err := collectProvenance(dir)
+	if err != nil {
+		return fmt.Errorf("collect provenance: %w", err)
+	}
+
+	var kbClaims []KBClaim
+	for _, c := range claims {
+		prov := provenance[c.file]
+		kbClaims = append(kbClaims, KBClaim{
+			ID:            c.name,
+			PredicateType: c.predicateType,
+			Subject:       c.subject,
+			Object:        c.object,
+			HasQuote:      prov.hasQuote,
+			ProvenanceURL: prov.origin,
+		})
+	}
+
+	payload := KBExportPayload{
+		Action:   "analyze_kb",
+		Project:  "winze",
+		KBClaims: kbClaims,
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(payload)
 }
 
 // --- output ---
