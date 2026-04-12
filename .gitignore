@@ -5,9 +5,13 @@
 # Binaries
 /winze
 /benchmark
+/lint
 
 # Generated configs (contain absolute paths)
 .mcp.json
+
+# Secrets
+.env
 
 # OS
 .DS_Store

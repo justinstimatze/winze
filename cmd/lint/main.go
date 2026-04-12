@@ -5,15 +5,11 @@
 // can read authoritative data like ExternalTerms without duplicating it.
 //
 // Rules implemented (v0):
-//   1. naming-oracle   — role types must be grounded in ExternalTerms
-//   2. orphan-report   — role-typed entity vars that no claim references
-//                        as Subject or Object (advisory, does not fail)
-//   3. value-conflict  — (predicate, subject) groups with ≥2 distinct
-//                        object expressions (advisory, does not fail)
-//
-// Rules accrete here as their use cases surface. Do not add a rule in
-// anticipation of a use case; wait for a real authoring pain and encode
-// that.
+//   1. naming-oracle      — role types must be grounded in ExternalTerms
+//   2. orphan-report      — entity vars with zero claim references (advisory)
+//   3. value-conflict     — functional-predicate value conflicts (advisory)
+//   4. contested-concept  — multiple TheoryOf subjects per concept (advisory)
+//   5. llm-contradiction  — LLM-detected semantic contradictions (--llm, advisory)
 package main
 
 import (
@@ -443,6 +439,8 @@ func exprString(e ast.Expr) string {
 	switch v := e.(type) {
 	case *ast.Ident:
 		return v.Name
+	case *ast.BasicLit:
+		return v.Value
 	case *ast.UnaryExpr:
 		return v.Op.String() + exprString(v.X)
 	case *ast.SelectorExpr:
@@ -801,9 +799,33 @@ func uniqueSubjects(sites []claimSite) []string {
 }
 
 func main() {
+	llmFlag := false
+	llmModel := "haiku"
+	llmMaxCalls := 0
+	llmMaxTokens := 1024
+
 	dir := "."
-	if len(os.Args) > 1 {
-		dir = os.Args[1]
+	var args []string
+	for _, arg := range os.Args[1:] {
+		switch {
+		case arg == "--llm":
+			llmFlag = true
+		case strings.HasPrefix(arg, "--llm-model="):
+			llmModel = strings.TrimPrefix(arg, "--llm-model=")
+		case strings.HasPrefix(arg, "--llm-max-calls="):
+			if n, err := fmt.Sscanf(arg, "--llm-max-calls=%d", &llmMaxCalls); n != 1 || err != nil {
+				llmMaxCalls = 0
+			}
+		case strings.HasPrefix(arg, "--llm-max-tokens="):
+			if n, err := fmt.Sscanf(arg, "--llm-max-tokens=%d", &llmMaxTokens); n != 1 || err != nil {
+				llmMaxTokens = 1024
+			}
+		default:
+			args = append(args, arg)
+		}
+	}
+	if len(args) > 0 {
+		dir = args[0]
 	}
 
 	rc1 := namingOracleRule(dir)
@@ -813,16 +835,19 @@ func main() {
 	rc3 := valueConflictRule(dir)
 	fmt.Println()
 	rc4 := contestedConceptRule(dir)
+	fmt.Println()
+	rc5 := llmContradictionRule(dir, llmBudget{
+		enabled:        llmFlag,
+		model:          llmModel,
+		maxCallsPerRun: llmMaxCalls,
+		maxTokens:      llmMaxTokens,
+	})
 
 	worst := rc1
-	if rc2 > worst {
-		worst = rc2
-	}
-	if rc3 > worst {
-		worst = rc3
-	}
-	if rc4 > worst {
-		worst = rc4
+	for _, rc := range []int{rc2, rc3, rc4, rc5} {
+		if rc > worst {
+			worst = rc
+		}
 	}
 	os.Exit(worst)
 }
