@@ -48,7 +48,7 @@ var ExternalTerms = []*ExternalTerm{
 	// winze-native vocabulary — legitimately invented for design/authoring
 	// prose where no clean external term exists. Registered here so the
 	// naming oracle treats invention as explicit, not silent.
-	{Name: "DesignLayer", Source: "winze-native", URL: "", Brief: "An interpretive layer of a creative work (Stope Layer 1/2/3). No standard external term."},
+	{Name: "DesignLayer", Source: "winze-native", URL: "", Brief: "An interpretive layer of a creative work (e.g., Layer 1/2/3). No standard external term."},
 	{Name: "Phase", Source: "winze-native", URL: "", Brief: "A production or arc-scoped stage of a creative work. Schema.org has no equivalent at this granularity."},
 	{Name: "ProtectedLine", Source: "winze-native", URL: "", Brief: "A specific authored string that is load-bearing across multiple interpretive layers and must not be edited."},
 	{Name: "NeverAnswered", Source: "winze-native", URL: "", Brief: "A question the creative work commits to never resolving. The absence is authorial."},

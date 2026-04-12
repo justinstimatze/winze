@@ -25,7 +25,7 @@ Run the winze lint suite and report structural health.
 
 1. Run lint and capture output:
 ```bash
-cd /home/gas6amus/Documents/winze
+cd "$(git rev-parse --show-toplevel)"
 go run ./cmd/lint . 2>&1
 ```
 

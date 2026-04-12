@@ -10,7 +10,7 @@ package winze
 // corpus name, a URL, a conversation timestamp, a book citation. It is
 // never required to resolve to a live file.
 type Provenance struct {
-	Origin     string // human hint: "Stope reference corpus / npc-reggie-tsosie.md", "conversation 2026-04-11"
+	Origin     string // human hint: "Wikipedia 2025-12 / Tunguska_event", "conversation 2026-04-11"
 	IngestedAt string // ISO-8601 date of ingest
 	IngestedBy string // worker id or author name
 	Quote      string // the specific source fragment the claim was extracted from

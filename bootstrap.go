@@ -10,8 +10,8 @@
 // checker: unresolved references, type mismatches, and rename collisions fail
 // the build and block the commit.
 //
-// See BOOTSTRAP.md for the prose handoff that the first fresh session should
-// read before working on this package.
+// See the Decision, FailureMode, Mitigation, and OpenQuestion declarations
+// below for the architectural narrative.
 package winze
 
 // Entity is a named thing the KB tracks. Kind is an open string; current
@@ -139,13 +139,6 @@ var (
 		Name:  "mempalace",
 		Kind:  "project",
 		Brief: "Prior project. grepmem FTS5 baseline achieved 96.4% R@5 on LongMemEval-s, establishing BM25 over text as the retrieval floor winze must justify against. Benchmark infrastructure is reusable for the v1 winze benchmark.",
-	}
-
-	Stope = &Entity{
-		ID:    "stope",
-		Name:  "Stope",
-		Kind:  "project",
-		Brief: "Game project whose reference corpus motivated winze: ~85 essays, ~400k words, drift-prone. First real test target for winze ingest workers.",
 	}
 
 	LongMemEval = &Entity{
@@ -379,6 +372,43 @@ func ContradictionDetectionLintRule() *OpenQuestion {
 		Blocking: true,
 	}
 }
+
+// -----------------------------------------------------------------------------
+// Empirical findings from sessions 1-12. These were discovered during
+// implementation and are load-bearing calibrations, not just history.
+// -----------------------------------------------------------------------------
+
+var (
+	SchemaAccretionRate = &Decision{
+		ID:    "dec-schema-accretion-rate",
+		Title: "Schema accretes at 0-1 new predicates per distinct corpus shape",
+		Rationale: "After 17+ ingests across 8 corpus shapes (Wikipedia articles, journal papers, fiction, legal documents, game design docs, course handouts, commentaries, taxonomy lists), the predicate vocabulary converged. 11 consecutive slices required zero new predicates. New predicates emerge only when a structurally novel corpus shape forces them (CommentaryOn from paper-on-paper, AuthoredOrg from institutional authorship).",
+	}
+
+	ValueConflictIsSemantic = &Decision{
+		ID:    "dec-value-conflict-semantic",
+		Title: "Value-conflict lint operates at the semantic level (same subject+predicate+different objects), not type-level disjointness",
+		Rationale: "The original mit-predicate-disjoint proposed compile-time pragma-based disjointness (e.g., Trusts vs Distrusts). Implementation revealed the real pattern is functional-predicate value conflicts: the same (predicate, subject) pair with different object values. This is caught by the //winze:functional pragma on predicate type declarations.",
+	}
+
+	ReificationOverSchemaExtension = &Decision{
+		ID:    "dec-reification-over-extension",
+		Title: "Handle competing theories via Hypothesis entities + TheoryOf, not new role types",
+		Rationale: "When multiple theories compete to explain a concept (consciousness, human cognition, mathematical foundations), each theory is a Hypothesis entity with a TheoryOf claim pointing at the contested Concept. The //winze:contested annotation on TheoryOf signals that multiple subjects per object is expected. This avoids schema proliferation (no ConsciousnessTheoryA role type) and lets the contested-concept lint rule surface the landscape automatically.",
+	}
+
+	MirrorSourceCommitmentsValidated = &Decision{
+		ID:    "dec-mirror-source",
+		Title: "Ingest workers refuse to structure claims the source leaves unstructured",
+		Rationale: "If a source mentions a concept without committing to a specific relationship, the ingest worker records it in the Brief (free text) but does not fabricate a typed claim. This discipline was validated by the misconceptions slice: the source refused to state the misconceptions themselves, so winze records only the corrections. Provenance.Quote is the audit mechanism.",
+	}
+
+	SlotTypeDisciplineValidated = &Decision{
+		ID:    "dec-slot-type-validated",
+		Title: "Role-typed predicate slots catch real concept/claim category errors at compile time",
+		Rationale: "Validated by the UDHR ingest: attempting to use Authored[Person, Concept] for institutional authorship (UN General Assembly) failed to compile, forcing the creation of AuthoredOrg[Organization, Concept]. The compiler caught a category error that prose-based KBs would silently accept.",
+	}
+)
 
 // ClaimSchemaDesign is the biggest unsolved piece of the architecture and the
 // thing the first real session should chew on. Without a good claim schema,

@@ -16,12 +16,12 @@ package winze
 // Schema.org CreativeWork is the external anchor (see external.go).
 type CreativeWork struct{ *Entity }
 
-// DesignLayer is an interpretive layer of a creative work. For The Stope
-// this is Layer 1 / Layer 2 / Layer 3. The term is the doc's own.
+// DesignLayer is an interpretive layer of a creative work (e.g., Layer 1
+// / Layer 2 / Layer 3 of a game design document).
 type DesignLayer struct{ *Entity }
 
 // Phase is a temporally- or arc-scoped production stage of a creative work
-// (Phase A, Phase D, "Phase G aftermath" in the Stope doc).
+// (e.g., Phase A, Phase D, "Phase G aftermath").
 type Phase struct{ *Entity }
 
 // ProtectedLine is a specific authored string that is load-bearing across

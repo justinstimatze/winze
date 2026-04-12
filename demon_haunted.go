@@ -15,8 +15,7 @@ package winze
 // across 3 ingests, IsCognitiveBias crossing file boundaries for
 // the first time in the apophenia slice — but at the *entity*
 // level only two user-content vars in the entire graph were
-// referenced across file boundaries: Stope (bootstrap.go →
-// stope_constraints.go, founding-session scaffolding) and
+// referenced across file boundaries:
 // AndyClark (predictive_processing.go → quantum_thief.go, the
 // InfluencedBy bridge wired earlier this session). Every other
 // slice was a silo connected to the rest of winze only by shared

@@ -1,8 +1,8 @@
 package winze
 
-// Second real ingest target: the Wikipedia article on the Tunguska event,
-// chosen as the first *public* corpus slice (Stope is the user's private
-// notes). The whole point of Tunguska is the knot of competing hypotheses —
+// Wikipedia article on the Tunguska event, chosen as the first public
+// corpus slice. The whole point of Tunguska is the knot of competing
+// hypotheses —
 // asteroid vs comet vs glancing iron vs natural-gas release, plus the
 // Lake Cheko crater dispute. Contradictions here are the ingest substrate,
 // not edge cases, which is what we want before a disjointness-pragma lint
