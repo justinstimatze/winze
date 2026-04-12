@@ -66,7 +66,7 @@ Record a prediction about the KB or external signal. Prompts for:
 - Resolution date
 - What signal would resolve it
 
-Currently records as a comment in BOOTSTRAP.md pending the Prediction
+Currently records as a typed claim pending the Prediction
 type addition to predicates.go.
 
 ## `/curate resolve`

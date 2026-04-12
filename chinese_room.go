@@ -229,7 +229,7 @@ var (
 		Prov:    chineseRoomSource,
 	}
 
-	SearleProposessBiologicalNaturalism = Proposes{
+	SearleProposesBiologicalNaturalism = Proposes{
 		Subject: JohnSearle,
 		Object:  SearleBiologicalNaturalism,
 		Prov:    chineseRoomSource,

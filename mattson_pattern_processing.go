@@ -11,8 +11,7 @@ package winze
 // expansion of the prefrontal and visual cortices through human
 // evolution.
 //
-// This slice is the **deliberate control-group ingest** flagged at
-// the top of the 2026-04-11 Session 5 section of BOOTSTRAP.md. Its
+// This slice is a **deliberate control-group ingest**. Its
 // purpose is to answer the exact question the White & Shergill
 // slice left open: now that CommentaryOn has been earned (breaking
 // a five-slice vocabulary-fit streak at the scientific-paper
@@ -37,8 +36,7 @@ package winze
 // entity bridge landed WITHOUT deliberate source-shopping, which
 // is a stronger finding than the session-4 "entity density has to
 // be shopped for" thesis: the graph is now dense enough that a
-// non-shopped slice accidentally lands a bridge. See the session-5
-// #2 entry in BOOTSTRAP.md for how this updates the discipline.
+// non-shopped slice accidentally lands a bridge.
 //
 // Schema forcing functions earned by this slice:
 //

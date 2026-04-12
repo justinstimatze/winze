@@ -11,8 +11,8 @@ package winze
 // about whether the first-layer typologies have anything to talk about
 // in common.
 //
-// Sourced from /opt/zim/wikipedia_en_all_nopic_2025-12.zim entry
-// A/Nondualism on 2026-04-11. Per dec-prose-is-io, no live link is
+// Sourced from Wikipedia (offline ZIM dump, 2025-12) entry Nondualism
+// on 2026-04-11. Per dec-prose-is-io, no live link is
 // preserved — the Quote fragment below is the audit trail.
 //
 // Schema forcing functions this ingest earned:

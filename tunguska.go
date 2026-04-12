@@ -8,7 +8,7 @@ package winze
 // not edge cases, which is what we want before a disjointness-pragma lint
 // rule earns its keep.
 //
-// Sourced from /opt/zim/wikipedia_en_all_nopic_2025-12.zim entry Tunguska_event
+// Sourced from Wikipedia (offline ZIM dump, 2025-12) entry Tunguska_event
 // on 2026-04-11. Per dec-prose-is-io, no live link is preserved — the Quote
 // fragments below ARE the audit trail.
 

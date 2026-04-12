@@ -552,7 +552,7 @@ type entitySite struct {
 // entity" — what was previously answered by a defn query against the
 // reference graph, now answered in-process without the defn dependency.
 //
-// Vars of plain *Entity (bootstrap.go self-tracking entities like Stope
+// Vars of plain *Entity (bootstrap.go self-tracking entities like Defn
 // or Dolt) are intentionally NOT collected: those are project-description
 // vars and are expected never to be claim-subjects, so including them
 // would drown the useful signal.

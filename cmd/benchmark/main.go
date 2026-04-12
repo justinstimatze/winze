@@ -33,25 +33,7 @@ type Result struct {
 	Latency    time.Duration
 }
 
-func computeRecallAtK(retrieved, gold []string, k int) float64 {
-	if len(gold) == 0 {
-		return 1.0
-	}
-	goldSet := map[string]bool{}
-	for _, g := range gold {
-		goldSet[g] = true
-	}
-	topK := retrieved
-	if len(topK) > k {
-		topK = topK[:k]
-	}
-	for _, r := range topK {
-		if goldSet[r] {
-			return 1.0
-		}
-	}
-	return 0.0
-}
+
 
 func computeSetRecall(retrieved, gold []string) float64 {
 	if len(gold) == 0 {
