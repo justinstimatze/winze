@@ -2,19 +2,20 @@ package main
 
 import (
 	"bufio"
-	"bytes"
+	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
 type llmBudget struct {
@@ -297,78 +298,35 @@ func parseFindings(response string) []llmFinding {
 	return out
 }
 
-type anthropicRequest struct {
-	Model     string             `json:"model"`
-	MaxTokens int                `json:"max_tokens"`
-	Messages  []anthropicMsg     `json:"messages"`
-}
-
-type anthropicMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type anthropicResponse struct {
-	Content []struct {
-		Text string `json:"text"`
-	} `json:"content"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
 func callLLM(prompt string, budget llmBudget) (string, error) {
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if key == "" {
 		return "", fmt.Errorf("ANTHROPIC_API_KEY not set (create .env or export it)")
 	}
 
-	modelID := "claude-haiku-4-5-20251001"
+	model := anthropic.ModelClaudeHaiku4_5
 	if budget.model == "sonnet" {
-		modelID = "claude-sonnet-4-6-20250514"
+		model = anthropic.ModelClaudeSonnet4_6
 	}
 
-	reqBody := anthropicRequest{
-		Model:     modelID,
-		MaxTokens: budget.maxTokens,
-		Messages: []anthropicMsg{
-			{Role: "user", Content: prompt},
+	client := anthropic.NewClient(option.WithAPIKey(key))
+	resp, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
+		Model:     model,
+		MaxTokens: int64(budget.maxTokens),
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
 		},
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
+	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("API error: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(jsonBody))
-	if err != nil {
-		return "", err
+	for _, block := range resp.Content {
+		if block.Type == "text" {
+			return block.Text, nil
+		}
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", key)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("API request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var result anthropicResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to decode API response: %w", err)
-	}
-
-	if result.Error != nil {
-		return "", fmt.Errorf("API error: %s", result.Error.Message)
-	}
-
-	if len(result.Content) == 0 {
-		return "", fmt.Errorf("empty API response")
-	}
-
-	return result.Content[0].Text, nil
+	return "", fmt.Errorf("no text content in response")
 }
 
 func loadDotEnv(dir string) {
