@@ -13,6 +13,12 @@
 # Secrets
 .env
 
+# Sensor state (rebuilt on poll)
+.sensor-state.json
+
+# Beads runtime
+.beads/embeddeddolt/
+
 # OS
 .DS_Store
 
