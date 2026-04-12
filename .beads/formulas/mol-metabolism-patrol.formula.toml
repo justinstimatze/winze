@@ -1,0 +1,150 @@
+description = """
+Autonomous KB evolution patrol.
+
+Runs `go run ./cmd/metabolism --evolve .` which executes the full evolution cycle:
+1. Sense (wake): topology → sensor queries (ZIM + RSS + arXiv) with content snippets
+2. Evaluate: auto-resolve pending hypotheses via content-aware LLM classification
+3. Ingest: quality-gated pipeline ingest from corroborated ZIM findings → new corpus .go files
+4. Dream (NREM): consolidation analysis + bias audit + auto-fix overlong Briefs
+5. Trip (REM): speculative cross-cluster connections via LLM
+6. Calibrate: prediction accuracy scoring + reify predictions.go
+
+Sensor config is in `.metabolism.json` (ZIM path, backend, RSS feeds).
+No CLI flags needed beyond `--cycle .`.
+
+## Polecat Contract
+
+Each patrol run is one complete sleep cycle. The cycle is self-contained:
+- Sensor queries are logged to `.metabolism-log.json`
+- Dream auto-fixes are quality-gated (build + vet + lint; reverts on failure)
+- Trip connections are scored 1-5 (only 3+ are interesting)
+- Calibrate reifies predictions.go and verifies `go build` passes
+- The cycle commits predictions.go changes automatically
+
+Your job: run the cycle, commit any residual changes, push, `gt done`.
+
+## Running between human sessions
+
+This formula is designed to run autonomously between human work sessions.
+The human starts it, it runs N cycles, then suspends. The human resumes
+when ready. Key invariants:
+- Never modify corpus .go files (only predictions.go and .metabolism-log.json)
+- Never exceed entity cap (250)
+- Always leave the repo in a buildable state
+- Push after each cycle so human sees results
+
+## Variables
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| issue | hook_bead | The bead tracking this patrol run |
+| cycles | sling vars | Number of cycles to run (default: 1) |
+| base_branch | sling vars | Branch to work on (default: main) |
+"""
+formula = "mol-metabolism-patrol"
+version = 1
+
+[[steps]]
+id = "setup"
+title = "Verify prerequisites"
+description = """
+**1. Check environment:**
+```bash
+# Sensor config exists
+cat .metabolism.json
+
+# API key is set (needed for auto-resolve + trip + dream-fix)
+# .env is gitignored so it won't exist in polecat worktrees.
+# Try local first, then the main worktree root (for polecats).
+test -n "$ANTHROPIC_API_KEY" || test -f .env && source .env
+RIG_ROOT="$(git worktree list --porcelain | head -1 | sed 's/worktree //')"
+test -n "$ANTHROPIC_API_KEY" || test -f "$RIG_ROOT/.env" && source "$RIG_ROOT/.env"
+test -n "$ANTHROPIC_API_KEY" || echo "WARNING: ANTHROPIC_API_KEY not set — auto-resolve/trip/dream-fix will be skipped"
+
+# KB builds
+go build ./...
+```
+
+**2. Check current state:**
+```bash
+go run ./cmd/query --stats .
+```
+
+**Exit criteria:** Config exists, API key set, KB builds."""
+
+[[steps]]
+id = "run-cycles"
+title = "Execute sleep cycles"
+needs = ["setup"]
+description = """
+Run the requested number of evolution cycles. Each cycle does everything:
+sense → evaluate → ingest → dream → trip → calibrate. The KB grows autonomously.
+
+```bash
+# Source API key from rig root (worktrees don't have .env)
+RIG_ROOT="$(git worktree list --porcelain | head -1 | sed 's/worktree //')"
+source "$RIG_ROOT/.env" && export ANTHROPIC_API_KEY
+
+for i in $(seq 1 {{cycles}}); do
+  echo "=== Cycle $i of {{cycles}} ==="
+  go run ./cmd/metabolism --evolve .
+
+  # Commit all changes after each cycle
+  # NOTE: .metabolism-log.json is gitignored (runtime state).
+  # predictions.go and metabolism_cycle*.go are the evolving corpus.
+  git add predictions.go metabolism_cycle*.go 2>/dev/null
+  if ! git diff --cached --quiet; then
+    git commit -m "metabolism patrol: cycle $i/{{cycles}} — autonomous evolution"
+    git push
+  else
+    echo "No corpus changes this cycle"
+  fi
+
+  echo "=== Cycle $i complete ==="
+  echo
+done
+```
+
+**If a cycle fails:** Note the error, skip to submit. Do not retry — the
+cycle is designed to be idempotent and the next patrol will pick up where
+this one left off.
+
+**Exit criteria:** All requested cycles completed or first failure noted."""
+
+[[steps]]
+id = "submit"
+title = "Report and exit"
+needs = ["run-cycles"]
+description = """
+**1. Final state check:**
+```bash
+go build ./...
+go run ./cmd/query --stats .
+git log --oneline -5
+```
+
+**2. Update bead with results:**
+```bash
+bd update {{issue}} --notes "Completed {{cycles}} metabolism cycles"
+```
+
+**3. Push and exit:**
+```bash
+git push
+gt done
+```
+
+Done means gone."""
+
+[vars]
+[vars.issue]
+description = "The bead tracking this patrol run"
+required = true
+
+[vars.cycles]
+description = "Number of sleep cycles to run"
+default = "1"
+
+[vars.base_branch]
+description = "Branch to work on"
+default = "main"

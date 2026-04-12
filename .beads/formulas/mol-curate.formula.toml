@@ -1,0 +1,212 @@
+description = """
+Knowledge base curation lifecycle for winze polecats.
+
+Winze is a non-executable Go codebase used as a personal knowledge base.
+`go build` is the consistency checker. This formula guides a polecat through
+ingesting a source into typed claims, running quality gates, and submitting.
+
+## Polecat Contract
+
+Same self-cleaning model as mol-polecat-work: receive work, work through
+steps, `gt done` when finished. The difference is the work itself:
+instead of writing functional code, you write Go declarations that encode
+knowledge claims with typed predicates and provenance.
+
+## Variables
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| issue | hook_bead | The bead describing what to ingest/audit |
+| base_branch | sling vars | Branch to rebase on (default: main) |
+| source_hint | sling vars | URL, paper DOI, Wikipedia article, or "patrol" for audit tasks |
+"""
+formula = "mol-curate"
+version = 1
+
+[[steps]]
+id = "load-context"
+title = "Load context and understand the KB"
+description = """
+**1. Prime environment:**
+```bash
+gt prime && bd prime
+gt hook
+bd show {{issue}}
+```
+
+**2. Read current KB state:**
+```bash
+go run ./cmd/lint .    # See entity count, role types, contested concepts
+git log --oneline -10  # Recent ingests
+```
+
+**3. Read CLAUDE.md for project instructions.**
+
+**4. Understand the assignment:**
+- What source to ingest (from bead description or {{source_hint}})
+- What kind of task: ingest (new source), audit (check existing), or predict (forecast)
+- Check bead notes for any prior context
+
+**Exit criteria:** You understand what to ingest/audit and the current KB state."""
+
+[[steps]]
+id = "source-analysis"
+title = "Analyze source and plan claims"
+needs = ["load-context"]
+description = """
+Read the source material and plan the ingest before writing code.
+
+**1. Access the source:**
+- Wikipedia: use the wikipedia-zim MCP tools against the local ZIM file
+- Papers: use WebFetch on the URL or DOI
+- Semantic Scholar results: read the abstract and metadata
+
+**2. Identify extractable claims:**
+- What entities exist? (People, Concepts, Hypotheses, Events, Places, etc.)
+- What relationships? (Proposes, TheoryOf, BelongsTo, InfluencedBy, etc.)
+- What existing winze entities does this source connect to? (cross-ingest bridges)
+
+**3. Check schema fitness:**
+- Do existing predicates cover the relationships? (vocabulary-fit)
+- Does any relationship force a new predicate? (schema accretion)
+- Do NOT invent predicates speculatively. Only add when forced.
+
+**4. Plan the file structure:**
+- One .go file per source (e.g., `new_source.go`)
+- Provenance header with Origin, IngestedAt, IngestedBy, Quote
+- Entity declarations, then claim declarations
+- Document schema forcing functions in header comment
+
+**5. Persist your plan to the bead:**
+```bash
+bd update {{issue}} --notes "Plan: N entities, M claims, predicates: [list]. Bridges to: [existing entities]"
+```
+
+**Exit criteria:** You have a concrete plan for what to extract and encode."""
+
+[[steps]]
+id = "ingest"
+title = "Write the Go file with typed claims"
+needs = ["source-analysis"]
+description = """
+Create the .go file encoding the source as typed claims.
+
+**Mirror-source-commitments discipline (CRITICAL):**
+- Only encode claims the source explicitly commits to
+- Use Provenance.Quote with the exact source text supporting each claim
+- Do NOT fabricate relationships the source doesn't state
+- Brief-level references are fine for connections the source doesn't explicitly make
+
+**File structure:**
+```go
+package winze
+
+// Header comment: source description, schema forcing functions,
+// cross-ingest bridges, deliberate exclusions.
+
+var sourceProvenance = Provenance{
+    Origin:     "Source citation",
+    IngestedAt: "2026-04-12",
+    IngestedBy: "winze polecat (Gas Town)",
+    Quote:      "Key source text...",
+}
+
+// Entity declarations
+var EntityName = RoleType{&Entity{
+    ID:    "entity-id",
+    Name:  "Display Name",
+    Kind:  "concept",
+    Brief: "One paragraph summary with neighborhood references",
+}}
+
+// Claim declarations
+var ClaimName = PredicateType{
+    Subject: EntityName,
+    Object:  OtherEntity,
+    Prov:    sourceProvenance,
+}
+```
+
+**Commit frequently:**
+```bash
+git add <file>.go
+git commit -m "feat: ingest <source> ({{issue}})"
+```
+
+**Exit criteria:** .go file written and committed. All entities have Briefs, all claims have Provenance."""
+
+[[steps]]
+id = "validate"
+title = "Run quality gates"
+needs = ["ingest"]
+description = """
+Run the full quality gate suite.
+
+**1. Compile (MUST PASS):**
+```bash
+go build ./...
+go vet ./...
+```
+
+**2. Lint (all 4 deterministic rules):**
+```bash
+go run ./cmd/lint .
+```
+Check output for:
+- naming-oracle: all role types grounded in external.go?
+- orphan-report: all new entities referenced by claims?
+- value-conflict: any new functional-predicate conflicts?
+- contested-concept: any new contested targets surfaced?
+
+**3. LLM contradiction check (if ANTHROPIC_API_KEY set):**
+```bash
+go run ./cmd/lint . --llm --llm-max-calls=5
+```
+
+**4. Fix any issues found. Recommit.**
+
+**5. Verify clean state:**
+```bash
+git status  # clean
+git log origin/{{base_branch}}..HEAD --oneline  # at least 1 commit
+```
+
+**Exit criteria:** go build passes, lint passes, no unresolved findings."""
+
+[[steps]]
+id = "submit-and-exit"
+title = "Submit work and self-clean"
+needs = ["validate"]
+description = """
+Rebase, verify, and submit.
+
+**1. Rebase onto latest:**
+```bash
+git fetch origin {{base_branch}}
+git rebase origin/{{base_branch}}
+```
+
+**2. Re-run build after rebase:**
+```bash
+go build ./...
+```
+
+**3. Submit:**
+```bash
+gt done --pre-verified --target {{base_branch}}
+```
+
+Done means gone."""
+
+[vars]
+[vars.issue]
+description = "The bead describing what to curate"
+required = true
+
+[vars.base_branch]
+description = "Branch to rebase on"
+default = "main"
+
+[vars.source_hint]
+description = "URL, DOI, article name, or 'patrol' for audit tasks"
+default = ""

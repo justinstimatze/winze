@@ -1,0 +1,261 @@
+package main
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestExtractClassification_Single(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"irrelevant", "irrelevant"},
+		{"corroborated", "corroborated"},
+		{"challenged", "challenged"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.want, func(t *testing.T) {
+			got, err := extractClassification(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExtractClassification_InContext(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			"reasoning then irrelevant",
+			"after careful analysis of the sources, none of them provide specific evidence. classification: irrelevant",
+			"irrelevant",
+		},
+		{
+			"reasoning then corroborated",
+			"the paper by smith et al. directly supports this hypothesis with experimental data. the classification is corroborated.",
+			"corroborated",
+		},
+		{
+			"reasoning then challenged",
+			"the 2017 soil analysis contradicts the formation date. this is challenged.",
+			"challenged",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := extractClassification(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExtractClassification_Ambiguous(t *testing.T) {
+	// Contains both "irrelevant" and "corroborated"
+	input := "this could be irrelevant but also corroborated depending on interpretation"
+	_, err := extractClassification(input)
+	if err == nil {
+		t.Fatal("expected error for ambiguous input, got nil")
+	}
+	if !strings.Contains(err.Error(), "ambiguous") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "ambiguous")
+	}
+}
+
+func TestExtractClassification_None(t *testing.T) {
+	input := "i cannot determine the classification from these sources"
+	_, err := extractClassification(input)
+	if err == nil {
+		t.Fatal("expected error for no classification, got nil")
+	}
+	if !strings.Contains(err.Error(), "unexpected") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "unexpected")
+	}
+}
+
+func TestExtractClassification_NegationHandled(t *testing.T) {
+	// "not irrelevant" should NOT match "irrelevant" thanks to word-boundary
+	// negation detection. Only "corroborated" should match.
+	input := "the evidence is not irrelevant, so I classify this as corroborated"
+	got, err := extractClassification(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "corroborated" {
+		t.Errorf("got %q, want %q", got, "corroborated")
+	}
+}
+
+func TestExtractClassification_NegationVariants(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			"no challenged + corroborated",
+			"this is no challenged finding, it is corroborated",
+			"corroborated",
+		},
+		{
+			"not corroborated alone",
+			"the finding is not corroborated by any source",
+			"", // all matches negated → no classification
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := extractClassification(tc.input)
+			if tc.want == "" {
+				if err == nil {
+					t.Fatalf("expected error, got %q", got)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if got != tc.want {
+					t.Errorf("got %q, want %q", got, tc.want)
+				}
+			}
+		})
+	}
+}
+
+func TestExtractClassification_UpperCase(t *testing.T) {
+	// Current implementation uses strings.Contains which is case-sensitive.
+	// Uppercase keywords should NOT match (LLM is instructed to use lowercase).
+	input := "CORROBORATED"
+	_, err := extractClassification(input)
+	if err == nil {
+		t.Fatal("expected error for uppercase-only input (case-sensitive matching)")
+	}
+}
+
+func TestScoreHypotheses(t *testing.T) {
+	cases := []struct {
+		name       string
+		cycles     []Cycle
+		wantVerdict string
+		wantTotal   int
+	}{
+		{
+			name: "all corroborated",
+			cycles: []Cycle{
+				{Hypothesis: "H1", Resolution: "corroborated", PapersFound: 3},
+				{Hypothesis: "H1", Resolution: "corroborated", PapersFound: 2},
+			},
+			wantVerdict: "corroborated",
+			wantTotal:   2,
+		},
+		{
+			name: "majority challenged",
+			cycles: []Cycle{
+				{Hypothesis: "H1", Resolution: "corroborated", PapersFound: 1},
+				{Hypothesis: "H1", Resolution: "challenged", PapersFound: 2},
+				{Hypothesis: "H1", Resolution: "challenged", PapersFound: 1},
+			},
+			wantVerdict: "challenged",
+			wantTotal:   3,
+		},
+		{
+			name: "all no_signal",
+			cycles: []Cycle{
+				{Hypothesis: "H1", Resolution: "no_signal", PapersFound: 0},
+				{Hypothesis: "H1", Resolution: "no_signal", PapersFound: 0},
+			},
+			wantVerdict: "no_signal",
+			wantTotal:   2,
+		},
+		{
+			name: "all irrelevant",
+			cycles: []Cycle{
+				{Hypothesis: "H1", Resolution: "irrelevant", PapersFound: 5},
+				{Hypothesis: "H1", Resolution: "irrelevant", PapersFound: 3},
+			},
+			wantVerdict: "irrelevant",
+			wantTotal:   2,
+		},
+		{
+			name: "pending only",
+			cycles: []Cycle{
+				{Hypothesis: "H1", Resolution: "", PapersFound: 2},
+			},
+			wantVerdict: "pending",
+			wantTotal:   1,
+		},
+		{
+			name: "mixed corroborated beats irrelevant",
+			cycles: []Cycle{
+				{Hypothesis: "H1", Resolution: "corroborated", PapersFound: 1},
+				{Hypothesis: "H1", Resolution: "irrelevant", PapersFound: 2},
+				{Hypothesis: "H1", Resolution: "irrelevant", PapersFound: 1},
+				{Hypothesis: "H1", Resolution: "corroborated", PapersFound: 3},
+				{Hypothesis: "H1", Resolution: "corroborated", PapersFound: 1},
+			},
+			wantVerdict: "corroborated",
+			wantTotal:   5,
+		},
+		{
+			name: "multiple hypotheses scored independently",
+			cycles: []Cycle{
+				{Hypothesis: "H1", Resolution: "corroborated", PapersFound: 1},
+				{Hypothesis: "H2", Resolution: "challenged", PapersFound: 2},
+			},
+			wantVerdict: "corroborated", // we check H1
+			wantTotal:   1,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scores := scoreHypotheses(tc.cycles)
+			if len(scores) == 0 {
+				t.Fatal("scoreHypotheses returned empty")
+			}
+			// Check first hypothesis (H1)
+			s := scores[0]
+			if s.Verdict != tc.wantVerdict {
+				t.Errorf("verdict = %q, want %q", s.Verdict, tc.wantVerdict)
+			}
+			if s.TotalCycles != tc.wantTotal {
+				t.Errorf("total = %d, want %d", s.TotalCycles, tc.wantTotal)
+			}
+		})
+	}
+}
+
+func TestScoreHypotheses_Precision(t *testing.T) {
+	cycles := []Cycle{
+		{Hypothesis: "H1", Resolution: "corroborated", PapersFound: 3},
+		{Hypothesis: "H1", Resolution: "irrelevant", PapersFound: 2},
+		{Hypothesis: "H1", Resolution: "no_signal", PapersFound: 0},
+		{Hypothesis: "H1", Resolution: "corroborated", PapersFound: 1},
+	}
+	scores := scoreHypotheses(cycles)
+	s := scores[0]
+	// WithSignal = 3 (papers > 0), useful signal = 2 (corroborated with papers)
+	// Precision = 2/3 ≈ 0.667
+	if s.WithSignal != 3 {
+		t.Errorf("WithSignal = %d, want 3", s.WithSignal)
+	}
+	// Precision is stored as percentage: 2/3 ≈ 66.667%
+	if s.Precision < 60 || s.Precision > 70 {
+		t.Errorf("Precision = %.3f%%, want ~66.667%%", s.Precision)
+	}
+	// CyclesToVerdict: first corroborated is cycle 1
+	if s.CyclesToVerdict != 1 {
+		t.Errorf("CyclesToVerdict = %d, want 1", s.CyclesToVerdict)
+	}
+}
