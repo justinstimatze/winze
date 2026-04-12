@@ -222,7 +222,7 @@ func walkVarDeclsWithFile(dir string, fn func(name string, cl *ast.CompositeLit,
 
 func astCollectAllClaims(dir string) []claimInfo {
 	var out []claimInfo
-	walkVarDecls(dir, func(name string, cl *ast.CompositeLit) {
+	_ = walkVarDecls(dir, func(name string, cl *ast.CompositeLit) {
 		pred, subj, obj, ok := astExtractClaim(cl)
 		if ok {
 			out = append(out, claimInfo{varName: name, predicateType: pred, subject: subj, object: obj})
@@ -254,7 +254,7 @@ func astCollectClaimVarsByPredicate(dir string, predicate string) []string {
 
 func astCollectEntitiesByRole(dir string, role string) []string {
 	var out []string
-	walkVarDecls(dir, func(name string, cl *ast.CompositeLit) {
+	_ = walkVarDecls(dir, func(name string, cl *ast.CompositeLit) {
 		typeIdent, ok := cl.Type.(*ast.Ident)
 		if ok && typeIdent.Name == role {
 			out = append(out, name)
@@ -266,7 +266,7 @@ func astCollectEntitiesByRole(dir string, role string) []string {
 
 func astCollectUnarySubjectsByPredicate(dir string, predicate string) []string {
 	var out []string
-	walkVarDecls(dir, func(name string, cl *ast.CompositeLit) {
+	_ = walkVarDecls(dir, func(name string, cl *ast.CompositeLit) {
 		typeIdent, ok := cl.Type.(*ast.Ident)
 		if !ok || typeIdent.Name != predicate {
 			return
@@ -291,7 +291,7 @@ func astCollectUnarySubjectsByPredicate(dir string, predicate string) []string {
 
 func astFindEntitiesByTypeAndFile(dir string, roleType, file, nameContains string) []string {
 	var out []string
-	walkVarDeclsWithFile(dir, func(name string, cl *ast.CompositeLit, f string) {
+	_ = walkVarDeclsWithFile(dir, func(name string, cl *ast.CompositeLit, f string) {
 		if f != file {
 			return
 		}
@@ -308,7 +308,7 @@ func astFindEntitiesByTypeAndFile(dir string, roleType, file, nameContains strin
 
 func astFindEntityByName(dir string, target string) []string {
 	var out []string
-	walkVarDecls(dir, func(name string, cl *ast.CompositeLit) {
+	_ = walkVarDecls(dir, func(name string, cl *ast.CompositeLit) {
 		if name == target {
 			out = append(out, name)
 		}
@@ -379,7 +379,7 @@ func astDisputersOfHypothesesExplaining(dir string, event string) []string {
 
 func astFictionalEntitiesInFile(dir string, targetFile string) []string {
 	fictional := map[string]bool{}
-	walkVarDeclsWithFile(dir, func(name string, cl *ast.CompositeLit, file string) {
+	_ = walkVarDeclsWithFile(dir, func(name string, cl *ast.CompositeLit, file string) {
 		if file != targetFile {
 			return
 		}
@@ -457,7 +457,7 @@ func astContestedTargetsWithMinSubjects(dir string, minSubjects int) []string {
 
 func astCountKnownDisputes(dir string) int {
 	count := 0
-	walkVarDecls(dir, func(name string, cl *ast.CompositeLit) {
+	_ = walkVarDecls(dir, func(name string, cl *ast.CompositeLit) {
 		typeIdent, ok := cl.Type.(*ast.Ident)
 		if ok && typeIdent.Name == "KnownDispute" {
 			count++

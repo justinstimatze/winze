@@ -76,7 +76,9 @@ func loadState(path string) SensorState {
 	if err != nil {
 		return s
 	}
-	json.Unmarshal(data, &s)
+	if err := json.Unmarshal(data, &s); err != nil {
+		return s
+	}
 	if s.Seen == nil {
 		s.Seen = map[string]bool{}
 	}
@@ -101,7 +103,7 @@ func searchArxiv(query string, limit int) ([]Paper, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
@@ -164,7 +166,7 @@ func searchScholar(query string, limit int, apiKey string) ([]Paper, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
@@ -253,7 +255,7 @@ func main() {
 	if *jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		enc.Encode(newPapers)
+		_ = enc.Encode(newPapers)
 		return
 	}
 
