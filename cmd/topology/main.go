@@ -144,10 +144,10 @@ func analyze(dir string) (*Report, error) {
 		return severityOrder[vulns[i].Severity] < severityOrder[vulns[j].Severity]
 	})
 
-	// Collect entity briefs for sensor target generation
-	briefs := collectBriefs(dir)
+	// Collect entity metadata for sensor target generation
+	metas := collectEntityMetas(dir)
 
-	targets := generateSensorTargets(vulns, briefs)
+	targets := generateSensorTargets(vulns, metas)
 
 	return &Report{
 		Entities:        len(entities),
@@ -462,7 +462,7 @@ func newtonSqrt(x float64) float64 {
 // generateSensorTargets picks the most vulnerable hypotheses and generates
 // search queries that would find corroboration or dispute on arXiv.
 // Hypotheses that are BOTH single-source AND uncontested are prioritized.
-func generateSensorTargets(vulns []Vulnerability, briefs map[string]string) []SensorTarget {
+func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta) []SensorTarget {
 	// Count vulnerability types per hypothesis
 	vulnTypes := map[string]map[string]bool{}
 	for _, v := range vulns {
@@ -498,8 +498,8 @@ func generateSensorTargets(vulns []Vulnerability, briefs map[string]string) []Se
 
 	var targets []SensorTarget
 	for _, c := range candidates {
-		brief := briefs[c.name]
-		query := buildSensorQuery(c.name, brief)
+		meta := metas[c.name]
+		query := buildSensorQuery(c.name, meta)
 		prediction := "single-source"
 		if c.vulnCount >= 2 {
 			prediction = "single-source AND uncontested — highest revision risk"
@@ -515,44 +515,74 @@ func generateSensorTargets(vulns []Vulnerability, briefs map[string]string) []Se
 	return targets
 }
 
-// buildSensorQuery extracts key terms from a hypothesis name and brief
-// to construct a search query. CamelCase names are split into words.
-func buildSensorQuery(name, brief string) string {
-	// Split CamelCase name into words
-	words := splitCamelCase(name)
-
-	// Filter out common non-informative words
+// buildSensorQuery extracts key terms from entity metadata to construct
+// an arXiv search query. Priority: Name (natural language) > Brief > CamelCase var name.
+func buildSensorQuery(varName string, meta entityMeta) string {
 	stopwords := map[string]bool{
 		"the": true, "of": true, "and": true, "in": true, "a": true,
 		"is": true, "for": true, "to": true, "as": true, "by": true,
+		"an": true, "on": true, "at": true, "or": true, "that": true,
+		"this": true, "with": true, "from": true, "are": true, "was": true,
+		"were": true, "been": true, "have": true, "has": true, "had": true,
+		"its": true, "his": true, "her": true, "their": true, "our": true,
+		"which": true, "can": true, "not": true, "but": true, "all": true,
+		"there": true, "exists": true, "every": true, "each": true,
+		"some": true, "many": true, "most": true, "more": true, "only": true,
+		"such": true, "also": true, "than": true, "may": true, "would": true,
+		"does": true, "into": true, "when": true, "how": true, "what": true,
 		"thesis": true, "hypothesis": true, "framing": true, "typology": true,
 		"theory": true, "classification": true, "reframing": true,
-	}
-	var queryTerms []string
-	for _, w := range words {
-		lower := strings.ToLower(w)
-		if len(lower) < 3 || stopwords[lower] {
-			continue
-		}
-		queryTerms = append(queryTerms, lower)
+		"central": true, "about": true, "between": true, "through": true,
 	}
 
-	// Add key terms from brief if available
-	if brief != "" {
-		briefWords := strings.Fields(brief)
-		for _, w := range briefWords {
-			lower := strings.ToLower(strings.Trim(w, ".,;:\"'()"))
-			if len(lower) >= 5 && !stopwords[lower] {
-				queryTerms = append(queryTerms, lower)
-				if len(queryTerms) >= 5 {
-					break
-				}
+	var queryTerms []string
+	seen := map[string]bool{}
+	addTerm := func(w string) bool {
+		lower := strings.ToLower(strings.Trim(w, ".,;:\"'()-/"))
+		if len(lower) < 4 || stopwords[lower] || seen[lower] {
+			return false
+		}
+		seen[lower] = true
+		queryTerms = append(queryTerms, lower)
+		return true
+	}
+
+	// Entity.Name is primary — for hypotheses it's a full sentence
+	// describing the intellectual claim in natural language.
+	// For long names, key concepts cluster at the end (academic sentences
+	// start with "There exists..." / "The claim that..." filler), so we
+	// reverse the word order before picking terms.
+	if meta.name != "" {
+		words := strings.Fields(meta.name)
+		if len(words) > 10 {
+			for i, j := 0, len(words)-1; i < j; i, j = i+1, j-1 {
+				words[i], words[j] = words[j], words[i]
 			}
 		}
+		for _, w := range words {
+			addTerm(w)
+		}
 	}
 
-	if len(queryTerms) > 5 {
-		queryTerms = queryTerms[:5]
+	// Entity.Brief supplements with additional context.
+	if len(queryTerms) < 3 && meta.brief != "" {
+		for _, w := range strings.Fields(meta.brief) {
+			addTerm(w)
+		}
+	}
+
+	// CamelCase variable name is last resort — internal naming,
+	// not academic vocabulary.
+	if len(queryTerms) < 3 {
+		for _, w := range splitCamelCase(varName) {
+			addTerm(w)
+		}
+	}
+
+	// 3 terms is the sweet spot for arXiv AND-queries: specific enough
+	// to be relevant, broad enough to actually find papers.
+	if len(queryTerms) > 3 {
+		queryTerms = queryTerms[:3]
 	}
 	return strings.Join(queryTerms, " ")
 }
@@ -574,15 +604,15 @@ func splitCamelCase(s string) []string {
 	return words
 }
 
-// collectBriefs walks .go files and extracts Brief fields from entity
+// collectEntityMetas walks .go files and extracts Name+Brief from entity
 // composite literals that embed *Entity.
-func collectBriefs(dir string) map[string]string {
+func collectEntityMetas(dir string) map[string]entityMeta {
 	fset := token.NewFileSet()
-	briefs := map[string]string{}
+	metas := map[string]entityMeta{}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return briefs
+		return metas
 	}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
@@ -611,30 +641,60 @@ func collectBriefs(dir string) map[string]string {
 					if !ok {
 						continue
 					}
-					brief := extractBriefFromEntity(cl)
-					if brief != "" {
-						briefs[nameIdent.Name] = brief
+					meta := extractEntityMeta(cl)
+					if meta.name != "" || meta.brief != "" {
+						metas[nameIdent.Name] = meta
 					}
 				}
 			}
 		}
 	}
-	return briefs
+	return metas
 }
 
-// extractBriefFromEntity finds the Brief field from an entity composite
-// literal. Handles: RoleType{&Entity{Brief: "..."}} where the first
-// positional element is a &Entity{...} unary expression.
-func extractBriefFromEntity(cl *ast.CompositeLit) string {
+type entityMeta struct {
+	name  string // Entity.Name field (human-readable, often a full sentence for hypotheses)
+	brief string // Entity.Brief field (supplementary description)
+}
+
+// extractEntityMeta finds Name and Brief fields from an entity composite
+// literal. Handles: RoleType{&Entity{Name: "...", Brief: "..."}} where
+// the first positional element is a &Entity{...} unary expression.
+func extractEntityMeta(cl *ast.CompositeLit) entityMeta {
+	var meta entityMeta
+	extractFields := func(elts []ast.Expr) {
+		for _, elt := range elts {
+			kv, ok := elt.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			key, ok := kv.Key.(*ast.Ident)
+			if !ok {
+				continue
+			}
+			switch key.Name {
+			case "Name":
+				meta.name = basicLitString(kv.Value)
+			case "Brief":
+				meta.brief = basicLitString(kv.Value)
+			}
+		}
+	}
+
 	for _, elt := range cl.Elts {
-		// Direct Brief field
+		// Direct fields
 		if kv, ok := elt.(*ast.KeyValueExpr); ok {
-			if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "Brief" {
-				return basicLitString(kv.Value)
+			if key, ok := kv.Key.(*ast.Ident); ok {
+				switch key.Name {
+				case "Name":
+					meta.name = basicLitString(kv.Value)
+				case "Brief":
+					meta.brief = basicLitString(kv.Value)
+				}
 			}
 			continue
 		}
-		// &Entity{Brief: "..."}
+		// &Entity{Name: "...", Brief: "..."}
 		ue, ok := elt.(*ast.UnaryExpr)
 		if !ok {
 			continue
@@ -643,21 +703,9 @@ func extractBriefFromEntity(cl *ast.CompositeLit) string {
 		if !ok {
 			continue
 		}
-		for _, innerElt := range inner.Elts {
-			kv, ok := innerElt.(*ast.KeyValueExpr)
-			if !ok {
-				continue
-			}
-			key, ok := kv.Key.(*ast.Ident)
-			if !ok {
-				continue
-			}
-			if key.Name == "Brief" {
-				return basicLitString(kv.Value)
-			}
-		}
+		extractFields(inner.Elts)
 	}
-	return ""
+	return meta
 }
 
 func basicLitString(e ast.Expr) string {

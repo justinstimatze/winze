@@ -59,6 +59,19 @@ Detectors: single-source, uncontested, thin-provenance, bridge-entity,
 concentration-risk. Sensor targets are topology-derived queries for the
 most structurally fragile hypotheses.
 
+### Metabolism (automated cycle)
+
+```bash
+go run ./cmd/metabolism .              # run one cycle: topology → arXiv → log
+go run ./cmd/metabolism --dry-run .    # show targets without querying
+go run ./cmd/metabolism --calibrate .  # analyze accumulated cycle log
+go run ./cmd/metabolism --json .       # JSON output
+```
+
+One cycle: topology identifies fragile hypotheses → arXiv sensor queries
+for external signal → results logged to `.metabolism-log.json` →
+calibration tracks whether structural fragility predicts curation gaps.
+
 ### Skeptical ingest (sensor defense)
 
 When ingesting from external sensors (arXiv, Semantic Scholar, etc.),

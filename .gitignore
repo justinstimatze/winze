@@ -8,6 +8,7 @@
 /lint
 /sensor
 /topology
+/metabolism
 
 # Generated configs (contain absolute paths)
 .mcp.json
@@ -17,6 +18,9 @@
 
 # Sensor state (rebuilt on poll)
 .sensor-state.json
+
+# Metabolism log (rebuilt each cycle)
+.metabolism-log.json
 
 # Beads runtime
 .beads/embeddeddolt/
