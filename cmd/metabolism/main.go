@@ -30,8 +30,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
+
+	zim "github.com/justinstimatze/gozim"
 )
 
 // --- topology output types (subset) ---
@@ -124,6 +127,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	defer func() {
+		if zimArchive != nil {
+			zimArchive.Close()
+		}
+	}()
+
 	dir := "."
 	if flag.NArg() > 0 {
 		dir = flag.Arg(0)
@@ -203,7 +212,7 @@ func main() {
 
 		// ZIM backend
 		if useZim {
-			articles, err := searchZim(dir, *zimPath, t.Query, *limit)
+			articles, err := searchZim(*zimPath, t.Query, *limit)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "metabolism: zim %q: %v\n", t.Query, err)
 			} else {
@@ -340,45 +349,39 @@ func searchArxiv(query string, limit int) ([]PaperSummary, error) {
 	return papers, nil
 }
 
-// searchZim shells out to script/zim-search.py for fulltext search.
-// Returns PaperSummary (reusing the type — Title is the article title,
-// ID is the ZIM path, Year is 0 for encyclopedia articles).
-//
-// The WINZE_ZIM_PYTHON env var overrides the Python interpreter (useful
-// when libzim is installed in a virtualenv, e.g. openzim-mcp's venv).
-// Falls back to "python3" on PATH.
-func searchZim(projectDir, zimPath, query string, limit int) ([]PaperSummary, error) {
-	python := os.Getenv("WINZE_ZIM_PYTHON")
-	if python == "" {
-		python = "python3"
-	}
-	script := filepath.Join(projectDir, "script", "zim-search.py")
-	cmd := exec.Command(python, script,
-		"--zim", zimPath,
-		"--query", query,
-		"--limit", fmt.Sprintf("%d", limit),
-	)
-	cmd.Stderr = os.Stderr
+// zimArchive is lazily opened on first use and reused across queries.
+var zimArchive *zim.Archive
 
-	out, err := cmd.Output()
+var htmlTagRe = regexp.MustCompile(`<[^>]+>`)
+var wsCollapseRe = regexp.MustCompile(`\s+`)
+
+func stripHTML(html []byte) string {
+	text := htmlTagRe.ReplaceAll(html, []byte(" "))
+	return strings.TrimSpace(wsCollapseRe.ReplaceAllString(string(text), " "))
+}
+
+// searchZim uses gozim for fulltext search against a ZIM file.
+// On first call, opens the archive and builds/opens a Bleve index.
+// Returns PaperSummary (Title is article title, ID is the ZIM path).
+func searchZim(zimPath, query string, limit int) ([]PaperSummary, error) {
+	if zimArchive == nil {
+		a, err := zim.Open(zimPath, zim.WithMmap())
+		if err != nil {
+			return nil, fmt.Errorf("open zim: %w", err)
+		}
+		zimArchive = a
+	}
+
+	results, err := zimArchive.Search(query, limit)
 	if err != nil {
-		return nil, fmt.Errorf("zim-search: %w", err)
-	}
-
-	var results []struct {
-		Title   string `json:"title"`
-		Path    string `json:"path"`
-		Snippet string `json:"snippet"`
-	}
-	if err := json.Unmarshal(out, &results); err != nil {
-		return nil, fmt.Errorf("parse zim results: %w", err)
+		return nil, fmt.Errorf("search zim: %w", err)
 	}
 
 	var papers []PaperSummary
 	for _, r := range results {
 		papers = append(papers, PaperSummary{
-			ID:    "zim:" + r.Path,
-			Title: r.Title,
+			ID:    "zim:" + r.Entry.Path(),
+			Title: r.Entry.Title(),
 			Year:  0, // encyclopedia, not dated
 		})
 	}
