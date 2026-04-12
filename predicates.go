@@ -480,3 +480,74 @@ type EnergyReading struct {
 //
 //winze:functional
 type EnergyEstimate BinaryRelation[Event, *EnergyReading]
+
+// -----------------------------------------------------------------------------
+// Prediction and calibration predicates.
+//
+// Earned by the README roadmap item, with the deferred-schema surface
+// from forecasting.go (session 4) providing the design. The forecasting
+// ingest established the conceptual vocabulary (Tetlock's calibration
+// framing, forecasting-as-concept); these predicates are the structural
+// machinery for encoding specific dated predictions and tracking their
+// resolution over time.
+//
+// The prediction loop: Hypothesis --Predicts--> Event (future observable),
+// with a Credence value attaching a probability and a Resolution value
+// recording the ground-truth outcome once time passes.
+// -----------------------------------------------------------------------------
+
+// Predicts: a hypothesis generates a testable prediction about an
+// observable event. The Subject is a Hypothesis (not a Person) because
+// attribution is already handled by Proposes — a person proposes a
+// hypothesis, and the hypothesis predicts an event. This keeps the
+// prediction graph structural rather than personal, paralleling
+// HypothesisExplains[Hypothesis, Event] for past events.
+//
+// Not functional: a single hypothesis can generate multiple distinct
+// testable predictions about different events. For example, a climate
+// hypothesis might predict both sea-level rise events and temperature
+// threshold events independently.
+type Predicts BinaryRelation[Hypothesis, Event]
+
+// CredenceLevel is a value-with-attribution object for probability
+// assignments on hypotheses. Parallel to EnergyReading and
+// EnglishRendering: a non-entity struct that lives outside the
+// naming-oracle's role-type world. The By field is not optional
+// because the whole point of credence tracking is calibration per
+// forecaster — a credence without attribution cannot be scored.
+type CredenceLevel struct {
+	Value string // free-text probability, e.g. "0.70", "70%", "likely (>0.6)"
+	By    string // who assigned this credence, e.g. "Tetlock 2015", "winze session 20"
+}
+
+// Credence: a probability assignment on a hypothesis. NOT functional —
+// different forecasters legitimately assign different credences to the
+// same hypothesis, and the calibration loop needs all of them to score
+// each forecaster's accuracy. This is the deliberate opposite of
+// EnergyEstimate (functional: one true energy) — there is no single
+// "true" credence, only well-calibrated or poorly-calibrated ones.
+type Credence BinaryRelation[Hypothesis, *CredenceLevel]
+
+// ResolutionOutcome records the ground-truth result of a prediction
+// once the predicted event's time horizon has passed. Result is a
+// short tag ("confirmed", "refuted", "partially confirmed", "ambiguous").
+// Evidence is the source text establishing the outcome.
+type ResolutionOutcome struct {
+	Result   string // "confirmed", "refuted", "partially confirmed", "ambiguous"
+	Evidence string // source text establishing the outcome
+}
+
+// ResolvedAs: the ground-truth outcome of a prediction (a predicted
+// event, once its time horizon has passed). Functional: a predicted
+// event has exactly one ground-truth outcome. This is the first
+// functional predicate whose value is temporally gated — FormedAt,
+// EnergyEstimate, and EnglishTranslationOf are all atemporal (the
+// true value just IS), whereas a ResolvedAs value only becomes
+// assertable once the prediction's time horizon passes. The
+// value-conflict lint rule will flag multiple ResolutionOutcome
+// values for the same event, which is the correct behavior: if two
+// sources disagree about whether a prediction was confirmed, that
+// is a real conflict worth surfacing.
+//
+//winze:functional
+type ResolvedAs BinaryRelation[Event, *ResolutionOutcome]

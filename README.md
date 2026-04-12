@@ -64,6 +64,7 @@ var AndyClark = Person{&Entity{
 | Fiction | IsFictionalWork, IsFictional |
 | Spatial | LocatedIn, LocatedNear, OccurredAt |
 | People | InfluencedBy, WorksFor, AffiliatedWith, InvestigatedBy |
+| Prediction | Predicts, Credence, ResolvedAs (`//winze:functional`) |
 | Functional | FormedAt, EnergyEstimate, EnglishTranslationOf (`//winze:functional`) |
 
 ### Provenance
@@ -188,10 +189,10 @@ Multi-agent curation workflow for autonomous KB maintenance via [Gas Town](https
 ## Roadmap
 
 - **PKM / second-brain ingest:** Import from Obsidian vaults, Logseq graphs, Roam JSON exports, Notion exports, plain markdown Zettelkasten, and plain text directories. An `ingest` command that reads a directory of markdown notes, extracts entities and relationships via LLM, and emits `.go` corpus files with provenance pointing back to the source note. Goal: dump your existing knowledge base into winze in one pass, then let the type system and lint rules surface what's inconsistent.
-- **Query generation improvements:** Topology-derived sensor queries need domain-aware phrasing (current: literal keyword concatenation produces museum results when searching for anthropological theses).
+- **~~Query generation improvements~~** Done. Proposer-name extraction + CamelCase concept phrases replace literal keyword concatenation.
 - **~~Pure Go ZIM reader~~** Done. [gozim](https://github.com/justinstimatze/gozim) integrated — Python bridge eliminated.
-- **Prediction schema:** `Predicts[Hypothesis, Event]`, `Credence[Hypothesis]` — encode falsifiable predictions and track calibration over time.
-- **Live visualization:** Gource-style real-time dashboard of agents committing to the KB.
+- **~~Prediction schema~~** Done. `Predicts[Hypothesis, Event]`, `Credence[Hypothesis, *CredenceLevel]`, `ResolvedAs[Event, *ResolutionOutcome]` — encode falsifiable predictions and track calibration over time.
+- **Calibration feedback loop:** Metabolism calibration results should feed back into topology weights and sensor strategy (step 5 of epistemic metabolism).
 
 ## Prior art
 

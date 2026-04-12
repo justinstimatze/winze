@@ -53,11 +53,13 @@ type Mitigation struct {
 }
 
 // OpenQuestion is something not yet resolved. Blocking questions should be
-// answered before implementation work depends on their outcome.
+// answered before implementation work depends on their outcome. When resolved,
+// set Resolution to describe the outcome and Blocking to false.
 type OpenQuestion struct {
-	ID       string
-	Title    string
-	Blocking bool
+	ID         string
+	Title      string
+	Blocking   bool
+	Resolution string // empty = still open; non-empty = resolved
 }
 
 // -----------------------------------------------------------------------------
@@ -317,9 +319,10 @@ func DefineWinzeWorkerRoles() *OpenQuestion {
 	_ = Defn
 	_ = Adit
 	return &OpenQuestion{
-		ID:       "oq-worker-roles",
-		Title:    "Define winze worker roles as Gas Town polecat skill packages: ingest, lint, audit, curator, refactor. What does each prompt look like, what context does it need, what tools does it call?",
-		Blocking: true,
+		ID:         "oq-worker-roles",
+		Title:      "Define winze worker roles as Gas Town polecat skill packages: ingest, lint, audit, curator, refactor. What does each prompt look like, what context does it need, what tools does it call?",
+		Blocking:   false,
+		Resolution: "Resolved session 11+17. mol-curate formula (5-step curation workflow), kb-health patrol plugin, curate skill package, and 40+ Gas Town formulas installed. Polecats run metabolism cycles autonomously.",
 	}
 }
 
@@ -367,9 +370,10 @@ func ContradictionDetectionLintRule() *OpenQuestion {
 	_ = SeparateJudgePass
 	_ = ConsistencyIsNotCorrectness
 	return &OpenQuestion{
-		ID:       "oq-contradiction-rule",
-		Title:    "Implement the first LLM-backed lint rule: contradiction detection on changed neighborhoods. What prompt? What context framing? What budget? Target recall against a small seeded contradiction corpus.",
-		Blocking: true,
+		ID:         "oq-contradiction-rule",
+		Title:      "Implement the first LLM-backed lint rule: contradiction detection on changed neighborhoods. What prompt? What context framing? What budget? Target recall against a small seeded contradiction corpus.",
+		Blocking:   false,
+		Resolution: "Resolved session 10. llm-contradiction rule in cmd/lint using Anthropic Go SDK. Opt-in via --llm flag with --llm-max-calls budget cap. Checks claim neighborhoods for semantic contradictions.",
 	}
 }
 
@@ -418,9 +422,10 @@ func ClaimSchemaDesign() *OpenQuestion {
 	_ = ProseIsInputOutputNotState
 	_ = OntologyChurn
 	return &OpenQuestion{
-		ID: "oq-claim-schema",
-		Title: "Design the claim-level schema: what is a Claim, a Scene, a Relationship, a TemporalMarker, an Assertion? How granular? How does a sentence map to graph nodes? How are aliases and coreferences resolved at ingest time? This is the hard encoding problem we were dodging with //go:embed sidecars. Expect the schema to churn (see fm-ontology-churn) and use rename-with-deprecation from day one.",
-		Blocking: true,
+		ID:         "oq-claim-schema",
+		Title:      "Design the claim-level schema: what is a Claim, a Scene, a Relationship, a TemporalMarker, an Assertion? How granular? How does a sentence map to graph nodes? How are aliases and coreferences resolved at ingest time? This is the hard encoding problem we were dodging with //go:embed sidecars. Expect the schema to churn (see fm-ontology-churn) and use rename-with-deprecation from day one.",
+		Blocking:   false,
+		Resolution: "Resolved sessions 3-8. Claims are typed predicate instances: BinaryRelation[S,O] (two-slot) and UnaryClaim[S] (one-slot). 30+ predicates across 8 families in predicates.go. 16 role types in roles.go grounded in Schema.org/WordNet/Wikidata. Schema accreted organically — 11 consecutive slices required zero new predicates.",
 	}
 }
 
@@ -433,8 +438,9 @@ func GasTownProjectAwareness() *OpenQuestion {
 	_ = GasTown
 	_ = GasTownIsTheOrchestrator
 	return &OpenQuestion{
-		ID: "oq-gastown-awareness",
-		Title: "Write the winze skill package for Gas Town. It must encode not just worker prompts but project-type awareness: what tasks exist in a winze project, what quality gates apply, what the Mayor's backlog should look like. Without this, Gas Town will generate code-shaped tasks against a KB-shaped repo.",
-		Blocking: true,
+		ID:         "oq-gastown-awareness",
+		Title:      "Write the winze skill package for Gas Town. It must encode not just worker prompts but project-type awareness: what tasks exist in a winze project, what quality gates apply, what the Mayor's backlog should look like. Without this, Gas Town will generate code-shaped tasks against a KB-shaped repo.",
+		Blocking:   false,
+		Resolution: "Resolved session 11+17. Skill package (.claude/skills/curate/), mol-curate formula (5-step: load-context, source-analysis, ingest, validate, submit), kb-health patrol plugin (2h cooldown), beads issue tracking integrated. Gas Town rig operational with witness + refinery.",
 	}
 }

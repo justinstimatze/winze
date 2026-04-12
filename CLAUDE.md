@@ -46,6 +46,7 @@ named discipline.
 **Fiction:** IsFictionalWork, IsFictional
 **Spatial:** LocatedIn, LocatedNear, OccurredAt
 **People:** InfluencedBy, WorksFor, AffiliatedWith, InvestigatedBy
+**Prediction:** Predicts, Credence, ResolvedAs (//winze:functional)
 **Functional (//winze:functional):** FormedAt, EnergyEstimate, EnglishTranslationOf
 
 ### Topology analysis

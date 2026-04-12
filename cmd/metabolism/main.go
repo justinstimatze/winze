@@ -113,6 +113,7 @@ func main() {
 	jsonOut := flag.Bool("json", false, "output as JSON")
 	backend := flag.String("backend", "arxiv", "sensor backend: arxiv, zim, or all")
 	zimPath := flag.String("zim", "", "path to .zim file (required for zim backend)")
+	zimIndex := flag.String("zim-index", "", "path for Bleve index (default: <zimfile>.bleve/)")
 	flag.Parse()
 
 	validBackends := map[string]bool{"arxiv": true, "zim": true, "all": true}
@@ -212,7 +213,7 @@ func main() {
 
 		// ZIM backend
 		if useZim {
-			articles, err := searchZim(*zimPath, t.Query, *limit)
+			articles, err := searchZim(*zimPath, *zimIndex, t.Query, *limit)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "metabolism: zim %q: %v\n", t.Query, err)
 			} else {
@@ -363,7 +364,7 @@ func stripHTML(html []byte) string {
 // searchZim uses gozim for fulltext search against a ZIM file.
 // On first call, opens the archive and builds/opens a Bleve index.
 // Returns PaperSummary (Title is article title, ID is the ZIM path).
-func searchZim(zimPath, query string, limit int) ([]PaperSummary, error) {
+func searchZim(zimPath, indexPath, query string, limit int) ([]PaperSummary, error) {
 	if zimArchive == nil {
 		a, err := zim.Open(zimPath, zim.WithMmap())
 		if err != nil {
@@ -372,7 +373,11 @@ func searchZim(zimPath, query string, limit int) ([]PaperSummary, error) {
 		zimArchive = a
 	}
 
-	results, err := zimArchive.Search(query, limit)
+	var opts []zim.SearchOption
+	if indexPath != "" {
+		opts = append(opts, zim.WithIndexPath(indexPath))
+	}
+	results, err := zimArchive.Search(query, limit, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("search zim: %w", err)
 	}

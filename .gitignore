@@ -22,6 +22,9 @@
 # Metabolism log (rebuilt each cycle)
 .metabolism-log.json
 
+# Bleve search index (built from ZIM, large)
+*.bleve/
+
 # Beads runtime
 .beads/embeddeddolt/
 
