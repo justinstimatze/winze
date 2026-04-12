@@ -157,7 +157,7 @@ func analyze(dir string) (*Report, error) {
 	// Collect entity metadata for sensor target generation
 	metas := collectEntityMetas(dir)
 
-	targets := generateSensorTargets(vulns, metas)
+	targets := generateSensorTargets(vulns, metas, claims)
 
 	return &Report{
 		Entities:        len(entities),
@@ -472,7 +472,15 @@ func newtonSqrt(x float64) float64 {
 // generateSensorTargets picks the most vulnerable hypotheses and generates
 // search queries that would find corroboration or dispute on arXiv.
 // Hypotheses that are BOTH single-source AND uncontested are prioritized.
-func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta) []SensorTarget {
+func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta, claims []claimInfo) []SensorTarget {
+	// Build proposer lookup: hypothesis var name → proposer var name(s)
+	proposerOf := map[string][]string{} // hypothesis → proposer var names
+	for _, c := range claims {
+		if c.predicateType == "Proposes" || c.predicateType == "ProposesOrg" {
+			proposerOf[c.object] = append(proposerOf[c.object], c.subject)
+		}
+	}
+
 	// Count vulnerability types per hypothesis
 	vulnTypes := map[string]map[string]bool{}
 	for _, v := range vulns {
@@ -509,6 +517,12 @@ func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta) [
 	var targets []SensorTarget
 	for _, c := range candidates {
 		meta := metas[c.name]
+		// Enrich with proposer name if available
+		if proposers, ok := proposerOf[c.name]; ok && len(proposers) > 0 {
+			if pm, ok := metas[proposers[0]]; ok && pm.name != "" {
+				meta.proposer = pm.name
+			}
+		}
 		query := buildSensorQuery(c.name, meta)
 		prediction := "single-source"
 		if c.vulnCount >= 2 {
@@ -525,8 +539,17 @@ func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta) [
 	return targets
 }
 
-// buildSensorQuery extracts key terms from entity metadata to construct
-// an arXiv search query. Priority: Name (natural language) > Brief > CamelCase var name.
+// buildSensorQuery constructs a search query from entity metadata.
+//
+// Strategy: author name + concept phrase. This mirrors how researchers
+// actually search — "Sagan baloney detection kit" finds the right papers,
+// "pseudoscience claims scientific" does not.
+//
+// Priority order:
+//  1. Proposer surname (from Proposes claim graph) — most discriminating single term
+//  2. Concept phrase from Entity.Name — extracted as a 2-3 word noun phrase
+//  3. Entity.Brief keywords — fallback for thin metadata
+//  4. CamelCase var name — last resort
 func buildSensorQuery(varName string, meta entityMeta) string {
 	stopwords := map[string]bool{
 		"the": true, "of": true, "and": true, "in": true, "a": true,
@@ -540,61 +563,131 @@ func buildSensorQuery(varName string, meta entityMeta) string {
 		"some": true, "many": true, "most": true, "more": true, "only": true,
 		"such": true, "also": true, "than": true, "may": true, "would": true,
 		"does": true, "into": true, "when": true, "how": true, "what": true,
+		"about": true, "between": true, "through": true,
+	}
+
+	// Academic filler — common in hypothesis Name fields but not search-useful.
+	academicFiller := map[string]bool{
 		"thesis": true, "hypothesis": true, "framing": true, "typology": true,
 		"theory": true, "classification": true, "reframing": true,
-		"central": true, "about": true, "between": true, "through": true,
+		"central": true, "claim": true, "argument": true, "proposal": true,
+		"framework": true, "model": true, "approach": true, "perspective": true,
 	}
 
-	var queryTerms []string
-	seen := map[string]bool{}
-	addTerm := func(w string) bool {
+	isNoise := func(w string) bool {
 		lower := strings.ToLower(strings.Trim(w, ".,;:\"'()-/"))
-		if len(lower) < 4 || stopwords[lower] || seen[lower] {
-			return false
-		}
-		seen[lower] = true
-		queryTerms = append(queryTerms, lower)
-		return true
+		return len(lower) < 4 || stopwords[lower]
 	}
 
-	// Entity.Name is primary — for hypotheses it's a full sentence
-	// describing the intellectual claim in natural language.
-	// For long names, key concepts cluster at the end (academic sentences
-	// start with "There exists..." / "The claim that..." filler), so we
-	// reverse the word order before picking terms.
-	if meta.name != "" {
-		words := strings.Fields(meta.name)
-		if len(words) > 10 {
-			for i, j := 0, len(words)-1; i < j; i, j = i+1, j-1 {
-				words[i], words[j] = words[j], words[i]
+	// Extract content words from a string, preserving order.
+	contentWords := func(s string) []string {
+		var out []string
+		for _, w := range strings.Fields(s) {
+			clean := strings.Trim(w, ".,;:\"'()-/")
+			if !isNoise(clean) && !academicFiller[strings.ToLower(clean)] {
+				out = append(out, clean)
 			}
 		}
+		return out
+	}
+
+	var parts []string
+
+	// 1. Proposer surname — most discriminating term for academic search.
+	// Use the last word of the name (surname convention).
+	if meta.proposer != "" {
+		words := strings.Fields(meta.proposer)
+		if len(words) > 0 {
+			surname := words[len(words)-1]
+			parts = append(parts, surname)
+		}
+	}
+
+	// Deduplicate helper
+	proposerLower := ""
+	if len(parts) > 0 {
+		proposerLower = strings.ToLower(parts[0])
+	}
+	dedup := func(words []string) []string {
+		var out []string
 		for _, w := range words {
-			addTerm(w)
+			if strings.ToLower(w) != proposerLower {
+				out = append(out, w)
+			}
+		}
+		return out
+	}
+
+	// 2. Concept phrase. For short Names (≤6 words), use the Name directly.
+	// For long Names (full-sentence hypotheses), prefer the CamelCase var name
+	// which encodes the concept concisely: "BaloneyDetectionKit" → "Baloney Detection Kit".
+	need := 3
+	if len(parts) > 0 {
+		need = 2
+	}
+
+	nameWords := strings.Fields(meta.name)
+	if len(nameWords) > 0 && len(nameWords) <= 6 {
+		// Short name — use it directly
+		cw := dedup(contentWords(meta.name))
+		if len(cw) > need {
+			cw = cw[:need]
+		}
+		parts = append(parts, cw...)
+	} else {
+		// Long name or no name — extract concept from CamelCase var name.
+		// Strip common suffixes that are academic filler.
+		stripped := varName
+		for _, suffix := range []string{"Thesis", "Framing", "Typology", "Reframing"} {
+			stripped = strings.TrimSuffix(stripped, suffix)
+		}
+		cw := dedup(splitCamelCase(stripped))
+		// Filter short/noise words
+		var good []string
+		for _, w := range cw {
+			if len(w) >= 3 && !stopwords[strings.ToLower(w)] {
+				good = append(good, w)
+			}
+		}
+		if len(good) > need {
+			good = good[:need]
+		}
+		parts = append(parts, good...)
+	}
+
+	// 3. Brief supplements if we still don't have enough.
+	if len(parts) < 3 && meta.brief != "" {
+		seen := map[string]bool{}
+		for _, p := range parts {
+			seen[strings.ToLower(p)] = true
+		}
+		for _, w := range contentWords(meta.brief) {
+			if !seen[strings.ToLower(w)] {
+				parts = append(parts, w)
+				seen[strings.ToLower(w)] = true
+				if len(parts) >= 4 {
+					break
+				}
+			}
 		}
 	}
 
-	// Entity.Brief supplements with additional context.
-	if len(queryTerms) < 3 && meta.brief != "" {
-		for _, w := range strings.Fields(meta.brief) {
-			addTerm(w)
-		}
-	}
-
-	// CamelCase variable name is last resort — internal naming,
-	// not academic vocabulary.
-	if len(queryTerms) < 3 {
+	// 4. CamelCase var name is last resort.
+	if len(parts) < 2 {
 		for _, w := range splitCamelCase(varName) {
-			addTerm(w)
+			clean := strings.ToLower(w)
+			if len(clean) >= 4 && !stopwords[clean] && !academicFiller[clean] {
+				parts = append(parts, w)
+			}
 		}
 	}
 
-	// 3 terms is the sweet spot for arXiv AND-queries: specific enough
-	// to be relevant, broad enough to actually find papers.
-	if len(queryTerms) > 3 {
-		queryTerms = queryTerms[:3]
+	// Cap at 4 terms — enough for specificity, not so many that AND-queries
+	// return nothing.
+	if len(parts) > 4 {
+		parts = parts[:4]
 	}
-	return strings.Join(queryTerms, " ")
+	return strings.Join(parts, " ")
 }
 
 func splitCamelCase(s string) []string {
@@ -663,8 +756,9 @@ func collectEntityMetas(dir string) map[string]entityMeta {
 }
 
 type entityMeta struct {
-	name  string // Entity.Name field (human-readable, often a full sentence for hypotheses)
-	brief string // Entity.Brief field (supplementary description)
+	name     string // Entity.Name field (human-readable, often a full sentence for hypotheses)
+	brief    string // Entity.Brief field (supplementary description)
+	proposer string // Name of the person/org who proposed this (from Proposes claims)
 }
 
 // extractEntityMeta finds Name and Brief fields from an entity composite
