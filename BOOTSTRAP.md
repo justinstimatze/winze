@@ -20,6 +20,109 @@ A fresh Claude Code session starting in this directory should:
 
 ## Status — 2026-04-11
 
+### Session 8 umbrella: alien corpus pressure test, first 3-way contested target
+
+Session 8's driving question: **does the predicate vocabulary handle
+mathematical results (proven theorems, formal logic, axiom systems)
+without new predicates, and can the contested-concept rule handle N>2
+rivals on a single target?** Both answered affirmatively.
+
+**Two slices, each answering a distinct question:**
+
+1. **Gödel's incompleteness theorems** (session 8 slice 1 —
+   `godel_incompleteness.go`). First ingest of formal mathematical
+   content — the "alien corpus" pressure test. Every previous ingest
+   is narrative-declarative; this article's claims are proven theorems
+   with axiom-theorem-proof structure. **Result: zero new predicates,
+   zero new role types.** Hypothesis handles mathematical theorems
+   cleanly — a theorem IS "a positive claim about X," and the role
+   type carries no truth commitment (proven vs speculative lives in
+   Brief prose). No Theorem role type needed, same discipline as
+   session 7's rejection of ThoughtExperiment.
+
+   **MathematicalFoundations fires as 8th contested target** (Gödel's
+   first incompleteness theorem vs Hilbert's program). Hilbert claimed
+   complete axiomatization is achievable; Gödel proved it is not. The
+   asymmetry (one refutes the other) does not change the structural
+   representation — same pattern as Conrad vs Shermer on Apophenia.
+
+   Entities: KurtGodel (Person), DavidHilbert (Person),
+   OnFormallyUndecidablePropositions1931 (Concept),
+   GodelFirstIncompletenessTheorem (Hypothesis),
+   GodelSecondIncompletenessTheorem (Hypothesis), HilbertsProgram
+   (Hypothesis), MathematicalFoundations (Concept). Claims: 1×
+   Authored, 3× Proposes, 2× TheoryOf.
+
+   Note: only the first incompleteness theorem carries a TheoryOf
+   claim, not the second. Both address mathematical foundations, but
+   having both as TheoryOf would create a "co-signed plurality" false
+   positive — two complementary results by the same author firing as
+   rivals. Same pattern identified in udhr.go.
+
+   Deliberate exclusions: proof details (Gödel numbering,
+   diagonalization), critics (Finsler, Zermelo, Wittgenstein),
+   Church-Turing thesis, Lucas-Penrose argument about minds and
+   machines (debate description, not committed thesis — brief-level
+   adjacency to Consciousness only).
+
+2. **Hard problem of consciousness / Chalmers** (session 8 slice 2 —
+   `hard_problem.go`). Surgical ingest to fire Consciousness as the
+   **first 3-way contested target**. **Result: zero new predicates.**
+   Consciousness now has three TheoryOf subjects from three files,
+   three sessions, zero coordination:
+
+   - Watts: consciousness may be an evolutionary dead end (blindsight.go, session 6)
+   - Searle: consciousness requires specific biological machinery (chinese_room.go, session 7)
+   - Chalmers: consciousness is irreducible to physical/functional explanation (hard_problem.go, session 8)
+
+   Third demonstration of seed-and-wait. The contested-concept rule
+   handles N>2 cleanly (it reports "3 subjects" — informational, not
+   gated).
+
+   Entities: DavidChalmers (Person), HardProblemOfConsciousness
+   (Concept), ChalmersHardProblemThesis (Hypothesis). Claims: 1×
+   Authored, 1× Proposes, 1× TheoryOf.
+
+   Deliberate exclusions: Type-A through Type-F taxonomy of
+   philosophical responses, IIT, Global Workspace Theory, all named
+   respondents (Dennett, Churchland, Block, Nagel, etc.).
+
+**Cumulative session 8 delta:**
+- 2 slices
+- 10 new entities (7 in godel_incompleteness.go, 3 in hard_problem.go)
+- 9 new claims (6 in godel_incompleteness.go, 3 in hard_problem.go)
+- 0 new predicates, 0 new role types
+- 1 new contested target fired (MathematicalFoundations, 8th overall)
+- Consciousness upgraded from 2-way to 3-way (first N>2 target)
+- Git initialized with initial commit (34 files, 9,883 lines)
+
+**Lint state after session 8:** 16 roles, 192 entities, 200 referenced,
+0 orphaned. 8 contested targets (two 3-way: Consciousness, Nondualism;
+six 2-way). 3 functional predicates, 3 recorded disputes. CommentaryOn
+and AuthoredOrg still at 1 claim each.
+
+**Schema accretion rate:** 0 primitives across 12 consecutive slices in
+explored-or-alien neighbourhoods (sessions 5–8). The Gödel ingest
+confirms that the boundary is corpus SHAPE (tabular vs declarative),
+not content domain — formal mathematics fits existing predicates as
+cleanly as philosophy, fiction, or cognitive science.
+
+**Vocabulary pressure test summary (sessions 7-8):**
+
+| test | source | result | finding |
+|------|--------|--------|---------|
+| thought experiment role type | Chinese room | 0 new | Concept handles it |
+| dispute predicate (ArguesAgainst) | Chinese room | 0 new | competing TheoryOf suffices |
+| mathematical theorem role type | Gödel | 0 new | Hypothesis handles it |
+| proven-vs-speculative distinction | Gödel | 0 new | truth-status in prose, not types |
+| N>2 contested target | hard problem | handled | lint reports 3 subjects cleanly |
+
+**Medium-term roadmap (sessions 9-12):**
+- Session 9: Benchmark v0.1 (oq-benchmark) — W1 strategic gap
+- Session 10: Contradiction detection (oq-contradiction-rule) — W3
+- Session 11: Scale push toward 300 entities
+- Session 12: Gas Town awareness (oq-gastown-awareness)
+
 ### Session 7 umbrella: dispute representation pressure test, vocabulary boundary holds
 
 Session 7's driving question: **does the system handle philosophical dispute
