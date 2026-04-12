@@ -1,0 +1,22 @@
+# Database (defn index, rebuilt from source)
+.defn/
+*.db
+
+# Binaries
+/winze
+
+# Generated configs (contain absolute paths)
+.mcp.json
+
+# OS
+.DS_Store
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Debug artifacts
+.plancheck-debug.json
