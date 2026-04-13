@@ -43,7 +43,7 @@ package winze
 // breaking single-source vulnerability is the explicit purpose of the
 // sensor loop.
 var dennettDisputeSource = Provenance{
-	Origin: "Wikipedia (zim 2025-12) / Hard_problem_of_consciousness",
+	Origin:     "Wikipedia (zim 2025-12) / Hard_problem_of_consciousness",
 	IngestedAt: "2026-04-12",
 	IngestedBy: "winze metabolism cycle 2 (sensor: topology-driven ZIM query " +
 		"'Chalmers hard problem', corroboration ingest)",
@@ -62,7 +62,7 @@ var dennettDisputeSource = Provenance{
 // without editorial endorsement. This Wikipedia source explicitly
 // commits to Pinker seeing the list as evidence.
 var pinkerHumanUniversalsSource = Provenance{
-	Origin: "Wikipedia (zim 2025-12) / Human_Universals",
+	Origin:     "Wikipedia (zim 2025-12) / Human_Universals",
 	IngestedAt: "2026-04-12",
 	IngestedBy: "winze metabolism cycle 2 (sensor: topology-driven ZIM query " +
 		"'Brown Human Universals', corroboration ingest)",
@@ -83,17 +83,7 @@ var DanielDennett = Person{&Entity{
 	Name:    "Daniel Dennett",
 	Kind:    "person",
 	Aliases: []string{"Dennett"},
-	Brief: "American philosopher and cognitive scientist (1942–2024), " +
-		"prominent critic of the hard problem of consciousness. Dennett " +
-		"argued that the hard problem is best seen as a collection of " +
-		"easy problems solvable through further analysis of the brain " +
-		"and behaviour — that subjective experience will be explained " +
-		"once all the functional and mechanistic questions are answered, " +
-		"leaving no residual 'hard' problem. Author of Consciousness " +
-		"Explained (1991), Darwin's Dangerous Idea (1995), and From " +
-		"Bacteria to Bach and Back (2017). His rejection of irreducible " +
-		"qualia places him in direct opposition to Chalmers. Hub entity " +
-		"for future philosophy-of-mind and cognitive-science ingests.",
+	Brief:   "American philosopher and cognitive scientist (1942–2024) who argued that consciousness can be fully explained through functional and mechanistic analysis of the brain, rejecting the hard problem of consciousness.",
 }}
 
 // -----------------------------------------------------------------------------

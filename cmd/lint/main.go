@@ -4,12 +4,14 @@
 // winze's source files via go/ast and imports winze as a library so it
 // can read authoritative data like ExternalTerms without duplicating it.
 //
-// Rules implemented (v0):
+// Rules implemented:
 //   1. naming-oracle      — role types must be grounded in ExternalTerms
 //   2. orphan-report      — entity vars with zero claim references (advisory)
 //   3. value-conflict     — functional-predicate value conflicts (advisory)
 //   4. contested-concept  — multiple TheoryOf subjects per concept (advisory)
 //   5. llm-contradiction  — LLM-detected semantic contradictions (--llm, advisory)
+//   6. brief-check        — entities with missing or overlong Briefs (advisory)
+//   7. provenance-split   — same Origin cited by multiple Provenance vars (advisory)
 package main
 
 import (
@@ -798,6 +800,192 @@ func uniqueSubjects(sites []claimSite) []string {
 	return out
 }
 
+// ---------------------------------------------------------------------------
+// brief-check: entities with missing or overlong Briefs (advisory)
+// ---------------------------------------------------------------------------
+
+func briefCheckRule(dir string) int {
+	roleTypes, err := collectRoleTypes(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[brief-check] error: %v\n", err)
+		return 2
+	}
+	roleSet := map[string]bool{}
+	for _, r := range roleTypes {
+		roleSet[r.name] = true
+	}
+
+	entities, err := collectEntityVars(dir, roleSet)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[brief-check] error: %v\n", err)
+		return 2
+	}
+
+	// Collect briefs using the fixed parser (handles string concatenation)
+	briefs, err := collectBriefs(dir) // from llm.go
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[brief-check] error: %v\n", err)
+		return 2
+	}
+
+	type briefIssue struct {
+		entity entitySite
+		kind   string // "missing" or "overlong"
+		length int
+	}
+	var missing, overlong []briefIssue
+
+	for _, e := range entities {
+		brief, ok := briefs[e.name]
+		if !ok || brief == "" {
+			missing = append(missing, briefIssue{entity: e, kind: "missing"})
+		} else if len(brief) > 300 {
+			overlong = append(overlong, briefIssue{entity: e, kind: "overlong", length: len(brief)})
+		}
+	}
+
+	fmt.Printf("[brief-check] %d entities, %d missing, %d overlong (>300 chars)\n",
+		len(entities), len(missing), len(overlong))
+
+	if len(missing) > 0 {
+		fmt.Println("  missing Brief:")
+		for _, m := range missing {
+			fmt.Printf("    %-42s %s:%d\n", m.entity.name, m.entity.file, m.entity.line)
+		}
+	}
+	if len(overlong) > 0 {
+		fmt.Printf("  overlong Brief (>300 chars):\n")
+		// Sort by length descending
+		sort.Slice(overlong, func(i, j int) bool {
+			return overlong[i].length > overlong[j].length
+		})
+		for _, o := range overlong {
+			fmt.Printf("    %-42s %s:%d   %d chars\n", o.entity.name, o.entity.file, o.entity.line, o.length)
+		}
+	}
+
+	fmt.Println("  (advisory — use `--dream --fix --tighten` to auto-fix)")
+	return 0
+}
+
+// ---------------------------------------------------------------------------
+// provenance-split: same Origin cited by multiple Provenance vars (advisory)
+// ---------------------------------------------------------------------------
+
+func provenanceSplitRule(dir string) int {
+	fset := token.NewFileSet()
+	type provEntry struct {
+		varName string
+		file    string
+		line    int
+		origin  string
+	}
+	var provs []provEntry
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[provenance-split] error: %v\n", err)
+		return 2
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			continue
+		}
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
+					continue
+				}
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				// Check if type is Provenance
+				typeIdent, ok := cl.Type.(*ast.Ident)
+				if !ok || typeIdent.Name != "Provenance" {
+					continue
+				}
+				// Extract Origin field
+				for _, elt := range cl.Elts {
+					kv, ok := elt.(*ast.KeyValueExpr)
+					if !ok {
+						continue
+					}
+					key, ok := kv.Key.(*ast.Ident)
+					if !ok || key.Name != "Origin" {
+						continue
+					}
+					origin := resolveStringExpr(kv.Value)
+					if origin != "" {
+						pos := fset.Position(vs.Names[0].Pos())
+						provs = append(provs, provEntry{
+							varName: vs.Names[0].Name,
+							file:    filepath.Base(pos.Filename),
+							line:    pos.Line,
+							origin:  origin,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	// Group by normalized origin
+	byOrigin := map[string][]provEntry{}
+	for _, p := range provs {
+		key := strings.ToLower(strings.TrimSpace(p.origin))
+		byOrigin[key] = append(byOrigin[key], p)
+	}
+
+	var splits []struct {
+		origin  string
+		entries []provEntry
+	}
+	for _, entries := range byOrigin {
+		if len(entries) <= 1 {
+			continue
+		}
+		// Only flag if they span multiple files
+		files := map[string]bool{}
+		for _, e := range entries {
+			files[e.file] = true
+		}
+		if len(files) > 1 {
+			splits = append(splits, struct {
+				origin  string
+				entries []provEntry
+			}{origin: entries[0].origin, entries: entries})
+		}
+	}
+
+	fmt.Printf("[provenance-split] %d provenance vars, %d split origins\n", len(provs), len(splits))
+
+	if len(splits) > 0 {
+		for _, s := range splits {
+			var locations []string
+			for _, e := range s.entries {
+				locations = append(locations, fmt.Sprintf("%s (%s:%d)", e.varName, e.file, e.line))
+			}
+			fmt.Printf("  %q in %d files:\n", s.origin, len(s.entries))
+			for _, loc := range locations {
+				fmt.Printf("    %s\n", loc)
+			}
+		}
+		fmt.Println("  (advisory — consolidate to one shared Provenance var)")
+	}
+	return 0
+}
+
 func main() {
 	llmFlag := false
 	llmModel := "haiku"
@@ -842,9 +1030,13 @@ func main() {
 		maxCallsPerRun: llmMaxCalls,
 		maxTokens:      llmMaxTokens,
 	})
+	fmt.Println()
+	rc6 := briefCheckRule(dir)
+	fmt.Println()
+	rc7 := provenanceSplitRule(dir)
 
 	worst := rc1
-	for _, rc := range []int{rc2, rc3, rc4, rc5} {
+	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7} {
 		if rc > worst {
 			worst = rc
 		}

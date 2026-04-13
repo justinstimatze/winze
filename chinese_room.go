@@ -137,37 +137,14 @@ var (
 		Name:    "Chinese room",
 		Kind:    "concept",
 		Aliases: []string{"Chinese room argument", "Chinese room thought experiment"},
-		Brief: "John Searle's 1980 thought experiment arguing that a computer executing " +
-			"a program cannot have a mind, understanding, or consciousness. A person in a " +
-			"room follows English instructions to manipulate Chinese symbols, producing " +
-			"outputs indistinguishable from a native speaker, yet understands nothing — " +
-			"demonstrating (Searle argues) that syntax alone cannot produce semantics. " +
-			"Presented in 'Minds, Brains, and Programs' (Behavioral and Brain Sciences, " +
-			"1980), which became the journal's 'most influential target article'. The " +
-			"argument is directed against functionalism, computationalism, and what Searle " +
-			"calls the 'strong AI hypothesis'. Similar arguments were made by Leibniz " +
-			"(1714, the mill), Block (1978, China brain), and Dneprov (1961, 'The Game'), " +
-			"but Searle's version is the canonical form. Dramatised in Peter Watts's " +
-			"Blindsight (2006) where the alien vessel Rorschach communicates in human " +
-			"languages without understanding — the novel's central illustration of the " +
-			"Chinese room problem at interstellar scale.",
+		Brief:   "Searle's 1980 thought experiment arguing that executing a program cannot produce understanding or consciousness—a person following Chinese symbol instructions produces correct outputs while understanding nothing, showing syntax alone cannot create meaning.",
 	}}
 
 	JohnSearle = Person{&Entity{
 		ID:    "john-searle",
 		Name:  "John Searle",
 		Kind:  "person",
-		Brief: "American philosopher, professor at UC Berkeley, known for the Chinese " +
-			"room argument (1980) and his philosophical position of biological naturalism. " +
-			"Argues that consciousness and understanding require specific biological " +
-			"machinery — 'brains cause minds' — opposing both functionalism (mind as " +
-			"information processing) and Cartesian dualism (mind as non-physical " +
-			"substance). Does not deny that machines can be conscious, since 'we are " +
-			"precisely such machines', but holds that the specific causal powers of " +
-			"biological neural machinery are necessary. The Chinese room thought " +
-			"experiment is his most influential contribution to philosophy of mind, " +
-			"generating 'an enormous number of commentaries and responses' over four " +
-			"decades.",
+		Brief: "American philosopher at UC Berkeley known for the Chinese room argument and biological naturalism, arguing that consciousness requires specific biological neural machinery rather than mere information processing.",
 	}}
 
 	MindsBrainsAndPrograms1980 = Concept{&Entity{
@@ -175,35 +152,14 @@ var (
 		Name:    "Minds, Brains, and Programs",
 		Kind:    "concept",
 		Aliases: []string{"Searle 1980", "Minds Brains and Programs"},
-		Brief: "John Searle's 1980 paper in Behavioral and Brain Sciences, presenting " +
-			"the Chinese room thought experiment and advancing biological naturalism as " +
-			"a philosophical position on consciousness. Became the journal's 'most " +
-			"influential target article', described by David Cole as 'probably the most " +
-			"widely discussed philosophical argument in cognitive science to appear in " +
-			"the past 25 years' and by Varol Akman as 'an exemplar of philosophical " +
-			"clarity and purity'. The paper's formal argument proceeds through three " +
-			"axioms (programs are syntactic; minds have semantics; syntax alone cannot " +
-			"produce semantics) to the conclusion that programs are neither constitutive " +
-			"of nor sufficient for minds.",
+		Brief:   "Searle's 1980 paper presenting the Chinese room thought experiment to argue that computational syntax cannot produce semantic understanding, foundational to debates on artificial intelligence and consciousness.",
 	}}
 
 	SearleBiologicalNaturalism = Hypothesis{&Entity{
-		ID:   "hypothesis-searle-biological-naturalism",
-		Name: "Searle's biological naturalism",
-		Kind: "hypothesis",
-		Brief: "The thesis, advanced by John Searle, that consciousness and understanding " +
-			"require specific biological machinery found in brains — 'brains cause minds' " +
-			"and 'actual human mental phenomena [are] dependent on actual physical–chemical " +
-			"properties of actual human brains'. Searle holds that the brain's 'causal " +
-			"powers' (the neural correlates of consciousness) are necessary for " +
-			"consciousness, and that no purely computational simulation can produce it. " +
-			"Directly opposed to both functionalism and behaviorism. Similar to identity " +
-			"theory but with specific technical objections to that position. This is a " +
-			"rival TheoryOf Consciousness to Watts's evolutionary-dead-end thesis " +
-			"(blindsight.go): where Watts argues consciousness may be an evolutionary " +
-			"dead end, Searle argues it is a product of specific biological machinery. " +
-			"Both address what consciousness IS; they diverge on substrate (biology- " +
-			"specific vs evolution-contingent).",
+		ID:    "hypothesis-searle-biological-naturalism",
+		Name:  "Searle's biological naturalism",
+		Kind:  "hypothesis",
+		Brief: "Philosophical thesis that consciousness requires specific biological neural machinery found in brains; mental phenomena depend on brain's physical-chemical properties, not computational simulation alone.",
 	}}
 )
 

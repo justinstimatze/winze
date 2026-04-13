@@ -118,7 +118,7 @@ var (
 		Name:    "Forecasting",
 		Kind:    "concept",
 		Aliases: []string{"forecasts"},
-		Brief:   "The process of making predictions about future events based on past and present data, whose results can later be compared against what actually happens for accuracy scoring. Distinct from budgeting (a fixed resource-allocation plan), from planning (which describes what the future *should* look like, whereas forecasting describes what it *will* look like), and — in hydrology's stricter usage — from prediction. Risk and uncertainty are central: the article explicitly flags indicating degree of uncertainty as good forecasting practice. The term is polyvalent between hydrology's dated-specific usage and general usage that collapses forecast and prediction; recording this via IsPolyvalentTerm, parallel to Nondualism.",
+		Brief:   "Process of predicting future events based on historical and current data, distinct from planning (which prescribes what should happen) and budgeting (fixed resource allocation). Incorporates uncertainty quantification as core practice.",
 	}}
 
 	Prediction = Concept{&Entity{
@@ -126,21 +126,21 @@ var (
 		Name:    "Prediction",
 		Kind:    "concept",
 		Aliases: []string{"predictions"},
-		Brief:   "The broader concept of estimating a future (or otherwise unknown) value or event. The Forecasting Wikipedia article distinguishes prediction from forecasting specifically in hydrology usage: 'forecast' is reserved for estimates at specific future times whereas 'prediction' covers more general estimates such as how many times floods will occur over a long period. In general usage the terms collapse. Captured as a distinct Concept so the polyvalent-term disagreement between hydrology and general usage has both poles to point at.",
+		Brief:   "Concept of estimating a future or unknown value or event. In hydrology, prediction covers general estimates (e.g., frequency) while forecast denotes specific future times; in general usage the terms overlap.",
 	}}
 
 	QualitativeForecasting = Concept{&Entity{
 		ID:    "concept-qualitative-forecasting",
 		Name:  "Qualitative forecasting",
 		Kind:  "concept",
-		Brief: "Forecasting methods that are subjective, based on the opinion and judgment of consumers and experts. The Wikipedia article notes these are appropriate when past data is not available and are usually applied to intermediate- or long-range decisions. One of the two top-level method families in the forecasting taxonomy, the other being quantitative forecasting — encoded here via BelongsTo Forecasting, the same taxonomic-membership pattern used for cognitive-bias families and Jean le Flambeur trilogy books.",
+		Brief: "Forecasting method based on expert judgment and subjective opinion, used when historical data is unavailable for intermediate to long-range decisions.",
 	}}
 
 	QuantitativeForecasting = Concept{&Entity{
 		ID:    "concept-quantitative-forecasting",
 		Name:  "Quantitative forecasting",
 		Kind:  "concept",
-		Brief: "Forecasting methods that apply formal statistical techniques to time-series, cross-sectional, or longitudinal data to produce predictions. Contrasts with qualitative forecasting (expert judgment) along the 'data-driven vs judgment-driven' axis. Further subdivided in the Wikipedia article into time-series, cross-sectional, and several other method categories that a future slice can wire as nested BelongsTo members without schema work.",
+		Brief: "Forecasting methods using formal statistical techniques applied to time-series, cross-sectional, or longitudinal data to generate predictions, contrasting with judgment-based qualitative approaches.",
 	}}
 )
 
@@ -153,14 +153,14 @@ var (
 		ID:    "philip-tetlock",
 		Name:  "Philip E. Tetlock",
 		Kind:  "person",
-		Brief: "American-Canadian political scientist known for his work on expert judgment and forecasting accuracy, author of Superforecasting: The Art and Science of Prediction. His central framing — forecasting as a trainable calibration skill — is the canonical psychological account of what makes forecasters good, and sits alongside the statistical and judgmental method-taxonomy traditions as a third lens on the same meta-concept.",
+		Brief: "American-Canadian political scientist known for research on expert judgment and forecasting accuracy. Author of Superforecasting: The Art and Science of Prediction.",
 	}}
 
 	TetlockCalibrationFraming = Hypothesis{&Entity{
 		ID:    "hyp-tetlock-calibration-framing",
 		Name:  "Good forecasting is a trainable calibration skill — a well-calibrated forecaster's N%-credence claims are true N% of the time",
 		Kind:  "hypothesis",
-		Brief: "Philip Tetlock's central thesis in Superforecasting: forecasting is not primarily about domain expertise but about a trainable discipline of calibration, where a good forecaster assigns probabilities to claims such that events they give 10% credence to occur 10% of the time. Forecasting skill is transferable across domains. Advanced as a theory about what forecasting IS and how it can be improved, not as a specific forecast itself — hence a TheoryOf claim on Forecasting rather than a Predicts claim against any specific future event.",
+		Brief: "Forecasting framework positing that calibrated probability assignment—where predicted likelihoods match actual occurrence rates—is a trainable discipline transferable across domains, more important than domain expertise.",
 	}}
 )
 

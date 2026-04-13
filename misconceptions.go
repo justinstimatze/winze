@@ -74,10 +74,10 @@ var (
 	}}
 
 	ArtificialStructureSpaceVisibility = Concept{&Entity{
-		ID:      "concept-artificial-structure-space-visibility",
-		Name:    "Visibility of artificial structures from space",
-		Kind:    "concept",
-		Brief:   "The question of which, if any, human-made structures can be seen from orbit or from the Moon — the phenomenon that the 'Great Wall is the only human-made object visible from space' misconception is about.",
+		ID:    "concept-artificial-structure-space-visibility",
+		Name:  "Visibility of artificial structures from space",
+		Kind:  "concept",
+		Brief: "The question of which, if any, human-made structures can be seen from orbit or from the Moon — the phenomenon that the 'Great Wall is the only human-made object visible from space' misconception is about.",
 	}}
 )
 
@@ -90,21 +90,21 @@ var (
 		ID:    "hyp-seasons-axial-tilt",
 		Name:  "Seasons are caused by Earth's 23.4-degree axial tilt, not by orbital distance",
 		Kind:  "hypothesis",
-		Brief: "Each hemisphere is tilted towards the Sun in its respective summer, producing longer days and more direct sunlight; the opposite is true in winter. Earth reaches perihelion (closest to the Sun) in January and aphelion (farthest) in July, so orbital eccentricity slightly opposes the seasonal temperature trend in the Northern Hemisphere. The commonly-held belief that seasons are caused by varying Earth-Sun distance is false, and winze records this as a scientifically-accepted correction tagged with CorrectsCommonMisconception.",
+		Brief: "Hypothesis explaining that Earth's axial tilt—not orbital distance—causes seasons by varying day length and sunlight directness per hemisphere. Corrects the common misconception that seasons result from Earth-Sun distance variations.",
 	}}
 
 	AtmosphericEntryHeatFromAdiabaticCompression = Hypothesis{&Entity{
 		ID:    "hyp-atmospheric-entry-adiabatic-compression",
 		Name:  "Atmospheric-entry heat comes primarily from adiabatic compression of air ahead of the object, not from friction",
 		Kind:  "hypothesis",
-		Brief: "When a meteor or spacecraft enters the atmosphere at hypersonic speed, the air immediately in front of it is compressed so rapidly that it cannot dissipate heat, and its temperature rises adiabatically into a shock layer that transfers heat to the object. Frictional heating between the object's surface and the airflow is a minor contribution. The commonly-held belief that reentry heating is primarily a friction effect is false.",
+		Brief: "Hypothesis that atmospheric reentry heating results primarily from adiabatic compression of air in a shock layer, not surface friction.",
 	}}
 
 	GreatWallNotUniquelyVisibleFromSpace = Hypothesis{&Entity{
 		ID:    "hyp-great-wall-not-uniquely-visible",
 		Name:  "The Great Wall of China is not the only human-made object visible from space, and is not visible from the Moon at all",
 		Kind:  "hypothesis",
-		Brief: "No Apollo astronaut reported seeing any specific human-made object from the Moon, and Earth-orbiting astronauts can see the Great Wall only with magnification. City lights, by contrast, are easily visible on the night side of Earth from orbit. Many other human-made structures are visible from low Earth orbit; the Great Wall is not uniquely distinguished. The commonly-held belief that the Great Wall is the only human-made object visible from space (or visible from the Moon) is false.",
+		Brief: "A debunked claim that the Great Wall of China is uniquely visible from space. In reality, it's not visible from the Moon and requires magnification from Earth orbit, while many other structures are easily visible.",
 	}}
 )
 

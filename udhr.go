@@ -259,7 +259,7 @@ var (
 		Name:    "Universal Declaration of Human Rights (1948)",
 		Kind:    "concept",
 		Aliases: []string{"UDHR", "Universal Declaration of Human Rights", "UN General Assembly Resolution 217 A (III)"},
-		Brief:   "The Universal Declaration of Human Rights, a 30-article document proclaimed by the UN General Assembly in Paris on 10 December 1948 as a 'common standard of achievement for all peoples and all nations'. Drafted between 1946 and 1948 by the UN Commission on Human Rights, with Eleanor Roosevelt as chair, John Humphrey producing the first draft, René Cassin restructuring it, P.C. Chang resolving philosophical deadlocks via Confucian-tradition compromises, Charles Malik serving as rapporteur, and Hansa Mehta successfully changing 'all men' to 'all human beings' in Article 1. Adopted 48-0-8 with 2 not voting out of the 58 UN member states at the time — the abstaining bloc was Saudi Arabia, South Africa, and the six Soviet-bloc members, whose objections centred on freedom of religion (Saudi Arabia), apartheid (South Africa), and the economic/social-rights vs civil/political-rights balance (Soviet bloc). Not a binding legal treaty itself but treated subsequently as the foundational text from which modern international human rights law derives, including the two 1966 covenants (ICCPR and ICESCR) that were negotiated specifically to give binding force to the UDHR's content. This slice reifies the document as a Concept with a TheoryOf(HumanRights) claim plus three representative articles as Hypotheses proposed by the General Assembly; the 27 unselected articles, the preamble, the adoption vote's individual country positions, and the two 1966 covenants are all available for future-slice accretion.",
+		Brief:   "International human rights declaration adopted by the UN General Assembly on 10 December 1948, comprising 30 articles that establish universal standards for human dignity and freedoms. Though not legally binding itself, it became the foundational text for modern international human rights law.",
 	}}
 
 	HumanRights = Concept{&Entity{
@@ -267,7 +267,7 @@ var (
 		Name:    "Human rights",
 		Kind:    "concept",
 		Aliases: []string{"human-rights framework"},
-		Brief:   "The meta-concept of universal, inalienable entitlements held by every human being by virtue of being human. Treated as a standalone Concept in winze so that multiple rival framings (natural-law tradition rooted in Aquinas and Locke; social-contract theories; Amartya Sen and Martha Nussbaum's capability approach; libertarian negative-rights framings; Islamic, Confucian, and Ubuntu-based non-Western accounts) can be wired as future TheoryOf(HumanRights) claims that fire the contested-concept rule on HumanRights as a future contested target. The pattern mirrors HumanCognition in mattson_pattern_processing.go, which was also seeded as a contested-target-ready Concept with a single initial TheoryOf claim waiting for rivals. UDHR1948 is the first TheoryOf claim; the contested-concept rule does not fire on HumanRights from this slice alone.",
+		Brief:   "Universal, inalienable entitlements inherent to all human beings. A contested concept designed to accommodate rival philosophical and cultural frameworks as competing theories.",
 	}}
 
 	UNGeneralAssembly = Organization{&Entity{
@@ -275,7 +275,7 @@ var (
 		Name:    "United Nations General Assembly",
 		Kind:    "organization",
 		Aliases: []string{"UN General Assembly", "UNGA"},
-		Brief:   "The main deliberative assembly of the United Nations, composed of all UN member states with each state having one vote. Adopted the UDHR on 10 December 1948 via resolution 217 A (III) by a vote of 48-0-8 with 2 not voting. In winze the UNGeneralAssembly is the Subject of three ProposesOrg claims on Articles 1, 3, and 18 — the 'propose' here is a deliberate stretch covering 'declare and adopt as collectively binding', noted in each article's Brief. A hypothetical AdoptsOrg predicate would be the honest refinement but is deferred under the organic-schema-growth discipline until a second adoption-case forces it.",
+		Brief:   "The main deliberative assembly of the United Nations, where all member states have equal representation and voting rights. Adopted the Universal Declaration of Human Rights on 10 December 1948.",
 	}}
 
 	UNCommissionOnHumanRights = Organization{&Entity{
@@ -283,7 +283,7 @@ var (
 		Name:    "UN Commission on Human Rights",
 		Kind:    "organization",
 		Aliases: []string{"Commission on Human Rights", "UNCHR (1946-2006)"},
-		Brief:   "The UN body responsible for drafting the UDHR between 1946 and 1948, and later the core international human rights instruments through 2006, when it was replaced by the UN Human Rights Council. In winze the Commission is the Subject of winze's first AuthoredOrg claim — the institutional-authorship primitive earned by this slice. Six of the Commission's eight or nine drafting members are reified as Persons in this slice: Eleanor Roosevelt (chair, US), John Humphrey (first draft, Canada), René Cassin (structure, France), P.C. Chang (philosophical compromise, Republic of China), Charles Malik (rapporteur, Lebanon), and Hansa Mehta (India, successfully changed 'men' to 'human beings' in Article 1). Each is linked to the Commission via an AffiliatedWith claim.",
+		Brief:   "UN body that drafted the Universal Declaration of Human Rights (1946–1948) and key international human rights instruments until its 2006 replacement by the UN Human Rights Council.",
 	}}
 )
 
@@ -296,21 +296,21 @@ var (
 		ID:    "eleanor-roosevelt",
 		Name:  "Eleanor Roosevelt",
 		Kind:  "person",
-		Brief: "American diplomat, activist, and widow of US President Franklin D. Roosevelt. Chaired the UN Commission on Human Rights from 1946 to 1951 and steered the UDHR drafting process through its three sessions, using her political capital with both superpower blocs to hold the coalition together through the Cold War's early deadlock. Not the primary drafter of the text — Humphrey and Cassin did the initial drafting work — but the person whose diplomatic authority kept the project alive.",
+		Brief: "American diplomat and activist who chaired the UN Commission on Human Rights (1946–1951) and stewarded the Universal Declaration of Human Rights through its drafting process during the Cold War.",
 	}}
 
 	JohnHumphrey = Person{&Entity{
 		ID:    "john-humphrey",
 		Name:  "John Peters Humphrey",
 		Kind:  "person",
-		Brief: "Canadian jurist and first Director of the UN Secretariat's Division for Human Rights (1946-1966). Produced the first working draft of the UDHR, a 400-page document compiling rights from existing national constitutions and international instruments, which served as the raw material René Cassin subsequently restructured into the final 30-article form. Humphrey's role as institutional first-drafter means he carries load-bearing contribution status despite being less widely known than Roosevelt, Cassin, or Malik.",
+		Brief: "Canadian jurist and first Director of the UN Division for Human Rights (1946-1966). Produced the first working draft of the Universal Declaration of Human Rights, which compiled rights from existing national constitutions and international instruments.",
 	}}
 
 	ReneCassin = Person{&Entity{
 		ID:    "rene-cassin",
 		Name:  "René Cassin",
 		Kind:  "person",
-		Brief: "French jurist and Nobel Peace Prize laureate (1968) for his role in drafting the UDHR. Restructured Humphrey's initial 400-page draft into the final 30-article declaration, introducing the portico-based architecture (preamble, general-principles articles, civil-and-political-rights articles, economic-and-social-rights articles, duties and limits articles) that is the declaration's structural signature. Frequently credited as the UDHR's 'principal architect' in popular retellings, though the honest picture is that the architecture was Cassin's while the rights content came from Humphrey's compilation and the deadlock-breaking philosophical work came from Chang and Malik.",
+		Brief: "French jurist who restructured the UDHR draft into its final 30-article structure with preamble and five-part architecture. Nobel Peace Prize laureate (1968) for his drafting role.",
 	}}
 
 	PengChunChang = Person{&Entity{
@@ -318,21 +318,21 @@ var (
 		Name:    "P.C. Chang",
 		Kind:    "person",
 		Aliases: []string{"Peng Chun Chang", "Chang Peng-chun"},
-		Brief:   "Chinese philosopher, playwright, and diplomat, Vice-Chairman of the UN Commission on Human Rights during the UDHR drafting. Used Confucian ethical concepts — particularly the notion of 'ren' (humaneness, conscience) — to broker philosophical compromises between the natural-law positions advocated by Charles Malik and the more pragmatic framings favoured by Humphrey and Cassin, resolving several drafting stalemates that might otherwise have ended the project. Chang's contributions are load-bearing for the specific philosophical non-Westernness of the final text: the declaration's explicit appeal to 'conscience' in Article 1 and its pluralistic framing of freedom of thought in Article 18 both carry his influence.",
+		Brief:   "Chinese philosopher and diplomat who served as Vice-Chairman of the UN Commission on Human Rights during UDHR drafting, using Confucian concepts of humaneness to bridge philosophical divides and shape the declaration's conscience-based framing.",
 	}}
 
 	CharlesMalik = Person{&Entity{
 		ID:    "charles-malik",
 		Name:  "Charles Malik",
 		Kind:  "person",
-		Brief: "Lebanese philosopher, diplomat, and Rapporteur of the UN Commission on Human Rights drafting committee. Trained in natural-law tradition and strongly influenced by both Thomist and personalist philosophical frameworks, Malik's contributions centred on the philosophical basis for human rights as grounded in the inherent dignity of the human person — the framing that became the foundation of the preamble's 'inherent dignity' language. Debated P.C. Chang through multiple drafting sessions over the balance between natural-law universalism and cross-cultural pluralism; the text's final form reflects a negotiated synthesis of both positions.",
+		Brief: "Lebanese philosopher and diplomat who shaped the UN Declaration of Human Rights as Rapporteur of its drafting committee, grounding human rights in the inherent dignity of the human person within natural-law and personalist frameworks.",
 	}}
 
 	HansaMehta = Person{&Entity{
 		ID:    "hansa-mehta",
 		Name:  "Hansa Mehta",
 		Kind:  "person",
-		Brief: "Indian activist, writer, and member of the UN Commission on Human Rights drafting committee. Successfully argued for changing the draft Article 1 language from 'All men are born free and equal' to 'All human beings are born free and equal' — a specific, attributable edit whose load-bearing status is recognised on the UN's own UDHR history page. The change mattered at the time because several delegations had read 'men' as gender-neutral in their own languages and the edit forced the English text into the more explicitly universal form that has anchored the document's subsequent interpretation. A rare case in winze of a Person entity whose load-bearing contribution is a single specific wording change.",
+		Brief: "Indian activist and UN Commission on Human Rights member who successfully changed UDHR Article 1 from \"all men\" to \"all human beings,\" making the declaration's language explicitly universal.",
 	}}
 )
 
@@ -345,21 +345,21 @@ var (
 		ID:    "hyp-udhr-article-1",
 		Name:  "All human beings are born free and equal in dignity and rights — endowed with reason and conscience, they should act towards one another in a spirit of brotherhood",
 		Kind:  "hypothesis",
-		Brief: "UDHR Article 1, verbatim: 'All human beings are born free and equal in dignity and rights. They are endowed with reason and conscience and should act towards one another in a spirit of brotherhood.' The foundational article — the one whose 'men' → 'human beings' edit by Hansa Mehta is UDHR-drafting historiography's most-cited specific contribution. Represented as a Hypothesis rather than a Concept because its structure is assertive (something is claimed to be the case) rather than definitional, even though the 'case' being claimed is normative (should be the case) rather than descriptive (is the case). The normative-vs-descriptive distinction is flagged in the slice header as available for a future IsNormativeClaim tag if a query forces it; no query does yet. The UN General Assembly ProposesOrg this Hypothesis as a collectively adopted norm — 'proposes' is a deliberate stretch covering 'declares and adopts as binding', flagged here for future-slice refinement.",
+		Brief: "Universal declaration asserting that all human beings are born free and equal in dignity, rights, reason, and conscience, adopted by UN General Assembly as a binding normative standard.",
 	}}
 
 	UDHRArticle3 = Hypothesis{&Entity{
 		ID:    "hyp-udhr-article-3",
 		Name:  "Everyone has the right to life, liberty and security of person",
 		Kind:  "hypothesis",
-		Brief: "UDHR Article 3, verbatim: 'Everyone has the right to life, liberty and security of person.' The most widely-recognised single-sentence rights statement in the declaration, and the foundation of the civil-and-political-rights articles that follow it (Articles 4-21). Chosen for this slice because its brevity and universal recognition make it a clean representative of the UDHR's canonical form. Same normative-vs-descriptive caveat as Article 1.",
+		Brief: "A foundational UDHR article asserting the right to life, liberty, and security of person. The most widely recognized single-sentence rights statement in the declaration.",
 	}}
 
 	UDHRArticle18 = Hypothesis{&Entity{
 		ID:    "hyp-udhr-article-18",
 		Name:  "Everyone has the right to freedom of thought, conscience and religion — including the freedom to change religion or belief, and to manifest it in teaching, practice, worship, and observance, alone or in community, in public or private",
 		Kind:  "hypothesis",
-		Brief: "UDHR Article 18, verbatim: 'Everyone has the right to freedom of thought, conscience and religion; this right includes freedom to change his religion or belief, and freedom, either alone or in community with others and in public or private, to manifest his religion or belief in teaching, practice, worship and observance.' Chosen for this slice because of its load-bearing cognitive content — it is the article most directly relevant to winze's existing intellectual neighbourhood around belief, skepticism, and supernatural claims (see demon_haunted.go's Scientific Skepticism material, apophenia.go's clinical-vs-secular framings of apophenia, and nondualism.go's religious-traditions content). The freedom-of-religion framing is the one Saudi Arabia cited as grounds for its 1948 abstention from the UDHR vote, so the article is also the load-bearing case for the adoption history. The Brief-level adjacency to winze's existing skeptical-rationalist neighbourhood is flagged in the slice header but NOT wired as a structural claim, because none of the UDHR sources commit to the philosophical content at the level that would honestly support one.",
+		Brief: "Article 18 of the Universal Declaration of Human Rights, establishing the right to freedom of thought, conscience, and religion, including the freedom to change or manifest one's beliefs in teaching, practice, worship, and observance.",
 	}}
 )
 
@@ -450,7 +450,7 @@ var (
 		ID:    "hyp-udhr-as-theory-of-human-rights",
 		Name:  "The Universal Declaration of Human Rights articulates a substantive and enumerable common standard of achievement for what human rights are — a 30-article list of inalienable rights held universally by every member of the human family",
 		Kind:  "hypothesis",
-		Brief: "The interpretive meta-claim that the UDHR is itself a theory of human rights — i.e., that the 30-article enumeration is not merely a political declaration but a substantive account of what human rights consist of. This claim is the bridge between UDHR1948 as a document-Concept and HumanRights as the meta-Concept the document is about. Attributed via ProposesOrg to the UN General Assembly (the body whose act of declaring turned the drafting output into a normative claim) rather than to any individual drafter. The contested-concept rule does not fire on HumanRights from this slice alone because this is the only TheoryOf(HumanRights) claim in winze; the entity exists to make HumanRights a contested-target-ready Concept for future slices.",
+		Brief: "Interpretive claim that the UDHR's 30-article enumeration constitutes a substantive theory of human rights rather than merely a political declaration. Attributed to the UN General Assembly as the body that formalized it into a normative claim.",
 	}}
 
 	UNGAProposesUDHRAsTheory = ProposesOrg{

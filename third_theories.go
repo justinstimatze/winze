@@ -194,7 +194,7 @@ var BrouwerIntuitionism = Hypothesis{&Entity{
 	ID:    "hyp-brouwer-intuitionism",
 	Name:  "Brouwer's intuitionism",
 	Kind:  "hypothesis",
-	Brief: "Mathematics is purely the result of constructive mental activity of humans rather than the discovery of fundamental principles in an objective reality. A mathematical object exists only when it can be constructed; proof by contradiction of nonexistence does not suffice. Rejects the law of excluded middle.",
+	Brief: "Mathematical philosophy asserting that mathematics is constructive mental activity rather than discovery of objective reality. Mathematical objects exist only when constructible; rejects the law of excluded middle.",
 }}
 
 var BrouwerProposesIntuitionism = Proposes{
@@ -228,7 +228,7 @@ var FormanPCEThesis = Hypothesis{&Entity{
 	ID:    "hyp-forman-pce",
 	Name:  "Forman's pure consciousness event thesis",
 	Kind:  "hypothesis",
-	Brief: "Some mystical experiences are 'pure consciousness events' (PCE) — wakeful but contentless states that are pre-conceptual and therefore neither a universal common core (perennialism) nor culturally constructed (constructionism). The PCE is a distinct category that the perennialism-constructionism debate fails to accommodate.",
+	Brief: "Hypothesis that some mystical experiences are pure consciousness events—wakeful but contentless states that transcend both perennialist and constructionist frameworks.",
 }}
 
 var FormanProposesPCE = Proposes{

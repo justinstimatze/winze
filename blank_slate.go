@@ -80,17 +80,7 @@ var (
 		Name:    "The Blank Slate",
 		Kind:    "concept",
 		Aliases: []string{"The Blank Slate: The Modern Denial of Human Nature"},
-		Brief: "Steven Pinker's 2002 book arguing against tabula rasa models in the " +
-			"social sciences. Claims human behaviour is significantly shaped by evolved " +
-			"psychological traits and challenges three 'linked dogmas': the blank slate " +
-			"(no innate traits), the noble savage (born good, corrupted by society), and " +
-			"the ghost in the machine (soul independent of biology). Nominated for the " +
-			"Aventis Prize and finalist for the Pulitzer Prize. The book's appendix " +
-			"republishes Donald Brown's human universals list from Brown 1991 — the " +
-			"same list ingested in human_universals.go via the DePaul handout source. " +
-			"That source commits to the Pinker-Brown relationship; the Blank Slate " +
-			"Wikipedia article's See Also section lists Brown and Human Universals but " +
-			"the body text does not commit to the influence at InfluencedBy level.",
+		Brief:   "2002 book by Steven Pinker rejecting tabula rasa models and arguing human behavior is shaped by evolved psychological traits, challenging blank slate, noble savage, and mind-body dualism theories.",
 	}}
 
 	StevenPinker = Person{&Entity{
@@ -98,30 +88,14 @@ var (
 		Name:    "Steven Pinker",
 		Kind:    "person",
 		Aliases: []string{"Pinker"},
-		Brief: "Canadian-American cognitive psychologist and author, known for The " +
-			"Language Instinct (1994), How the Mind Works (1997), The Blank Slate (2002), " +
-			"The Better Angels of Our Nature (2011), and Enlightenment Now (2018). " +
-			"Argues that human behaviour has significant innate, evolved structure — an " +
-			"evolutionary-psychology framing of human cognition that is a rival to " +
-			"Mattson's cortical-expansion-for-pattern-processing framing. The Wikipedia " +
-			"article's See Also lists Donald Brown and Human Universals; Pinker " +
-			"republished Brown's human universals list as an appendix to The Blank Slate.",
+		Brief:   "Canadian-American cognitive psychologist and author of The Language Instinct, How the Mind Works, and The Blank Slate. Known for arguing that human behavior has significant innate, evolved structure grounded in evolutionary psychology.",
 	}}
 
 	PinkerHumanNatureThesis = Hypothesis{&Entity{
-		ID:   "hypothesis-pinker-human-nature",
-		Name: "Pinker evolutionary-psychology thesis of human nature",
-		Kind: "hypothesis",
-		Brief: "The thesis, advanced by Steven Pinker in The Blank Slate (2002), that " +
-			"human behaviour is significantly shaped by evolved psychological traits and " +
-			"that the 'blank slate' doctrine — the idea that the mind has no innate " +
-			"traits — is refuted by modern science. Pinker's framing is evolutionary-" +
-			"psychological: domain-specific evolved modules shape cognition, morality, " +
-			"and social behaviour. This is a rival to Mattson's SPP thesis (superior " +
-			"pattern processing as the fundamental basis of human cognition, locating " +
-			"the substrate in cortical expansion of specific brain regions rather than " +
-			"in domain-specific evolutionary psychology). Both are TheoryOf HumanCognition; " +
-			"the contested-concept rule fires on HumanCognition when this claim is added.",
+		ID:    "hypothesis-pinker-human-nature",
+		Name:  "Pinker evolutionary-psychology thesis of human nature",
+		Kind:  "hypothesis",
+		Brief: "Evolutionary psychologist Steven Pinker's thesis that human behavior stems from evolved psychological modules rather than a blank-slate mind, challenging the doctrine that the mind lacks innate traits.",
 	}}
 )
 

@@ -117,16 +117,33 @@ func extractBrief(cl *ast.CompositeLit) string {
 	return ""
 }
 
-func basicLitString(e ast.Expr) string {
-	lit, ok := e.(*ast.BasicLit)
-	if !ok || lit.Kind != token.STRING {
+// resolveStringExpr recursively evaluates string expressions including
+// concatenation ("a" + "b"). Handles *ast.BasicLit and *ast.BinaryExpr.
+func resolveStringExpr(e ast.Expr) string {
+	switch v := e.(type) {
+	case *ast.BasicLit:
+		if v.Kind != token.STRING {
+			return ""
+		}
+		s, err := strconv.Unquote(v.Value)
+		if err != nil {
+			return v.Value
+		}
+		return s
+	case *ast.BinaryExpr:
+		if v.Op != token.ADD {
+			return ""
+		}
+		return resolveStringExpr(v.X) + resolveStringExpr(v.Y)
+	default:
 		return ""
 	}
-	s, err := strconv.Unquote(lit.Value)
-	if err != nil {
-		return lit.Value
-	}
-	return s
+}
+
+// basicLitString extracts a string value from an ast expression.
+// Delegates to resolveStringExpr for concatenation support.
+func basicLitString(e ast.Expr) string {
+	return resolveStringExpr(e)
 }
 
 type neighborhood struct {

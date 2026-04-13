@@ -94,7 +94,7 @@ var (
 		Name:    "The Quantum Thief",
 		Kind:    "concept",
 		Aliases: []string{"Quantum Thief"},
-		Brief:   "Hannu Rajaniemi's 2010 debut science fiction novel, first in the Jean le Flambeur trilogy. A heist story set in a post-singularity Solar System, published in the UK by Gollancz and in the US by Tor. The book as a real-world creative work is tagged IsFictionalWork; the in-fiction entities it introduces (Jean le Flambeur, the Oubliette, the Sobornost, exomemory) are tagged IsFictional and anchored back to this book via AppearsIn.",
+		Brief:   "Science fiction debut novel by Hannu Rajaniemi (2010), first in the Jean le Flambeur trilogy. A post-singularity heist story set in the Solar System.",
 	}}
 
 	TheFractalPrince = Concept{&Entity{
@@ -102,7 +102,7 @@ var (
 		Name:    "The Fractal Prince",
 		Kind:    "concept",
 		Aliases: []string{"Fractal Prince"},
-		Brief:   "Rajaniemi's 2012 second novel in the Jean le Flambeur trilogy, published by Gollancz (UK) and Tor (US). Opens with Jean and Mieli en route to Earth trying to open the Schrödinger's Box retrieved from the Oubliette, and introduces the wildcode-ravaged Earth city of Sirr, the Gomelez family (Tawaddud and Dunyazad), and a frame-story structure explicitly influenced by The Arabian Nights and Jan Potocki's Manuscript Found in Saragossa.",
+		Brief:   "Second novel in Rajaniemi's Jean le Flambeur trilogy, following Jean and Mieli's attempt to open Schrödinger's Box on a wildcode-ravaged Earth, with frame narrative inspired by The Arabian Nights.",
 	}}
 
 	TheCausalAngel = Concept{&Entity{
@@ -110,7 +110,7 @@ var (
 		Name:    "The Causal Angel",
 		Kind:    "concept",
 		Aliases: []string{"Causal Angel"},
-		Brief:   "Rajaniemi's 2014 third and final novel in the Jean le Flambeur trilogy, published by Gollancz (UK) and Tor (US). Opens with Jean and Mieli separated and the sentient spacecraft Perhonen destroyed, as the Solar System plummets into an all-out war between the Sobornost and the Zoku with each faction simultaneously torn apart by internal strifes.",
+		Brief:   "The final novel in Rajaniemi's Jean le Flambeur trilogy. Jean and Mieli are separated as their spacecraft Perhonen is destroyed amid escalating war between the Sobornost and Zoku factions.",
 	}}
 
 	JeanLeFlambeurSeries = Concept{&Entity{
@@ -118,14 +118,14 @@ var (
 		Name:    "Jean le Flambeur series",
 		Kind:    "concept",
 		Aliases: []string{"Jean le Flambeur trilogy"},
-		Brief:   "The trilogy of Rajaniemi novels centred on the post-human gentleman thief Jean le Flambeur: The Quantum Thief (2010), The Fractal Prince (2012), and The Causal Angel (2014). Each book is a distinct IsFictionalWork and also BelongsTo this series concept — the same structural pattern cognitive_biases.go uses for individual biases belonging to task families, validated here for a second subject domain with zero schema change.",
+		Brief:   "Science fiction trilogy by Hannu Rajaniemi following post-human gentleman thief Jean le Flambeur across three novels: The Quantum Thief (2010), The Fractal Prince (2012), and The Causal Angel (2014).",
 	}}
 
 	HannuRajaniemi = Person{&Entity{
 		ID:    "hannu-rajaniemi",
 		Name:  "Hannu Rajaniemi",
 		Kind:  "person",
-		Brief: "Finnish science fiction writer and mathematician, author of the Jean le Flambeur trilogy (The Quantum Thief 2010, The Fractal Prince 2012, The Causal Angel 2014). Stated in interviews that he set out to 'cram every idea' he had into his outline, which expanded into the three books that followed. Acknowledges multiple influences across the trilogy: Maurice Leblanc's Arsène Lupin (the explicit template for Jean le Flambeur), Roger Zelazny, Ian McDonald, Frances A. Yates's 'The Art of Memory' (for the memory-palace device), and in The Fractal Prince acknowledgments specifically Andy Clark and Douglas Hofstadter on the 'mind as self-loop' idea, and The Arabian Nights and Jan Potocki's 'Manuscript Found in Saragossa' on the frame-story structure of Sirr.",
+		Brief: "Finnish science fiction writer and mathematician known for the Jean le Flambeur trilogy (2010-2014), which blends heist narratives with complex philosophical ideas about memory and consciousness.",
 	}}
 
 	// Real-world inspiration for Jean le Flambeur. Wired as a claim via
@@ -138,7 +138,7 @@ var (
 		ID:    "maurice-leblanc",
 		Name:  "Maurice Leblanc",
 		Kind:  "person",
-		Brief: "French novelist (1864–1941), creator of the gentleman thief Arsène Lupin. Jean le Flambeur in Rajaniemi's trilogy is explicitly modelled on Lupin — 'what intrigued Rajaniemi were the cycles of redemption and relapse Lupin goes through as he tries to go straight, always falling short.' First real-world influence wired as a claim in winze, earning the new InfluencedBy predicate alongside the Clark→Rajaniemi cross-ingest bridge.",
+		Brief: "French novelist (1864–1941) who created the gentleman thief Arsène Lupin, a foundational character in crime fiction.",
 	}}
 )
 
@@ -155,42 +155,42 @@ var (
 		Name:    "Jean le Flambeur",
 		Kind:    "concept",
 		Aliases: []string{"le Flambeur"},
-		Brief:   "In-fiction character: a legendary gentleman thief modelled on Maurice Leblanc's Arsène Lupin, trapped at the novel's opening in a virtual Sobornost prison in orbit around Neptune where countless copies of him play an iterated prisoner's dilemma until his mind learns to cooperate. Tagged IsFictional because this concept exists only within the frame of The Quantum Thief (and its sequels).",
+		Brief:   "Legendary gentleman thief character in The Quantum Thief, imprisoned in a virtual Sobornost prison where countless copies of him play iterated prisoner's dilemma until learning cooperation.",
 	}}
 
 	Oubliette = Concept{&Entity{
 		ID:    "concept-oubliette-mars",
 		Name:  "The Oubliette",
 		Kind:  "concept",
-		Brief: "In-fiction place: a mobile Martian city among the last remnants of near-baseline humanity, where advanced cryptography and an obsessive privacy culture keep the Sobornost from uploading its citizens' minds. Time is the city's currency; when a citizen's balance reaches zero their mind is transferred into a Quiet (a robotic servitor body) for a fixed term before being returned. Encoded as a Concept rather than a Place role because the Place role carries real-world-location semantics (geolocation, formation dates, monitoring) that do not apply to a fictional city. Tagged IsFictional.",
+		Brief: "A fictional Martian city where time serves as currency and cryptography protects baseline humans from forced uploading by the Sobornost.",
 	}}
 
 	Sobornost = Concept{&Entity{
 		ID:    "concept-sobornost",
 		Name:  "The Sobornost",
 		Kind:  "concept",
-		Brief: "In-fiction faction: an alliance of powerful 'gogol' brain-emulation copies ruling the inner Solar System from computronium megastructures housing trillions of virtual minds, labouring to resurrect the dead in religious devotion to the philosophy of Nikolai Fedorov. In conflict with the Zoku, who adhere to the no-cloning principle of quantum information theory and so see the Sobornost's copying project as death rather than resurrection. Tagged IsFictional.",
+		Brief: "In-fiction faction of gogol brain-emulation copies ruling the inner Solar System, devoted to resurrecting the dead through Fedorov's philosophy and in conflict with the Zoku over cloning ethics.",
 	}}
 
 	Exomemory = Concept{&Entity{
 		ID:    "concept-exomemory",
 		Name:  "Exomemory",
 		Kind:  "concept",
-		Brief: "In-fiction concept: the Oubliette's second, shared type of memory — accessible by other people from anywhere in the city, partitionable with per-person access levels, usable as a form of communication. The central plot conspiracy turns on the Oubliette's hidden rulers (the 'cryptarchs') manipulating and abusing exomemory and the citizens' transitions through Quiet to tamper with traditional memory as well. Tagged IsFictional.",
+		Brief: "Shared memory system in the Oubliette accessible citywide with customizable access levels, used for communication and subject to manipulation by the cryptarchs in the central plot conspiracy.",
 	}}
 
 	Mieli = Concept{&Entity{
 		ID:    "concept-mieli",
 		Name:  "Mieli",
 		Kind:  "concept",
-		Brief: "In-fiction character: an Oortian warrior from the Finnish-colonised Oort Cloud who ferries Jean le Flambeur out of the Sobornost Dilemma Prison and into the Oubliette on Mars at the opening of The Quantum Thief, acting on behalf of the Sobornost Founder Joséphine Pellegrini. Appears in all three novels of the trilogy — her three AppearsIn claims are the primary stress test for the AppearsIn predicate's non-functionality. Tagged IsFictional.",
+		Brief: "Oortian warrior in The Quantum Thief trilogy who ferries Jean le Flambeur from Sobornost Dilemma Prison, acting for Joséphine Pellegrini.",
 	}}
 
 	Perhonen = Concept{&Entity{
 		ID:    "concept-perhonen",
 		Name:  "Perhonen",
 		Kind:  "concept",
-		Brief: "In-fiction spacecraft: Mieli's sentient ship, explicitly named in the Wikipedia plot summaries of The Fractal Prince (where it prods Jean to talk to a possessed Mieli) and The Causal Angel (where it is destroyed, separating Jean and Mieli at the opening of the finale). Not named in The Quantum Thief's article, so only two AppearsIn claims are wired — a second stress test for AppearsIn non-functionality with a different arity (2 vs 3) than Mieli's. Tagged IsFictional.",
+		Brief: "Sentient spacecraft in Jean le Flambeur trilogy, serving as Mieli's ship. Destroyed at the opening of The Causal Angel's finale.",
 	}}
 )
 

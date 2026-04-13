@@ -65,7 +65,7 @@ var (
 		Name:    "Nondualism",
 		Kind:    "concept",
 		Aliases: []string{"nonduality", "nondual"},
-		Brief:   "Polyvalent term originating in Indian philosophy, referring in various contemplative traditions to a state of consciousness prior to the subject-object split, the negation of dualistic conceptual thinking, the non-plurality of the world, or several other partially overlapping senses. Its English form is a translation of Sanskrit 'advaita' and 'advaya'.",
+		Brief:   "Philosophical concept from Indian traditions describing a state of consciousness transcending subject-object duality and dualistic thinking.",
 	}}
 
 	Advaita = Concept{&Entity{
@@ -73,7 +73,7 @@ var (
 		Name:    "Advaita",
 		Kind:    "concept",
 		Aliases: []string{"अद्वैत", "not-two", "one without a second"},
-		Brief:   "Sanskrit term literally 'not-two' or 'one without a second'. In Advaita Vedanta, asserts that only Brahman is ultimately real while the phenomenal world is not fully real. Fabian Volker (following Paul Hacker) argues 'dvaita' here does not mean 'duality' but 'the state in which a second is present', so 'advaita' is better translated as 'that which has no second beside it'.",
+		Brief:   "Sanskrit philosophical principle asserting that only Brahman is ultimately real and the phenomenal world lacks independent reality; literally means \"not-two\" or \"that which has no second.",
 	}}
 
 	Advaya = Concept{&Entity{
@@ -81,7 +81,7 @@ var (
 		Name:    "Advaya",
 		Kind:    "concept",
 		Aliases: []string{"अद्वय"},
-		Brief:   "Sanskrit term also literally 'not-two', but technically distinct from advaita. Refers to śūnyatā and the two-truths doctrine of Mahāyāna Buddhism, especially Madhyamaka's negation of conventional vs ultimate-truth opposition, and Yogācāra's deconstruction of the observer/observed duality. T. R. V. Murti glosses advaya as knowledge *freed of* conceptual distinctions, contra advaita which is knowledge *of* a differenceless entity.",
+		Brief:   "Sanskrit term meaning \"not-two,\" referring in Mahāyāna Buddhism to śūnyatā and the dissolution of conceptual dualities, particularly the conventional/ultimate truth distinction in Madhyamaka and subject/object duality in Yogācāra.",
 	}}
 
 	// Brahman, Śūnyatā, and Prapañca are deliberately NOT declared as
@@ -102,7 +102,7 @@ var (
 		Name:    "Nondual awareness",
 		Kind:    "concept",
 		Aliases: []string{"nonconceptual awareness"},
-		Brief:   "State of consciousness described in contemplative traditions as a background field of unified, immutable awareness that exists prior to conceptual thought. The target state the various nondual traditions claim to describe, though whether the 'same' state is being described across traditions is exactly the perennialism-vs-constructionism dispute.",
+		Brief:   "State of consciousness in contemplative traditions characterized as a unified, immutable awareness field existing prior to conceptual thought.",
 	}}
 )
 
@@ -122,14 +122,14 @@ var (
 		ID:    "david-loy",
 		Name:  "David Loy",
 		Kind:  "person",
-		Brief: "Contemporary scholar of Buddhism who proposed a five-flavors typology of nonduality in the early 1980s, arguing nondifference of subject and object is the 'core doctrine' across Taoism, Mahāyāna Buddhism, and Advaita Vedanta. Perennialist in the early work; the common-core thesis he assumed has since been challenged.",
+		Brief: "Contemporary Buddhist scholar who proposed a five-flavors typology of nonduality, arguing nondifference of subject and object is the core doctrine across Taoism, Mahāyāna Buddhism, and Advaita Vedanta.",
 	}}
 
 	FabianVolker = Person{&Entity{
 		ID:    "fabian-volker",
 		Name:  "Fabian Volker",
 		Kind:  "person",
-		Brief: "Contemporary scholar who criticises Loy's typology as 'explicitly anti-transcendent' and lacking a systematic account, and who (drawing on Richard H. Jones) proposes a three-type typology: asymmetric-vertical, symmetric-horizontal, and existential nonduality. Volker's work situates nonduality research inside mainstream mysticism research rather than treating the two as distinct fields.",
+		Brief: "Contemporary scholar who critiques Loy's nonduality typology and proposes an alternative three-type framework: asymmetric-vertical, symmetric-horizontal, and existential nonduality, integrating nonduality research within mainstream mysticism studies.",
 	}}
 
 	MaxMuller = Person{&Entity{
@@ -178,28 +178,28 @@ var (
 		ID:    "hyp-murti-advaita-vs-advaya",
 		Name:  "Murti's advaita-vs-advaya distinction",
 		Kind:  "hypothesis",
-		Brief: "Typology of nondualism as a binary split: advaya (Madhyamaka, epistemological — knowledge freed of conceptual distinctions) vs advaita (Vedanta, ontological — knowledge of a differenceless entity, Brahman). Murti himself adds 'although in the end it may turn out to be one of approach', softening the split.",
+		Brief: "Typology distinguishing advaya nondualism (Madhyamaka, epistemological) from advaita nondualism (Vedanta, ontological), while acknowledging they may ultimately converge as different approaches.",
 	}}
 
 	LoyFiveFlavorsTypology = Hypothesis{&Entity{
 		ID:    "hyp-loy-five-flavors",
 		Name:  "Loy's five flavors of nonduality",
 		Kind:  "hypothesis",
-		Brief: "Typology of nondualism as five distinct flavors: (1) nondifference of subject and object, (2) nonplurality of the world, (3) negation of dualistic thinking, (4) identity of phenomena and the absolute (Madhyamaka), (5) mystical divine unity. Loy treats the first as the 'core doctrine' across traditions.",
+		Brief: "Hypothesis categorizing nondualism into five flavors: nondifference of subject-object, world nonplurality, negation of dualistic thinking, identity of phenomena and absolute, and mystical divine unity, with the first identified as the core doctrine.",
 	}}
 
 	VolkerThreeTypesTypology = Hypothesis{&Entity{
 		ID:    "hyp-volker-three-types",
 		Name:  "Volker's three types of nonduality",
 		Kind:  "hypothesis",
-		Brief: "Typology of nondualism as three types: asymmetric-vertical (transcendent but immanent ground of the phenomenal world, as in Advaita Vedanta), symmetric-horizontal (no ultimate reality, but observer/observed distinction negated — mystical mindfulness), and existential (post-awakening experience of the phenomenal world). Built by drawing on Murti's advaita/advaya split and Richard H. Jones' typology, and explicitly positioned against Loy.",
+		Brief: "Typology categorizing nondualism into three types: asymmetric-vertical (transcendent ground of phenomena), symmetric-horizontal (negation of observer/observed distinction), and existential (post-awakening phenomenal experience).",
 	}}
 
 	PerennialistCommonCoreThesis = Hypothesis{&Entity{
 		ID:    "hyp-perennialist-common-core",
 		Name:  "Perennialist common-core thesis",
 		Kind:  "hypothesis",
-		Brief: "Meta-thesis that nondual awareness, despite fundamental differences in explanatory frameworks, is a common essence in various religious traditions. Held by Loy in his early-1980s writing. 'Largely dismissed by scholars' per the article, but 'has lost none of its popularity' in non-academic discourse.",
+		Brief: "Hypothesis that nondual awareness constitutes a common essence across diverse religious traditions, despite differing explanatory frameworks. Proposed by Loy in early-1980s writing.",
 	}}
 
 	ConstructionistThesis = Hypothesis{&Entity{
@@ -213,7 +213,7 @@ var (
 		ID:    "hyp-advaita-as-monism",
 		Name:  "Advaita should be rendered 'Monism' in English",
 		Kind:  "hypothesis",
-		Brief: "Translation-level hypothesis: the Sanskrit advaita is best rendered in English as 'Monism'. Introduced by Max Müller in the Sacred Books of the East (1879) and followed by many recent scholars. Explicitly rejected by Alan Watts and (per the article) by 'some scholars' who state that advaita is not really monism. Recorded as a Hypothesis rather than a DerivedFrom claim because the disagreement is about how to translate, not about etymology.",
+		Brief: "Hypothesis that Sanskrit advaita is best rendered as 'Monism,' introduced by Max Müller in 1879 but rejected by some scholars including Alan Watts as inadequate to the concept.",
 	}}
 )
 

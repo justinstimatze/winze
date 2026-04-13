@@ -155,7 +155,7 @@ var EvidenceSearchConradApopheniaClinical = Event{&Entity{
 	ID:    "evidence-search-conrad-apophenia-clinical-framing",
 	Name:  "Evidence search for Conrad Apophenia Clinical Framing",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across arxiv, zim for external sources on Conrad Apophenia Clinical Framing. Found: Unlocking Cognitive Capabilities and Analyzing the Perception-Logic Trade-off; DataCrumb: A Physical Probe for Reflections on Background Web Tracking; Guiding Perception-Reasoning Closer to Human in Blind Image Quality Assessment (+12 more).",
+	Brief: "A research search query examining Conrad Apophenia's clinical framing across academic sources, retrieving papers on cognitive capabilities, perception-logic tradeoffs, and related topics.",
 }}
 
 var TopologyPredictsConradApopheniaClinicalSearch = Predicts{

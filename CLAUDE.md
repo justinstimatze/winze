@@ -18,11 +18,12 @@ The type system is in `schema.go`, roles in `roles.go`, predicates in `predicate
 ```bash
 go build ./...                              # type-checks references
 go vet ./...                                # static analysis
-go run ./cmd/lint .                         # 4 deterministic lint rules
+go run ./cmd/lint .                         # 6 deterministic lint rules
 go run ./cmd/lint . --llm --llm-max-calls=5 # + LLM contradiction check
 ```
 
-Lint rules: naming-oracle, orphan-report, value-conflict, contested-concept, llm-contradiction.
+Lint rules: naming-oracle, orphan-report, value-conflict, contested-concept,
+brief-check, provenance-split, llm-contradiction.
 
 ### Mirror-source-commitments
 
@@ -87,6 +88,9 @@ go run ./cmd/metabolism --ingest --zim FILE .          # LLM-assisted ingest fro
 go run ./cmd/metabolism --pipeline --zim FILE .        # full quality pipeline: ingest → build → lint → llm → commit/reject
 go run ./cmd/metabolism --pipeline --zim FILE --llm-budget 5 .  # pipeline with custom LLM budget
 go run ./cmd/metabolism --reify .                      # generate predictions.go from metabolism log (Predicts/ResolvedAs claims)
+go run ./cmd/metabolism --dream .                      # consolidation cycle: topology+lint+adit analysis, no new ingest
+go run ./cmd/metabolism --dream --fix --tighten .      # auto-fix overlong Briefs via LLM (needs ANTHROPIC_API_KEY)
+go run ./cmd/metabolism --dream --fix --dry-run .      # show what would be fixed
 go run ./cmd/metabolism --entity-cap 250 .             # refuse ingest/pipeline above entity cap (default 250)
 go run ./cmd/metabolism --json .                       # JSON output
 ```
@@ -105,6 +109,13 @@ commit if all pass, reject if any gate fails. Exit 2 = quality rejection.
 ZIM backend uses gozim (pure Go, no Python needed). Builds a Bleve fulltext
 index on first use (persisted to `<zimfile>.bleve/`).
 Gas Town formula: `mol-curate-auto` wraps `--pipeline` for polecat execution.
+`--dream` runs a consolidation cycle (NREM-like): no new ingest, analyzes
+existing KB health via topology + lint + adit and reports maintenance
+opportunities (bridge entities, file balance, provenance splits, brief quality).
+`--dream --fix --tighten` auto-fixes overlong Briefs via LLM (Haiku), with
+quality gates (build + vet + lint) and automatic revert on failure.
+`--calibrate` now includes prediction accuracy scoring per hypothesis with
+hit rate, precision, and efficiency metrics.
 
 ### Skeptical ingest (sensor defense)
 

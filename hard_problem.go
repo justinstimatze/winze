@@ -108,20 +108,7 @@ var (
 		Name:    "David Chalmers",
 		Kind:    "person",
 		Aliases: []string{"Chalmers"},
-		Brief: "Australian philosopher and cognitive scientist, known for " +
-			"formulating the 'hard problem' of consciousness in 1994. His " +
-			"thesis: consciousness involves irreducible subjective experience " +
-			"(qualia) that cannot be explained by physical or functional " +
-			"mechanisms alone — solving the 'easy problems' of consciousness " +
-			"(discrimination, integration, behavioural function) will not " +
-			"yield a solution to the hard problem. Rejects physicalism while " +
-			"remaining a naturalist. Published 'Facing up to the problem of " +
-			"consciousness' (1995) in the Journal of Consciousness Studies " +
-			"and expanded the argument in The Conscious Mind (1996). Uses " +
-			"Thomas Nagel's definition of consciousness: 'the feeling of what " +
-			"it is like to be something.' Praised by David Lewis and Steven " +
-			"Pinker for 'impeccable clarity.' A 2020 PhilPapers survey found " +
-			"62.42% of philosophers accept the hard problem as genuine.",
+		Brief:   "Australian philosopher who formulated the \"hard problem\" of consciousness, arguing that subjective experience cannot be explained by physical mechanisms alone, distinguishing it from solvable \"easy problems\" of consciousness.",
 	}}
 
 	HardProblemOfConsciousness = Concept{&Entity{
@@ -129,37 +116,14 @@ var (
 		Name:    "Hard problem of consciousness",
 		Kind:    "concept",
 		Aliases: []string{"hard problem", "the hard problem"},
-		Brief: "The problem, formulated by David Chalmers (1994), of explaining " +
-			"why and how physical processes in the brain give rise to subjective " +
-			"experience (qualia). Contrasted with the 'easy problems' of " +
-			"consciousness — explaining discrimination, information integration, " +
-			"and behavioural functions — which are amenable to mechanistic " +
-			"analysis. The hard problem asks: why is the performance of these " +
-			"functions accompanied by experience? Chalmers argues this question " +
-			"is categorically different from the easy problems because no " +
-			"mechanistic explanation could explain the character of experience. " +
-			"The existence of the hard problem is itself contested: accepted by " +
-			"Levine, McGinn, Block, Tononi, Koch; rejected by Dennett, " +
-			"Churchland, Metzinger, Frankish, Dehaene, Baars, Seth.",
+		Brief:   "Philosophical problem formulated by David Chalmers (1994) asking why physical brain processes generate subjective experience (qualia), distinct from explaining consciousness's functional and behavioral aspects.",
 	}}
 
 	ChalmersHardProblemThesis = Hypothesis{&Entity{
-		ID:   "hypothesis-chalmers-hard-problem",
-		Name: "Chalmers' hard problem thesis",
-		Kind: "hypothesis",
-		Brief: "The thesis, advanced by David Chalmers, that consciousness " +
-			"involves irreducible subjective experience that cannot be explained " +
-			"by physical or functional mechanisms. Facts about consciousness are " +
-			"'further facts' not derivable from facts about the brain or any " +
-			"physical system. Solving all the 'easy problems' of consciousness " +
-			"(mechanistic explanations of discrimination, integration, behaviour) " +
-			"will not solve the hard problem of why these processes are " +
-			"accompanied by experience. Chalmers argues that physicalism must " +
-			"be false if the hard problem is real. A rival TheoryOf Consciousness " +
-			"to Watts's evolutionary-dead-end thesis (blindsight.go) and Searle's " +
-			"biological naturalism (chinese_room.go): where Watts asks whether " +
-			"consciousness is adaptive, and Searle asks what substrate produces " +
-			"it, Chalmers asks whether it can be physically explained at all.",
+		ID:    "hypothesis-chalmers-hard-problem",
+		Name:  "Chalmers' hard problem thesis",
+		Kind:  "hypothesis",
+		Brief: "Philosophical thesis by David Chalmers positing that subjective conscious experience cannot be explained by physical or functional mechanisms alone, even after solving all mechanistic problems of cognition and behavior.",
 	}}
 )
 

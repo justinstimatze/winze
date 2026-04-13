@@ -130,16 +130,7 @@ var (
 		Name:    "Kurt Gödel",
 		Kind:    "person",
 		Aliases: []string{"Gödel", "Kurt Goedel"},
-		Brief: "Austrian-American logician and mathematician (1906–1978). Published " +
-			"the incompleteness theorems in 1931 in the paper 'Über formal " +
-			"unentscheidbare Sätze der Principia Mathematica und verwandter " +
-			"Systeme I' (On Formally Undecidable Propositions of Principia " +
-			"Mathematica and Related Systems I). The theorems demonstrated " +
-			"fundamental limits to provability in formal axiomatic systems, " +
-			"showing that Hilbert's program to find a complete and consistent " +
-			"set of axioms for all mathematics is impossible. Among the most " +
-			"significant results in mathematical logic and the philosophy of " +
-			"mathematics.",
+		Brief:   "Austrian-American logician and mathematician (1906–1978) who proved the incompleteness theorems, demonstrating fundamental limits to provability in formal axiomatic systems.",
 	}}
 
 	DavidHilbert = Person{&Entity{
@@ -147,16 +138,7 @@ var (
 		Name:    "David Hilbert",
 		Kind:    "person",
 		Aliases: []string{"Hilbert"},
-		Brief: "German mathematician (1862–1943), one of the most influential " +
-			"mathematicians of the late 19th and early 20th centuries. Proposed " +
-			"Hilbert's program: the thesis that all of mathematics could be " +
-			"given a secure foundation through finitary consistency proofs — " +
-			"that a complete, consistent set of axioms for all mathematics " +
-			"could be found. His second problem (1900) asked specifically for " +
-			"a finitary proof of the consistency of arithmetic. Gödel's " +
-			"incompleteness theorems (1931) are widely interpreted as showing " +
-			"that this program is impossible, though the precise status of " +
-			"Hilbert's second problem remains debated.",
+		Brief:   "German mathematician (1862–1943) who proposed Hilbert's program, asserting that mathematics could be given a secure foundation through finitary consistency proofs. His second problem asked for a finitary proof of arithmetic's consistency, later challenged by Gödel's incompleteness theorems.",
 	}}
 
 	OnFormallyUndecidablePropositions1931 = Concept{&Entity{
@@ -164,17 +146,7 @@ var (
 		Name:    "Über formal unentscheidbare Sätze der Principia Mathematica und verwandter Systeme I",
 		Kind:    "concept",
 		Aliases: []string{"On Formally Undecidable Propositions", "Gödel 1931"},
-		Brief: "Kurt Gödel's 1931 paper, published in Monatshefte für Mathematik, " +
-			"presenting the incompleteness theorems. The paper demonstrated that " +
-			"any consistent formal system capable of expressing basic arithmetic " +
-			"contains statements that are true but unprovable within the system " +
-			"(first incompleteness theorem), and that such a system cannot prove " +
-			"its own consistency (second incompleteness theorem). The results " +
-			"employed a diagonal argument and introduced Gödel numbering — an " +
-			"encoding of formal expressions as natural numbers that allows a " +
-			"formal system to reason about its own statements. The first " +
-			"incompleteness theorem appeared as 'Theorem VI' and the second as " +
-			"'Theorem XI' in the paper.",
+		Brief:   "Landmark 1931 paper by Kurt Gödel demonstrating that consistent formal systems capable of arithmetic contain unprovable true statements and cannot prove their own consistency, using Gödel numbering to encode formal expressions.",
 	}}
 
 	GodelFirstIncompletenessTheorem = Hypothesis{&Entity{
@@ -182,20 +154,7 @@ var (
 		Name:    "Gödel's first incompleteness theorem",
 		Kind:    "hypothesis",
 		Aliases: []string{"first incompleteness theorem", "Theorem VI"},
-		Brief: "Any consistent formal system within which a certain amount of " +
-			"elementary arithmetic can be carried out is incomplete: there are " +
-			"statements of the language of the system which can neither be " +
-			"proved nor disproved within it. Equivalently, for any such system " +
-			"there will always be statements about natural numbers that are " +
-			"true but unprovable. Published by Gödel in 1931 as 'Theorem VI'. " +
-			"Originally required omega-consistency; strengthened by J. Barkley " +
-			"Rosser (1936) to require only consistency. Shows that no " +
-			"effectively axiomatized, consistent extension of basic arithmetic " +
-			"can be complete — directly undermining Hilbert's program to " +
-			"axiomatize all mathematics. This is a PROVEN MATHEMATICAL RESULT, " +
-			"not a speculative thesis; it is represented as Hypothesis because " +
-			"the role type captures 'positive claim about X' structurally, with " +
-			"truth-status carried by prose.",
+		Brief:   "Mathematical theorem proving that any consistent formal system capable of elementary arithmetic contains true statements that cannot be proved within that system.",
 	}}
 
 	GodelSecondIncompletenessTheorem = Hypothesis{&Entity{
@@ -203,17 +162,7 @@ var (
 		Name:    "Gödel's second incompleteness theorem",
 		Kind:    "hypothesis",
 		Aliases: []string{"second incompleteness theorem", "Theorem XI"},
-		Brief: "An extension of the first incompleteness theorem: for any " +
-			"consistent formal system F within which a certain amount of " +
-			"elementary arithmetic can be carried out, the consistency of F " +
-			"cannot be proved within F itself. Published by Gödel in 1931 as " +
-			"'Theorem XI'. This result is the more direct refutation of " +
-			"Hilbert's program, which specifically sought finitary consistency " +
-			"proofs — proofs of a system's consistency conducted entirely " +
-			"within the system. Gödel's second theorem shows that any such " +
-			"proof is impossible for sufficiently powerful consistent systems. " +
-			"Together with the first theorem, establishes fundamental limits " +
-			"to what formal axiomatic systems can achieve.",
+		Brief:   "Mathematical theorem stating that any consistent formal system cannot prove its own consistency. Published by Gödel in 1931, it refutes Hilbert's program by showing finitary consistency proofs are impossible for sufficiently powerful systems.",
 	}}
 
 	HilbertsProgram = Hypothesis{&Entity{
@@ -221,35 +170,14 @@ var (
 		Name:    "Hilbert's program",
 		Kind:    "hypothesis",
 		Aliases: []string{"Hilbert's second problem", "Hilbert program"},
-		Brief: "The thesis, proposed by David Hilbert, that all of mathematics " +
-			"can be given a secure foundation through finitary methods: that a " +
-			"complete, consistent set of axioms for all mathematics can be " +
-			"found, and that the consistency of these axioms can be proved by " +
-			"finitary means. Hilbert's second problem (1900) specifically asked " +
-			"for a proof of the consistency of arithmetic. This program was " +
-			"widely considered dealt a fatal blow by Gödel's incompleteness " +
-			"theorems (1931), particularly the second theorem which shows that " +
-			"sufficiently powerful consistent systems cannot prove their own " +
-			"consistency. A rival TheoryOf MathematicalFoundations to Gödel's " +
-			"first incompleteness theorem: where Hilbert claimed complete " +
-			"axiomatization is achievable, Gödel proved it is not.",
+		Brief:   "Mathematical thesis by David Hilbert proposing that all mathematics can be founded on a complete, consistent set of axioms provable by finitary methods. Largely refuted by Gödel's incompleteness theorems.",
 	}}
 
 	MathematicalFoundations = Concept{&Entity{
-		ID:   "concept-mathematical-foundations",
-		Name: "Mathematical foundations",
-		Kind: "concept",
-		Brief: "The study of the logical and philosophical basis of mathematics — " +
-			"what axioms mathematics rests on, whether those axioms are complete " +
-			"and consistent, and whether mathematical truth can be captured by " +
-			"formal systems. Central contested question: can all mathematical " +
-			"truth be derived from a finite, consistent set of axioms? Hilbert " +
-			"answered yes (Hilbert's program); Gödel proved no (incompleteness " +
-			"theorems). Future contested target for ingests about formalism, " +
-			"intuitionism (Brouwer), constructivism, or category-theoretic " +
-			"foundations. Structurally analogous to Consciousness " +
-			"(blindsight.go) and HumanCognition (mattson_pattern_processing.go) " +
-			"as a concept that attracts rival theories.",
+		ID:    "concept-mathematical-foundations",
+		Name:  "Mathematical foundations",
+		Kind:  "concept",
+		Brief: "The logical and philosophical basis of mathematics: what axioms it rests on, whether they are complete and consistent, and whether formal systems can capture all mathematical truth. Central dispute: Hilbert's program versus Gödel's incompleteness theorems.",
 	}}
 )
 

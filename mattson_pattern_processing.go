@@ -191,7 +191,7 @@ var (
 		Name:    "Superior pattern processing",
 		Kind:    "concept",
 		Aliases: []string{"SPP", "superior pattern processing (SPP)"},
-		Brief:   "Mark Mattson's 2014 framework for human cognitive uniqueness: the encoding, integration, and transfer to other individuals of perceived or mentally-fabricated patterns. SPP is advanced as the fundamental substrate of intelligence, language, imagination, invention, and magical thinking (the five 'types of SPP' Mattson enumerates as occurring robustly, if not uniquely, in the human brain). The neural substrate is the expanded prefrontal cortex, visual cortex, and parietal-temporal-occipital junction, with the paper arguing that SPP capabilities became increasingly sophisticated through human evolution via cortical expansion. Distinct from Clark's HierarchicalPredictionMachine in predictive_processing.go because SPP is framed around pattern encoding and transfer rather than prediction-error minimisation; the two frameworks occupy adjacent intellectual real estate but cite different lineages and Mattson does not cite Clark — the connection is Brief-level only under winze's mirror-source-commitments discipline. A slice that reads a predictive-processing review citing Mattson (or vice versa) could promote the connection to a structural edge.",
+		Brief:   "Cognitive framework positing pattern encoding, integration, and transfer as the fundamental basis of human intelligence, language, imagination, and invention, localized to expanded prefrontal and parietal-temporal-occipital regions.",
 	}}
 
 	HumanCognition = Concept{&Entity{
@@ -199,7 +199,7 @@ var (
 		Name:    "Human cognition",
 		Kind:    "concept",
 		Aliases: []string{"the evolved human brain", "human cognitive uniqueness"},
-		Brief:   "The target Concept of Mattson's central SPP thesis: the suite of cognitive capacities that distinguish the human brain from closely related anthropoids, including reasoning, language, abstract thought, invention, and magical thinking. Treated as a standalone Concept rather than folded into SuperiorPatternProcessing because Mattson's thesis is a theory *of* human cognition (SPP is advanced *as* its essence), not human cognition itself. The Concept is deliberately introduced as an available TheoryOf target for future ingests reading rival framings — Theory of Mind (a Premack & Woodruff 1978 slice would be the canonical route), language-first hypotheses (any of the Chomsky / Pinker literature), the Bayesian-brain / predictive-processing literature once a source explicitly argues it as a theory of human cognition rather than just of prediction. The contested-concept rule does not fire on HumanCognition from this slice alone (Mattson's is the only TheoryOf claim currently targeting it), but the entity exists to let future slices land rival theories zero-touch.",
+		Brief:   "Cognitive capacities distinguishing humans from other anthropoids, including reasoning, language, abstract thought, and invention. Positioned as a standalone target for competing theoretical frameworks.",
 	}}
 
 	MagicalThinking = Concept{&Entity{
@@ -207,7 +207,7 @@ var (
 		Name:    "Magical thinking",
 		Kind:    "concept",
 		Aliases: []string{"magical thinking / fantasy"},
-		Brief:   "Mattson's definition: 'beliefs that defy culturally accepted laws of causality' — in Western culture, beliefs in clairvoyance, astrology, spirit influences, telepathy, and religious entities. Framed in the Mattson 2014 SPP paper as one of the five types of pattern processing occurring robustly, if not uniquely, in the human brain, and specifically as a sub-type of SPP via BelongsTo. Mattson argues the cognitive fabrication of imaginary patterns is prominently illustrated by religious beliefs which have presumably provided an adaptive advantage to societies — and cites transcranial magnetic stimulation evidence that stimulation focused on the left lateral temporal lobe (but not the right, or the vertex) reduces magical thinking, which anchors the phenomenon to a specific cortical locus rather than a diffuse cognitive style. Neighbourhood note: magical thinking is the closest concept in this slice to the apophenia / patternicity neighbourhood in apophenia.go — apophenia is the tendency to perceive meaningful patterns in random stimuli, magical thinking is the belief that imaginary patterns reflect real causal structure. The Wikipedia Apophenia article does not cite Mattson and Mattson does not cite the apophenia literature, so the relationship is Brief-level only here, same Brief-level reference pattern as the apophenia ↔ predictive-processing note.",
+		Brief:   "Cognitive tendency to perceive causal relationships that violate culturally accepted laws of causality, such as beliefs in clairvoyance, astrology, or spirit influences. Associated with pattern-processing activity in the left lateral temporal lobe.",
 	}}
 
 	Mattson2014SPPPaper = Concept{&Entity{
@@ -215,14 +215,14 @@ var (
 		Name:    "Mattson 2014 Superior Pattern Processing",
 		Kind:    "concept",
 		Aliases: []string{"Mattson 2014", "Mattson SPP paper"},
-		Brief:   "Mark P. Mattson's 2014 review article 'Superior pattern processing is the essence of the evolved human brain' (Frontiers in Neuroscience 8:265, doi:10.3389/fnins.2014.00265, PMCID PMC4141622). A review-article-shape scientific paper rather than a commentary — represented as a paper-shape Concept following the same pattern Clark's 'Whatever next?' paper uses in white_shergill_commentary.go, with no new role type and an Authored claim to its single author. Mattson is sole author. Published in the Social and Evolutionary Neuroscience section of Frontiers in Neuroscience; the paper positions SPP as a unified framework covering cognitive neuroscience, evolutionary biology, and neural-circuit pathology, explicitly claiming that a broader understanding of SPP mechanisms may enable interventions that reduce irrational decisions and destructive behaviors.",
+		Brief:   "2014 Frontiers in Neuroscience review article by Mark P. Mattson arguing that superior pattern processing is the core mechanism of human brain evolution and proposing it as a unified framework for cognitive neuroscience, evolutionary biology, and neural pathology.",
 	}}
 
 	MarkMattson = Person{&Entity{
 		ID:    "mark-p-mattson",
 		Name:  "Mark P. Mattson",
 		Kind:  "person",
-		Brief: "American neuroscientist, sole author of the 2014 Frontiers in Neuroscience review article 'Superior pattern processing is the essence of the evolved human brain'. At the time of publication Mattson was affiliated with the Laboratory of Neurosciences at the National Institute on Aging, Baltimore, Maryland, with a secondary appointment at Johns Hopkins School of Medicine's Department of Neuroscience. Mattson's broader research program spans cellular neuroscience, neurodegeneration (particularly Alzheimer's disease), and the mechanisms by which exercise and dietary energy restriction protect neurons — the SPP review article extends his mechanistic framing of pattern processing into evolutionary and psychiatric territory.",
+		Brief: "American neuroscientist at the National Institute on Aging studying cellular neuroscience, neurodegeneration, and neuroprotective mechanisms of exercise and dietary restriction.",
 	}}
 )
 
@@ -235,14 +235,14 @@ var (
 		ID:    "hyp-mattson-spp-essence",
 		Name:  "Superior pattern processing is the fundamental basis of most, if not all, unique features of the human brain — intelligence, language, imagination, invention, and the belief in imaginary entities",
 		Kind:  "hypothesis",
-		Brief: "Mattson's central thesis in the 2014 paper. SPP is the encoding, integration, and transfer to other individuals of perceived or mentally-fabricated patterns, and became increasingly sophisticated through human evolution via expansion of the prefrontal cortex, visual cortex, and parietal-temporal-occipital junction. The thesis is advanced as a foundational rather than variant framework — Mattson does not position it as a revision or extension of an existing theory, and the paper's only explicitly-contrasted rival is Tenenbaum et al. 2011's Bayesian-inference framework (engaged in a single sentence, not reified as a structural edge here). Wired as a TheoryOf(HumanCognition) claim so that any future slice adding a rival theory of human cognition can fire the contested-concept rule zero-touch.",
+		Brief: "A foundational theory of human cognition proposing that sophisticated pattern perception, integration, and social transfer evolved through prefrontal and visual-cortex expansion.",
 	}}
 
 	MattsonSchizophreniaSPPDysregulationFraming = Hypothesis{&Entity{
 		ID:    "hyp-mattson-schizophrenia-spp-dysregulation",
 		Name:  "Schizophrenia's positive symptoms represent a pathological dysregulation of the imagination and mental time travel categories of superior pattern processing — blurring the neural-circuit boundary between perceived and mentally-fabricated patterns",
 		Kind:  "hypothesis",
-		Brief: "Mattson's framing of schizophrenia in SPP terms: positive symptoms (hallucinations, paranoia) arise when SPP is abnormally skewed so that the neural-circuit distinction between patterns that are real and patterns that are mentally fabricated dissolves, specifically affecting the imagination and mental time travel categories of the SPP taxonomy. Advanced as an application of the broader SPP thesis to a specific psychiatric population — parallel shape to the White & Shergill reduced-top-down framing in white_shergill_commentary.go, which applies Clark's HierarchicalPredictionMachine to the same disorder from a different starting framework. The two framings target the same Concept (Schizophrenia) without sharing a predecessor theory: White & Shergill reduce top-down priors, Mattson dissolves the real-vs-imagined-pattern boundary. The contested-concept rule now fires on Schizophrenia as the fifth contested target in winze — first contested target landed via a non-source-shopped slice, and the first contested target whose two rival subjects were introduced in two different slices in the same session.",
+		Brief: "Hypothesis proposing that schizophrenia's positive symptoms arise from dysregulation in the Self-Pattern-Perception system, causing dissolution of the neural distinction between real and mentally fabricated patterns, particularly in imagination and mental time travel.",
 	}}
 )
 

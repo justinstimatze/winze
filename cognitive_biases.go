@@ -68,14 +68,14 @@ var (
 		Name:    "Cognitive bias",
 		Kind:    "concept",
 		Aliases: []string{"cognitive biases"},
-		Brief:   "Systematic patterns of deviation from norm and/or rationality in human (and some non-human animal) judgment. The umbrella meta-concept the List of cognitive biases article is about. Whether these patterns are best framed as 'errors in judgment' or as 'rational deviations from logical thought' is itself a contested meta-level question — see Gigerenzer vs the classical framing.",
+		Brief:   "Systematic patterns of deviation from rationality in human judgment and decision-making. The meta-concept encompassing documented cognitive biases and whether they constitute errors or rational adaptations.",
 	}}
 
 	EstimationBiases = Concept{&Entity{
 		ID:    "concept-estimation-biases",
 		Name:  "Estimation-task biases",
 		Kind:  "concept",
-		Brief: "One of the six top-level task-based families in the Dimara et al. 2020 classification of cognitive biases. Contains biases that operate when people are asked to assess the value of a quantity. Further sub-classified into five flavors (Association, Baseline, Inertia, Outcome, Self-perspective), though winze currently only records the top-level family membership.",
+		Brief: "A top-level category of cognitive biases affecting quantity assessment, containing five sub-types: Association, Baseline, Inertia, Outcome, and Self-perspective.",
 	}}
 )
 
@@ -135,7 +135,7 @@ var (
 		ID:    "dimara-et-al-2020",
 		Name:  "Dimara et al. 2020",
 		Kind:  "organization",
-		Brief: "Multi-author team whose 2020 paper proposed the task-based classification of cognitive biases (Estimation, Decision, Hypothesis assessment, Causal attribution, Recall, Opinion reporting) that Wikipedia's List of cognitive biases currently uses as its organising scheme. Modelled as an Organization rather than a Person because 'et al.' signals a collective attribution the ingest cannot honestly resolve to a single author.",
+		Brief: "Research team that proposed the task-based classification system for cognitive biases adopted by Wikipedia's List of cognitive biases.",
 	}}
 )
 
@@ -150,14 +150,14 @@ var (
 		ID:    "hyp-dimara-task-based-classification",
 		Name:  "Dimara et al. 2020 task-based classification of cognitive biases",
 		Kind:  "hypothesis",
-		Brief: "A classification of cognitive biases by the task in which they operate: estimation, decision, hypothesis assessment, causal attribution, recall, and opinion reporting. The biases are further sub-classified into five flavors (Association, Baseline, Inertia, Outcome, Self-perspective). This is the organising scheme currently used by the Wikipedia List of cognitive biases article.",
+		Brief: "A cognitive bias classification system organized by task type (estimation, decision, hypothesis assessment, causal attribution, recall, opinion reporting) and five behavioral flavors (Association, Baseline, Inertia, Outcome, Self-perspective).",
 	}}
 
 	GigerenzerRationalDeviationReframing = Hypothesis{&Entity{
 		ID:    "hyp-gigerenzer-rational-deviation",
 		Name:  "Cognitive biases are rational deviations from logical thought, not errors in judgment",
 		Kind:  "hypothesis",
-		Brief: "Gigerenzer's meta-level reframing: the patterns classically labelled as 'cognitive biases' should not be framed as errors in judgment at all. They arise from heuristics that are adaptive under real-world information and time constraints, and calling them errors misrepresents the cognitive architecture that produces them. This is a rival to both the classical errors-in-judgment framing and the task-based classification layered on top of it.",
+		Brief: "A hypothesis proposing that so-called cognitive biases reflect adaptive heuristics suited to real-world constraints rather than judgment errors, challenging the classical error-based framing of these phenomena.",
 	}}
 )
 

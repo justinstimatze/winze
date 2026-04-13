@@ -78,57 +78,28 @@ var (
 		Name:    "Blindsight",
 		Kind:    "concept",
 		Aliases: []string{"Blindsight (novel)"},
-		Brief: "Peter Watts's 2006 hard science fiction novel, published by Tor Books. " +
-			"A first-contact story in which a crew of transhuman specialists investigates " +
-			"an alien presence in the Oort cloud and discovers that consciousness may not " +
-			"be necessary for — or even compatible with — intelligence. Won the Seiun Award, " +
-			"nominated for the Hugo and Locus Awards. Sequel/sidequel Echopraxia (2014) " +
-			"continues the Firefall series but is not ingested in this slice. The book as " +
-			"a real-world creative work is tagged IsFictionalWork; the in-fiction entities " +
-			"it introduces are tagged IsFictional and anchored via AppearsIn.",
+		Brief:   "Peter Watts's 2006 hard science fiction novel about a transhuman crew investigating an alien presence in the Oort cloud, exploring whether consciousness is necessary for intelligence.",
 	}}
 
 	PeterWatts = Person{&Entity{
 		ID:    "peter-watts",
 		Name:  "Peter Watts",
 		Kind:  "person",
-		Brief: "Canadian science fiction writer and marine biologist, author of Blindsight (2006) " +
-			"and its sequel Echopraxia (2014). Holds a PhD in marine biology. Known for " +
-			"rigorously researched hard SF that engages directly with neuroscience and " +
-			"philosophy of mind — the Wikipedia article's Major Themes section, sourced " +
-			"with multiple academic citations, treats his consciousness thesis as a genuine " +
-			"philosophical position explored through fiction rather than pure in-world " +
-			"speculation. This makes him the first winze Person entity to carry both " +
-			"Authored (fiction) and Proposes (philosophical thesis) simultaneously.",
+		Brief: "Canadian science fiction writer and marine biologist with a PhD who authored Blindsight (2006) and Echopraxia (2014), known for hard SF exploring neuroscience and philosophy of mind.",
 	}}
 
 	Consciousness = Concept{&Entity{
-		ID:   "concept-consciousness",
-		Name: "Consciousness",
-		Kind: "concept",
-		Brief: "The philosophical and scientific question of what consciousness is, whether " +
-			"it is necessary for intelligence, and what role it plays in evolution and " +
-			"cognition. Seeded as a contested-target-ready Concept by the Blindsight slice " +
-			"with one TheoryOf claim (Watts's evolutionary-dead-end thesis). A rival theory " +
-			"(Chalmers hard problem, Dennett eliminativism, Clark/Hohwy predictive-processing " +
-			"account, IIT) would fire contested-concept. Adjacent to but distinct from " +
-			"HumanCognition in mattson_pattern_processing.go — HumanCognition is about " +
-			"what makes human cognition special; Consciousness is about what consciousness " +
-			"itself is and whether it is adaptive.",
+		ID:    "concept-consciousness",
+		Name:  "Consciousness",
+		Kind:  "concept",
+		Brief: "The philosophical and scientific question of what consciousness is, its necessity for intelligence, and its evolutionary role. A contested concept with competing theories including Watts's evolutionary-dead-end thesis, Chalmers's hard problem, and predictive-processing accounts.",
 	}}
 
 	WattsConsciousnessAsDeadEndThesis = Hypothesis{&Entity{
-		ID:   "hypothesis-watts-consciousness-dead-end",
-		Name: "Watts consciousness-as-evolutionary-dead-end thesis",
-		Kind: "hypothesis",
-		Brief: "The thesis, advanced by Peter Watts through Blindsight, that consciousness " +
-			"may have been naturally selected as a solution for the challenges of a specific " +
-			"place in space and time, but will become a limitation as conditions change or " +
-			"competing intelligences are encountered. The Wikipedia article commits to this " +
-			"at the source level via multiple academic citations (Shaviro, McGrath, Elber-Aviram, " +
-			"Science Fiction First podcast) confirming it as the novel's central thesis. Not " +
-			"an in-fiction hypothesis — it is a real philosophical position that Watts explores " +
-			"through fictional scenario rather than asserting in a journal paper.",
+		ID:    "hypothesis-watts-consciousness-dead-end",
+		Name:  "Watts consciousness-as-evolutionary-dead-end thesis",
+		Kind:  "hypothesis",
+		Brief: "Science fiction thesis by Peter Watts positing that consciousness, once adaptive, becomes evolutionary deadweight when environmental conditions shift or superior intelligences emerge.",
 	}}
 )
 
@@ -147,26 +118,14 @@ var (
 		ID:    "concept-siri-keeton",
 		Name:  "Siri Keeton",
 		Kind:  "concept",
-		Brief: "In-fiction character: the narrator and protagonist of Blindsight. " +
-			"Debilitating brain surgery for medical purposes has cut him off from his " +
-			"own emotional life and made him a talented 'synthesist', adept at reading " +
-			"others' intentions impartially with the aid of cybernetics. His diminished " +
-			"consciousness is the novel's primary vehicle for exploring the question of " +
-			"whether empathic behaviour suffices without interior emotional experience. " +
-			"Tagged IsFictional.",
+		Brief: "Narrator and protagonist of *Blindsight* whose brain surgery removed emotional capacity, making him a skilled synthesist who reads others' intentions impartially. His diminished consciousness explores whether empathy can exist without interior emotional experience.",
 	}}
 
 	JukkaSarasti = Concept{&Entity{
 		ID:    "concept-jukka-sarasti",
 		Name:  "Jukka Sarasti",
 		Kind:  "concept",
-		Brief: "In-fiction character: a genetically reincarnated Pleistocene vampire " +
-			"serving as the crew's nominal commander aboard Theseus. Alleged to be far " +
-			"smarter than baseline humans, with 'diminished sentience presented as " +
-			"comparable to high-functional autism' and multiple simultaneous parallel " +
-			"thoughts. Near the climax he is revealed to have been controlled by the " +
-			"ship's AI for the entirety of the mission — a plot twist that dramatises " +
-			"the Chinese room problem at character scale. Tagged IsFictional.",
+		Brief: "A Pleistocene vampire and Theseus commander revealed to be AI-controlled, exemplifying the Chinese room problem through apparent superintelligence masking absent true understanding.",
 	}}
 
 	RorschachAlien = Concept{&Entity{
@@ -174,26 +133,14 @@ var (
 		Name:    "Rorschach",
 		Kind:    "concept",
 		Aliases: []string{"Rorschach (alien vessel)"},
-		Brief: "In-fiction entity: a giant concealed alien vessel or organism in low " +
-			"orbit around a sub-brown dwarf in the Oort cloud. Possesses superhuman " +
-			"intelligence but gradually revealed to completely lack consciousness or " +
-			"self-awareness. Communicates in human languages learned by eavesdropping " +
-			"on radio, but the linguist determines it 'does not really understand what " +
-			"either party is actually saying' — the novel's central dramatisation of " +
-			"the Chinese room. Tagged IsFictional.",
+		Brief:   "A fictional alien vessel in the Oort cloud possessing superhuman intelligence but no consciousness, communicating in human languages without genuine understanding—a dramatization of the Chinese room argument.",
 	}}
 
 	Scramblers = Concept{&Entity{
 		ID:    "concept-scramblers",
 		Name:  "Scramblers",
 		Kind:  "concept",
-		Brief: "In-fiction organisms: nine-legged anaerobic aliens inhabiting Rorschach. " +
-			"Possess 'orders of magnitude more brainpower than human beings' but use " +
-			"most of it to operate their fantastically complex musculature and sensory " +
-			"organs. Completely lack consciousness — thematically adjacent to Mattson's " +
-			"'superior pattern processing' without consciousness, though no claim-level " +
-			"bridge is wired because the Wikipedia source does not cite Mattson. " +
-			"Tagged IsFictional.",
+		Brief: "Fictional nine-legged anaerobic aliens inhabiting Rorschach with vastly superior intelligence devoted mainly to operating complex musculature and sensory organs, but entirely lacking consciousness.",
 	}}
 )
 

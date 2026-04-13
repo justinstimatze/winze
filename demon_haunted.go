@@ -120,14 +120,14 @@ var (
 		ID:    "carl-sagan",
 		Name:  "Carl Sagan",
 		Kind:  "person",
-		Brief: "American astronomer, planetary scientist, and science communicator (1934–1996). Author of The Demon-Haunted World: Science as a Candle in the Dark (1995), one of the most widely-read popular-science treatments of scientific skepticism, the scientific method, and the distinction between valid science and pseudoscience. Invented the 'baloney detection kit' framing (co-attributed in a 2020 Skeptical Inquirer interview by Ann Druyan to Sagan's friend Arthur Felberbaum), the 'dragon in my garage' thought experiment illustrating falsifiability, and a catalogue of twenty logical fallacies to avoid in skeptical reasoning. Hub entity: positioned so subsequent ingests on skepticism, philosophy of science, pseudoscience debunking, or the biographies of Hume / Popper / Russell / Feyerabend can cite him cheaply.",
+		Brief: "American astronomer and science communicator (1934–1996) who advanced scientific skepticism through works like The Demon-Haunted World and concepts such as the \"baloney detection kit\" and \"dragon in my garage\" thought experiment.",
 	}}
 
 	AnnDruyan = Person{&Entity{
 		ID:    "ann-druyan",
 		Name:  "Ann Druyan",
 		Kind:  "person",
-		Brief: "American author and science communicator, Carl Sagan's wife and frequent collaborator. Co-wrote four of the 25 chapters of The Demon-Haunted World (1995). In a 2020 Skeptical Inquirer interview she attributed the original framing of the 'baloney detection kit' phrase to a friend of hers named Arthur Felberbaum, not to Sagan — a minor attribution disagreement recorded here for the benefit of a future slice that wants to surface competing origin claims for named concepts.",
+		Brief: "American author and science communicator; wife and frequent collaborator of Carl Sagan. Co-wrote four chapters of The Demon-Haunted World (1995).",
 	}}
 
 	DemonHauntedWorld = Concept{&Entity{
@@ -135,7 +135,7 @@ var (
 		Name:    "The Demon-Haunted World: Science as a Candle in the Dark",
 		Kind:    "concept",
 		Aliases: []string{"Demon-Haunted World"},
-		Brief:   "Carl Sagan's 1995 Random House book on scientific skepticism, the scientific method, and the demarcation of science from pseudoscience. Four chapters co-written with Ann Druyan. Contains the 'baloney detection kit' catalogue of skeptical-thinking tools and logical-fallacy avoidance list, the 'dragon in my garage' falsifiability thought experiment, and extended critiques of specific pseudoscience claims (UFOs, ESP, faith healing, repressed-memory therapy, alien abduction). The book is a real-world creative work but not fiction — winze currently has no IsNonfictionWork tag because one-off tag invention is premature; the name and Brief do the content work until a second non-fiction book forces the predicate.",
+		Brief:   "1995 book by Carl Sagan and Ann Druyan on scientific skepticism and the demarcation of science from pseudoscience, featuring the \"baloney detection kit\" and critiques of UFOs, ESP, and other pseudoscience claims.",
 	}}
 
 	ScientificSkepticism = Concept{&Entity{
@@ -143,14 +143,14 @@ var (
 		Name:    "Scientific skepticism",
 		Kind:    "concept",
 		Aliases: []string{"scientific skeptic movement", "skepticism"},
-		Brief:   "A position in the philosophy of science that holds empirical claims should be approached with critical inquiry and tested by the standards of the scientific method, with demonstrable belief proportional to evidence. The umbrella concept Sagan's Demon-Haunted World defends for a popular audience. Also the organising concept of the Skeptics Society, founded by Michael Shermer and Pat Linse in 1991 — the Skeptics Society's AffiliatedWith claim on the existing apophenia.go MichaelShermer entity is the first real cross-file entity reference in winze outside the Clark bridge.",
+		Brief:   "Philosophical position holding that empirical claims should be tested by scientific method and belief proportioned to evidence. Foundational concept of the Skeptics Society.",
 	}}
 
 	Falsifiability = Concept{&Entity{
 		ID:    "concept-falsifiability",
 		Name:  "Falsifiability",
 		Kind:  "concept",
-		Brief: "The principle, most famously associated with Karl Popper, that a hypothesis is scientific if and only if it is possible in principle to devise an observation that would count against it. The demarcation criterion separating science from non-science. Sagan's dragon-in-garage thought experiment is a popular-audience illustration of the principle: a hypothesis whose defender can always invent a new reason why any proposed test would not work has no empirical content, and is therefore not scientific regardless of how sincerely it is held.",
+		Brief: "The principle that a scientific hypothesis must be testable and potentially disprovable through observation. A demarcation criterion distinguishing science from non-science, most famously articulated by Karl Popper.",
 	}}
 
 	BaloneyDetectionKit = Concept{&Entity{
@@ -158,7 +158,7 @@ var (
 		Name:    "Baloney detection kit",
 		Kind:    "concept",
 		Aliases: []string{"BDK"},
-		Brief:   "Sagan's popular-audience catalogue of skeptical-thinking tools, introduced in The Demon-Haunted World. Nine constructive tools (independent confirmation, encouraging debate, recognising argument-from-authority is unreliable, considering multiple hypotheses, avoiding bias toward one's own hypothesis, quantification, chain-of-argument validation, Occam's razor, falsifiability) plus twenty named logical fallacies to avoid (ad hominem, argument from authority, appeal to ignorance, special pleading, begging the question, observational selection, statistics of small numbers, non sequitur, post hoc ergo propter hoc, excluded middle, slippery slope, confusion of correlation and causation, straw man, suppressed evidence, weasel word, among others). Attribution of the phrase itself is contested: Ann Druyan in 2020 credited the original framing to Arthur Felberbaum, though the catalogue as published is Sagan's.",
+		Brief:   "A set of nine critical-thinking tools and twenty logical fallacies presented by Carl Sagan in The Demon-Haunted World to evaluate claims and detect faulty reasoning.",
 	}}
 
 	WhyPeopleBelieveWeirdThings = Concept{&Entity{
@@ -166,7 +166,7 @@ var (
 		Name:    "Why People Believe Weird Things",
 		Kind:    "concept",
 		Aliases: []string{"WPBWT"},
-		Brief:   "Michael Shermer's 1997 book, full title Why People Believe Weird Things: Pseudoscience, Superstition, and Other Confusions of Our Time. The Michael Shermer Wikipedia article explicitly attributes the first use of 'patternicity' to this book (1997), disagreeing with the Apophenia Wikipedia article which dates the coinage to 2008. Winze records both datings by preserving the two source quotes in their respective Provenance records and flagging the dispute in the ShermerPatternicityFraming Brief in apophenia.go; no functional predicate is earned for this single occurrence.",
+		Brief:   "Michael Shermer's 1997 book exploring why people accept pseudoscience, superstition, and irrational beliefs. Often credited as the first use of the term \"patternicity.",
 	}}
 )
 
@@ -180,7 +180,7 @@ var (
 		ID:    "org-skeptics-society",
 		Name:  "The Skeptics Society",
 		Kind:  "organization",
-		Brief: "American non-profit organisation founded in 1991 by Michael Shermer and Pat Linse in Los Angeles, promoting scientific skepticism and debunking pseudoscience. Publishes Skeptic magazine and organises the Caltech Lecture Series. Had over 50,000 members as of 2017. The Skeptics Society's relation to the broader Scientific Skepticism concept is via its role as the organising institution that crystallised the skeptical-movement network Sagan had popularised four years earlier in The Demon-Haunted World.",
+		Brief: "American non-profit organization founded in 1991 by Michael Shermer and Pat Linse that promotes scientific skepticism and debunks pseudoscience through Skeptic magazine and the Caltech Lecture Series.",
 	}}
 )
 
@@ -193,14 +193,14 @@ var (
 		ID:    "hyp-dragon-in-garage",
 		Name:  "A hypothesis whose defender always invents a reason why any proposed test would not work has no empirical content and is not scientific",
 		Kind:  "hypothesis",
-		Brief: "Sagan's illustration of falsifiability via a staged dialogue about a fire-breathing dragon living in his garage. The dragon is invisible, floats in the air, and breathes heatless fire — each new test proposed by the visitor is countered by a new reason the test will not work. Sagan concludes: 'Now what's the difference between an invisible, incorporeal, floating dragon who spits heatless fire and no dragon at all? ... Your inability to invalidate my hypothesis is not at all the same thing as proving it true.' The argument is presented in The Demon-Haunted World as a popular-audience illustration of the Popperian demarcation criterion, not as a novel philosophical contribution — Sagan's value-add is pedagogical rather than theoretical.",
+		Brief: "Thought experiment by Carl Sagan illustrating falsifiability: a dragon in his garage with undetectable properties (invisible, incorporeal, heatless fire) that cannot be tested, demonstrating why unfalsifiable claims lack scientific validity.",
 	}}
 
 	BaloneyDetectionKitThesis = Hypothesis{&Entity{
 		ID:    "hyp-baloney-detection-kit-thesis",
 		Name:  "A catalogue of fallacy-detection tools and named logical fallacies is a practical method by which laypeople can distinguish valid scientific claims from pseudoscience",
 		Kind:  "hypothesis",
-		Brief: "The central thesis of the baloney detection kit section of The Demon-Haunted World. Sagan proposes that the tools of scientific thinking — typically learned implicitly through research training — can be made explicit and taught to laypeople as a bounded checklist, and that doing so enables ordinary readers to distinguish empirical claims from pseudoscientific assertions without needing specialist expertise. The thesis is a popular-education claim, not a claim about the philosophy of science — compare with Hempel, Popper, Kuhn, or Feyerabend, who make foundational claims Sagan's book takes as given.",
+		Brief: "Sagan's thesis that scientific thinking tools can be made explicit as a checklist and taught to laypeople to distinguish empirical claims from pseudoscience without specialist expertise.",
 	}}
 )
 

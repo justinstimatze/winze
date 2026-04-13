@@ -73,21 +73,21 @@ var (
 		Name:    "Predictive processing",
 		Kind:    "concept",
 		Aliases: []string{"predictive coding", "prediction error minimisation"},
-		Brief:   "Cognitive-science paradigm that treats the brain as fundamentally a hierarchical prediction machine: top-down generative models continuously predict incoming sensory input, and learning is driven by the minimisation of prediction error at every level of the hierarchy. Perception, attention, and action are all reframed as instances of the same prediction-error-minimisation loop. The Clark 2013 target article is the canonical journal-length articulation of the framework for a cognitive-science audience, but the underlying mathematical apparatus descends from earlier work on predictive coding in vision (Rao and Ballard 1999) and the free-energy principle (Friston). Left as a Concept rather than reified into its own Hypothesis because it names a research paradigm — a family of overlapping theories — rather than a single testable claim.",
+		Brief:   "Cognitive-science paradigm treating the brain as a hierarchical prediction machine that minimizes prediction error across sensory, attentional, and motor processes through top-down generative models.",
 	}}
 
 	AndyClark = Person{&Entity{
 		ID:    "andy-clark",
 		Name:  "Andy Clark",
 		Kind:  "person",
-		Brief: "British philosopher of mind and cognitive scientist at the University of Sussex (previously Edinburgh), known for the extended-mind thesis (with David Chalmers, 1998) and for influential work on predictive processing. Author of the 2013 Behavioral and Brain Sciences target article 'Whatever next?' which received 30+ peer commentaries and is the canonical journal articulation of predictive processing for a cross-disciplinary audience. Also cited by Hannu Rajaniemi in The Fractal Prince acknowledgments as an influence on the novel's 'mind as self-loop' treatment — see the InfluencedBy claim in quantum_thief.go for the cross-ingest bridge.",
+		Brief: "British philosopher of mind known for the extended-mind thesis and influential work on predictive processing, including the 2013 target article \"Whatever next?",
 	}}
 
 	HierarchicalPredictionMachine = Hypothesis{&Entity{
 		ID:    "hyp-hierarchical-prediction-machine",
 		Name:  "The brain is a hierarchical prediction machine that minimises prediction error",
 		Kind:  "hypothesis",
-		Brief: "Clark's central thesis in 'Whatever next?' (2013): the brain functions fundamentally as a prediction system that constantly matches incoming sensory inputs against top-down expectations, with learning and action both subserved by the minimisation of prediction error across a hierarchy of generative models. The thesis is advanced as 'the best clue yet to the shape of a unified science of mind and action' — qualified optimism rather than settled consensus, with substantial unresolved challenges acknowledged in the article.",
+		Brief: "A hypothesis that the brain operates as a hierarchical prediction system minimizing prediction error through top-down expectations matched against sensory input, subserving both learning and action.",
 	}}
 )
 

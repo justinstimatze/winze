@@ -192,7 +192,7 @@ var (
 		Name:    "Human universals",
 		Kind:    "concept",
 		Aliases: []string{"Brown's universals", "human cultural universals"},
-		Brief:   "The set of ~300 behavioural, cognitive, linguistic, social, and material-culture patterns compiled by Donald E. Brown as allegedly present in every documented human society. Originally enumerated in Brown 1991 'Human Universals' (McGraw-Hill) and republished as an appendix in Steven Pinker's 2002 'The Blank Slate', the list spans items as varied as language, music, marriage, grammar, fear of death, mythology, tool making, divination, kin-term taxonomy, and belief in the supernatural. The DePaul course handout that serves as winze's ingest source hosts the list verbatim in alphabetical order with no categorical organisation and no per-item commentary. Treated as a standalone Concept rather than folded into HumanCognition because Brown's claim is specifically about cross-cultural regularity, not about cognitive substrate — a future slice reading Pinker's actual framing in Blank Slate could honestly wire a second TheoryOf(HumanCognition) claim to fire the contested-concept rule against Mattson's SPP thesis (seeded for that purpose in mattson_pattern_processing.go), but the DePaul page alone does not commit to that framing and this slice does not fabricate it. The non-functional BelongsTo predicate lets individual universals belong simultaneously to this meta-category and to future categorical groupings (linguistic / social / cognitive / ritual families) without a schema touch.",
+		Brief:   "Approximately 300 behavioural, cognitive, linguistic, social, and material-culture patterns documented across all known human societies, compiled by Donald E. Brown and republished in Steven Pinker's *The Blank Slate*.",
 	}}
 
 	BrownHumanUniversalsBook1991 = Concept{&Entity{
@@ -200,21 +200,21 @@ var (
 		Name:    "Brown 1991 Human Universals",
 		Kind:    "concept",
 		Aliases: []string{"Human Universals (Brown 1991)", "Brown's Human Universals book"},
-		Brief:   "Donald E. Brown's 1991 book 'Human Universals' (McGraw-Hill), the primary source for the enumerated list of ~300 cross-cultural universals wired into winze via this slice. Republished as an appendix in Steven Pinker's 2002 'The Blank Slate', which is where most subsequent readers encounter the list; the DePaul course handout winze ingests is itself a verbatim rehosting of the Pinker appendix. Represented as a paper-shape Concept following the session-5 pattern established by ClarkWhateverNextPaper and Mattson2014SPPPaper — books and papers both fit the Concept-with-Authored shape without earning a dedicated Paper role. Pinker and Blank Slate are deliberately not reified as entities in this slice because the DePaul source provides no Pinker-authored content that would justify a structural claim beyond the citation lineage already captured in Provenance.Origin.",
+		Brief:   "1991 anthropology book enumerating approximately 300 human cultural universals across societies, establishing the foundational list subsequently republished in Pinker's 2002 work.",
 	}}
 
 	DonaldEBrown = Person{&Entity{
 		ID:    "donald-e-brown",
 		Name:  "Donald E. Brown",
 		Kind:  "person",
-		Brief: "American anthropologist, author of the 1991 book 'Human Universals' which compiled the list of ~300 behavioural, cognitive, social, and cultural patterns allegedly present in every documented human society. At the time of publication Brown was affiliated with the Department of Anthropology at the University of California, Santa Barbara. Brown's central thesis — that there exists a substantial and enumerable set of human universals that empirical anthropology has systematically under-reported — positions him in explicit tension with the strong-social-constructionist traditions dominant in mid-20th-century anthropology, though the DePaul course handout that serves as winze's ingest source is reticent about this framing and the slice does not reify the scholarly context beyond a Brief mention.",
+		Brief: "American anthropologist who compiled a list of approximately 300 universal behavioral and cultural patterns across all documented human societies in his 1991 book \"Human Universals.",
 	}}
 
 	BrownHumanUniversalsThesis = Hypothesis{&Entity{
 		ID:    "hyp-brown-human-universals-thesis",
 		Name:  "There exists a substantial, enumerable, and systematically under-reported set of behavioural, cognitive, linguistic, social, and material-culture patterns present in every documented human society — cross-cultural universality is a load-bearing empirical finding, not a methodological artefact of Western ethnography",
 		Kind:  "hypothesis",
-		Brief: "Brown's central claim in the 1991 book. The thesis has two linked parts: (1) an empirical enumeration — there are ~300 such universals and they span linguistic (grammar, phonemes, figurative speech), social (marriage, kin groups, law, division of labor), cognitive (classification, memory, planning, attempts to predict the future), aesthetic (music, dance, body adornment, poetry), and material-culture (cooking, tool making, fire) domains; (2) a meta-methodological claim that mainstream 20th-century anthropology systematically under-reported such universals because its theoretical commitments favored cultural-relative frameworks, and that a honest survey recovers a substantive human nature the constructionist tradition had buried. This slice wires the thesis as TheoryOf(HumanUniversals) — the target Concept is the universality-claim itself rather than human cognition broadly, because the DePaul course handout commits to the former but not explicitly to the latter. A future slice reading Pinker's actual Blank Slate framing (which does extend Brown's list into an argument about cognitive architecture) could honestly add a TheoryOf(HumanCognition) rival to Mattson's SPP thesis and fire the contested-concept rule on HumanCognition for the first time.",
+		Brief: "Anthropologist Donald Brown's 1991 claim that ~300 human universals span linguistic, social, cognitive, aesthetic, and material domains, arguing 20th-century anthropology systematically underreported them due to cultural-relativist bias.",
 	}}
 )
 
@@ -232,7 +232,7 @@ var (
 		Name:    "Language",
 		Kind:    "concept",
 		Aliases: []string{"language (human universal)", "natural language"},
-		Brief:   "The capacity for structured symbolic communication — a universal human trait present in every documented human society. Appears verbatim on Brown's list ('language') alongside the related items 'grammar', 'phonemes', 'figurative speech', 'metaphor', 'poetry', and 'narrative' — five of which are plausible future-accretion targets for this slice without any schema work. Language is treated as a standalone Concept rather than bridged to any existing winze entity because winze does not currently have a language-specific entity; Mattson 2014 names language as one of the five SPP sub-types in mattson_pattern_processing.go but does not reify it as its own Concept, and the Brief-level cross-ingest reference to Mattson's SPP list is noted here rather than forced as a BelongsTo edge that neither source directly commits to.",
+		Brief:   "Structured symbolic communication system universal to all documented human societies. Foundational human capacity for grammar, phonemes, figurative speech, and narrative.",
 	}}
 
 	MusicUniversal = Concept{&Entity{
@@ -240,7 +240,7 @@ var (
 		Name:    "Music",
 		Kind:    "concept",
 		Aliases: []string{"music (human universal)"},
-		Brief:   "The universal human practice of organised sound with melodic, rhythmic, and expressive structure. Appears verbatim on Brown's list as 'music'; related items on the list include 'melody', 'dance', 'poetry', 'rhythm', and 'aesthetics' — cluster candidates for a future slice building out aesthetic-domain universals. Music is listed by Brown without further per-item commentary on the DePaul course page, so the Brief carries no additional mechanistic, evolutionary, or cross-cultural claim beyond 'Brown's list includes music'.",
+		Brief:   "Human practice of organized sound with melodic, rhythmic, and expressive structure, appearing on Brown's list of cultural universals.",
 	}}
 
 	MarriageUniversal = Concept{&Entity{
@@ -248,7 +248,7 @@ var (
 		Name:    "Marriage",
 		Kind:    "concept",
 		Aliases: []string{"marriage (human universal)"},
-		Brief:   "The universal human institution of formalised pair-bonding with socially recognised rights, obligations, and kin-term consequences. Appears verbatim on Brown's list alongside related items 'family', 'kin groups', 'incest prevention or avoidance', 'inheritance rules', and 'division of labor by sex' — a social-domain cluster that a future slice can build out with additional Concept + BelongsTo pairs. The specific form marriage takes varies across societies (the DePaul page does not commit to a universal structure beyond 'marriage exists'), and winze follows the source's reticence: this slice reifies marriage-as-universal-category without claiming anything about what marriage-in-general looks like.",
+		Brief:   "Formalised pair-bonding institution appearing as a human universal, with socially recognised rights, obligations, and kin consequences. Specific forms vary across societies.",
 	}}
 
 	FearOfDeath = Concept{&Entity{
@@ -256,7 +256,7 @@ var (
 		Name:    "Fear of death",
 		Kind:    "concept",
 		Aliases: []string{"death anxiety"},
-		Brief:   "The universal human emotional response to anticipated mortality. Appears verbatim on Brown's list as 'fear of death', adjacent to 'death rituals' and 'mourning' as a cluster of mortality-related universals. Notably distinct from the cognitive universals also on Brown's list (memory, classification, planning) because its commitment is affective rather than computational — whereas the SPP framework in mattson_pattern_processing.go centres on cognitive-computational machinery, Brown's list is openly pluralistic about which domains of human experience count as universal. The distinction is Brief-level only; no structural claim linking the two framings is wired here because neither source commits.",
+		Brief:   "Psychological universal characterized by emotional anticipation of mortality. Listed by Brown among cross-cultural emotional responses alongside death rituals and mourning practices.",
 	}}
 
 	Mythology = Concept{&Entity{
@@ -264,7 +264,7 @@ var (
 		Name:    "Mythology",
 		Kind:    "concept",
 		Aliases: []string{"myths", "myth"},
-		Brief:   "The universal human practice of narrative frameworks explaining origins, cosmos, moral order, and the supernatural. Appears verbatim on Brown's list as 'myths'; related items include 'belief in supernatural/religion', 'folklore', 'narrative', and 'magic'. Adjacent to the demon_haunted.go neighbourhood where Carl Sagan's DragonInGarageArgument and the BaloneyDetectionKit engage skeptically with supernatural beliefs — but mirror-source-commitments forbids a structural bridge because Brown's list is purely descriptive (myths exist universally) while Sagan's framing is normative (myths about dragons should be falsifiable). The two live in the same conceptual neighbourhood without sharing a direct claim-level connection.",
+		Brief:   "Narrative framework found in all human cultures that explains origins, cosmos, moral order, and the supernatural.",
 	}}
 
 	ToolMaking = Concept{&Entity{
@@ -272,7 +272,7 @@ var (
 		Name:    "Tool making",
 		Kind:    "concept",
 		Aliases: []string{"tool making (human universal)", "toolmaking"},
-		Brief:   "The universal human practice of fabricating physical artefacts for instrumental use. Both 'tool making' and 'tools' appear verbatim on Brown's list as distinct items — Brown distinguishes the activity from the resulting artefacts — and the DePaul page preserves the distinction. Winze reifies only tool making (the activity) here to avoid an entity-parasitic pair whose only claim is a redundant tool-artefact-vs-tool-activity relation. Material-culture-domain universal, companion to 'fire' and 'cooking' on the list; a future slice can build out the material-culture cluster incrementally.",
+		Brief:   "The universal human practice of fabricating physical artifacts for instrumental use; distinguished from the resulting tools themselves as an activity-based cultural universal.",
 	}}
 )
 

@@ -40,11 +40,20 @@ import (
 // --- topology output types (subset) ---
 
 type TopologyReport struct {
-	Entities      int            `json:"entities"`
-	Claims        int            `json:"claims"`
-	Edges         int            `json:"edges"`
-	Clusters      int            `json:"clusters"`
-	SensorTargets []SensorTarget `json:"sensor_targets"`
+	Entities        int               `json:"entities"`
+	Claims          int               `json:"claims"`
+	Edges           int               `json:"edges"`
+	Clusters        int               `json:"clusters"`
+	Vulnerabilities []TopologyVuln    `json:"vulnerabilities"`
+	SensorTargets   []SensorTarget    `json:"sensor_targets"`
+}
+
+type TopologyVuln struct {
+	Type        string   `json:"type"`
+	Severity    string   `json:"severity"`
+	Entity      string   `json:"entity"`
+	Description string   `json:"description"`
+	ClaimNames  []string `json:"claim_names,omitempty"`
 }
 
 type SensorTarget struct {
@@ -116,6 +125,9 @@ func main() {
 	entityCap := flag.Int("entity-cap", 250, "max entities allowed in KB; refuse ingest/pipeline above this")
 	pipeline := flag.Bool("pipeline", false, "full quality pipeline: ingest → build → vet → lint → llm-contradiction → commit/reject")
 	llmBudget := flag.Int("llm-budget", 3, "max LLM calls for contradiction check in pipeline mode")
+	dream := flag.Bool("dream", false, "consolidation cycle: analyze KB health via topology+lint+adit, report maintenance opportunities (no new ingest)")
+	fix := flag.Bool("fix", false, "auto-fix dream findings (with --dream; requires ANTHROPIC_API_KEY for --tighten)")
+	tighten := flag.Bool("tighten", false, "also tighten overlong Briefs via LLM (with --dream --fix)")
 	jsonOut := flag.Bool("json", false, "output as JSON")
 	backend := flag.String("backend", "arxiv", "sensor backend: arxiv, zim, or all")
 	zimPath := flag.String("zim", "", "path to .zim file (required for zim backend)")
@@ -185,6 +197,15 @@ func main() {
 			os.Exit(1)
 		}
 		runIngest(dir, *zimPath, *zimIndex)
+		return
+	}
+
+	if *dream {
+		if *fix {
+			runDreamFix(dir, *tighten, *dryRun, *jsonOut)
+		} else {
+			runDream(dir, *jsonOut)
+		}
 		return
 	}
 
@@ -534,6 +555,104 @@ func runResolve(dir, spec string) {
 
 // --- calibration ---
 
+// hypothesisScore aggregates all cycles for a single hypothesis into a verdict.
+type hypothesisScore struct {
+	Name           string  `json:"name"`
+	VulnType       string  `json:"vuln_type"`
+	TotalCycles    int     `json:"total_cycles"`
+	WithSignal     int     `json:"with_signal"`
+	Corroborated   int     `json:"corroborated"`
+	Challenged     int     `json:"challenged"`
+	Irrelevant     int     `json:"irrelevant"`
+	NoSignal       int     `json:"no_signal"`
+	Pending        int     `json:"pending"`
+	Verdict        string  `json:"verdict"`          // corroborated|challenged|irrelevant|no_signal|pending
+	CyclesToVerdict int    `json:"cycles_to_verdict"` // cycles until first useful resolution; 0 if pending
+	Precision      float64 `json:"precision"`         // useful cycles / signal cycles (0 if no signal)
+}
+
+func scoreHypotheses(cycles []Cycle) []hypothesisScore {
+	// Group cycles by hypothesis, preserving order of first appearance.
+	type entry struct {
+		cycles []Cycle
+		vulnType string
+	}
+	byHyp := map[string]*entry{}
+	var order []string
+	for _, c := range cycles {
+		e, ok := byHyp[c.Hypothesis]
+		if !ok {
+			e = &entry{vulnType: c.VulnType}
+			byHyp[c.Hypothesis] = e
+			order = append(order, c.Hypothesis)
+		}
+		e.cycles = append(e.cycles, c)
+	}
+
+	var scores []hypothesisScore
+	for _, name := range order {
+		e := byHyp[name]
+		s := hypothesisScore{Name: name, VulnType: e.vulnType}
+		for _, c := range e.cycles {
+			s.TotalCycles++
+			if c.PapersFound > 0 {
+				s.WithSignal++
+			}
+			switch c.Resolution {
+			case "corroborated":
+				s.Corroborated++
+			case "challenged":
+				s.Challenged++
+			case "irrelevant":
+				s.Irrelevant++
+			case "no_signal":
+				s.NoSignal++
+			default:
+				s.Pending++
+			}
+		}
+
+		// Verdict: best resolution wins (corroborated > challenged > irrelevant > no_signal > pending).
+		switch {
+		case s.Corroborated > 0:
+			s.Verdict = "corroborated"
+		case s.Challenged > 0:
+			s.Verdict = "challenged"
+		case s.Pending > 0:
+			s.Verdict = "pending"
+		case s.Irrelevant > 0:
+			s.Verdict = "irrelevant"
+		default:
+			s.Verdict = "no_signal"
+		}
+
+		// Cycles to verdict: count cycles until first corroborated or challenged.
+		if s.Verdict == "corroborated" || s.Verdict == "challenged" {
+			for i, c := range e.cycles {
+				if c.Resolution == "corroborated" || c.Resolution == "challenged" {
+					s.CyclesToVerdict = i + 1
+					break
+				}
+			}
+		}
+
+		// Precision: signal cycles with useful resolution / total signal cycles.
+		// Only counts cycles where papers were actually found AND resolution was useful.
+		if s.WithSignal > 0 {
+			usefulSignal := 0
+			for _, c := range e.cycles {
+				if c.PapersFound > 0 && (c.Resolution == "corroborated" || c.Resolution == "challenged") {
+					usefulSignal++
+				}
+			}
+			s.Precision = float64(usefulSignal) / float64(s.WithSignal) * 100
+		}
+
+		scores = append(scores, s)
+	}
+	return scores
+}
+
 func runCalibrate(dir string, jsonOut bool) {
 	logPath := filepath.Join(dir, ".metabolism-log.json")
 	mlog := loadLog(logPath)
@@ -583,43 +702,54 @@ func runCalibrate(dir string, jsonOut bool) {
 		}
 	}
 
-	if jsonOut {
-		type CalReport struct {
-			TotalCycles int     `json:"total_cycles"`
-			SignalRate   float64 `json:"signal_rate"`
-			WithSignal  int     `json:"with_signal"`
-			TotalPapers int     `json:"total_papers"`
-			Earliest    string  `json:"earliest"`
-			Latest      string  `json:"latest"`
+	// Score hypotheses
+	scores := scoreHypotheses(mlog.Cycles)
+
+	// Aggregate prediction accuracy across hypotheses.
+	var resolved, hits, misses, pending int
+	var totalCyclesToVerdict int
+	var hitsWithCycles int
+	for _, s := range scores {
+		switch s.Verdict {
+		case "corroborated", "challenged":
+			resolved++
+			hits++
+			totalCyclesToVerdict += s.CyclesToVerdict
+			hitsWithCycles++
+		case "irrelevant", "no_signal":
+			resolved++
+			misses++
+		case "pending":
+			pending++
 		}
-		r := CalReport{
-			TotalCycles: overall.total,
-			SignalRate:   pct(overall.withSignal, overall.total),
-			WithSignal:  overall.withSignal,
-			TotalPapers: overall.totalPaper,
-			Earliest:    earliest.Format("2006-01-02"),
-			Latest:      latest.Format("2006-01-02"),
-		}
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(r)
-		return
 	}
 
-	fmt.Printf("[calibrate] %d cycles logged (%s to %s)\n\n",
-		len(mlog.Cycles), earliest.Format("2006-01-02"), latest.Format("2006-01-02"))
-	fmt.Printf("  overall signal rate: %.0f%% (%d/%d targets had papers)\n",
-		pct(overall.withSignal, overall.total), overall.withSignal, overall.total)
-	fmt.Printf("  total papers found:  %d (avg %.1f per target)\n\n",
-		overall.totalPaper, avg(overall.totalPaper, overall.total))
-
-	fmt.Println("  by vulnerability type:")
-	for vt, s := range byVuln {
-		fmt.Printf("    %-25s %.0f%% signal (%d/%d), avg %.1f papers\n",
-			vt, pct(s.withSignal, s.total), s.withSignal, s.total, avg(s.totalPaper, s.total))
+	// By vuln type accuracy (per hypothesis, not per cycle).
+	type vulnAccuracy struct {
+		hypotheses int
+		hits       int
+		misses     int
+		pending    int
+	}
+	byVulnAcc := map[string]*vulnAccuracy{}
+	for _, s := range scores {
+		vt := s.VulnType
+		if byVulnAcc[vt] == nil {
+			byVulnAcc[vt] = &vulnAccuracy{}
+		}
+		a := byVulnAcc[vt]
+		a.hypotheses++
+		switch s.Verdict {
+		case "corroborated", "challenged":
+			a.hits++
+		case "irrelevant", "no_signal":
+			a.misses++
+		default:
+			a.pending++
+		}
 	}
 
-	// Resolution stats
+	// Resolution stats (per cycle)
 	resolutions := map[string]int{}
 	unresolved := 0
 	for _, c := range mlog.Cycles {
@@ -629,16 +759,117 @@ func runCalibrate(dir string, jsonOut bool) {
 			unresolved++
 		}
 	}
-	if len(resolutions) > 0 || unresolved > 0 {
-		fmt.Println("  resolutions:")
-		for _, r := range []string{"corroborated", "challenged", "irrelevant"} {
-			if n := resolutions[r]; n > 0 {
-				fmt.Printf("    %-15s %d\n", r, n)
-			}
+
+	if jsonOut {
+		type VulnTypeScore struct {
+			VulnType   string  `json:"vuln_type"`
+			Hypotheses int     `json:"hypotheses"`
+			Hits       int     `json:"hits"`
+			Misses     int     `json:"misses"`
+			Pending    int     `json:"pending"`
+			HitRate    float64 `json:"hit_rate"`
 		}
-		if unresolved > 0 {
-			fmt.Printf("    %-15s %d\n", "pending", unresolved)
+		type CalReport struct {
+			TotalCycles int     `json:"total_cycles"`
+			SignalRate  float64 `json:"signal_rate"`
+			WithSignal  int     `json:"with_signal"`
+			TotalPapers int     `json:"total_papers"`
+			Earliest    string  `json:"earliest"`
+			Latest      string  `json:"latest"`
+			// Prediction accuracy (per hypothesis)
+			Hypotheses    int              `json:"hypotheses"`
+			HitRate       float64          `json:"hit_rate"`
+			Hits          int              `json:"hits"`
+			Misses        int              `json:"misses"`
+			Pending       int              `json:"pending"`
+			AvgCyclesToHit float64         `json:"avg_cycles_to_hit"`
+			ByVulnType    []VulnTypeScore  `json:"by_vuln_type"`
+			Scores        []hypothesisScore `json:"scores"`
 		}
+		r := CalReport{
+			TotalCycles: overall.total,
+			SignalRate:  pct(overall.withSignal, overall.total),
+			WithSignal:  overall.withSignal,
+			TotalPapers: overall.totalPaper,
+			Earliest:    earliest.Format("2006-01-02"),
+			Latest:      latest.Format("2006-01-02"),
+			Hypotheses:  len(scores),
+			HitRate:     pct(hits, hits+misses),
+			Hits:        hits,
+			Misses:      misses,
+			Pending:     pending,
+			AvgCyclesToHit: avg(totalCyclesToVerdict, hitsWithCycles),
+			Scores:      scores,
+		}
+		for vt, a := range byVulnAcc {
+			r.ByVulnType = append(r.ByVulnType, VulnTypeScore{
+				VulnType:   vt,
+				Hypotheses: a.hypotheses,
+				Hits:       a.hits,
+				Misses:     a.misses,
+				Pending:    a.pending,
+				HitRate:    pct(a.hits, a.hits+a.misses),
+			})
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(r)
+		return
+	}
+
+	// --- text output ---
+
+	fmt.Printf("[calibrate] %d cycles logged (%s to %s)\n\n",
+		len(mlog.Cycles), earliest.Format("2006-01-02"), latest.Format("2006-01-02"))
+
+	// Signal quantity (existing)
+	fmt.Printf("  signal quantity (per cycle):\n")
+	fmt.Printf("    signal rate:       %.0f%% (%d/%d cycles found papers)\n",
+		pct(overall.withSignal, overall.total), overall.withSignal, overall.total)
+	fmt.Printf("    total papers:      %d (avg %.1f per cycle)\n\n",
+		overall.totalPaper, avg(overall.totalPaper, overall.total))
+
+	// Prediction accuracy (new — the core metric)
+	fmt.Printf("  prediction accuracy (per hypothesis):\n")
+	fmt.Printf("    hypotheses scored: %d\n", len(scores))
+	if resolved > 0 {
+		fmt.Printf("    hit rate:          %.0f%% (%d/%d) — topology flagged, evidence found\n",
+			pct(hits, resolved), hits, resolved)
+		fmt.Printf("    miss rate:         %.0f%% (%d/%d) — topology flagged, no useful evidence\n",
+			pct(misses, resolved), misses, resolved)
+	}
+	if pending > 0 {
+		fmt.Printf("    pending:           %d hypotheses with unresolved cycles\n", pending)
+	}
+	if hitsWithCycles > 0 {
+		fmt.Printf("    avg cycles to hit: %.1f\n", avg(totalCyclesToVerdict, hitsWithCycles))
+	}
+
+	// Signal quality breakdown (per cycle)
+	fmt.Printf("\n  signal quality (resolved cycles):\n")
+	totalResolved := resolutions["corroborated"] + resolutions["challenged"] + resolutions["irrelevant"] + resolutions["no_signal"]
+	useful := resolutions["corroborated"] + resolutions["challenged"]
+	fmt.Printf("    useful:    %.0f%% (%d/%d) — corroborated or challenged\n",
+		pct(useful, totalResolved), useful, totalResolved)
+	if resolutions["irrelevant"] > 0 {
+		fmt.Printf("    noise:     %.0f%% (%d/%d) — papers found but irrelevant\n",
+			pct(resolutions["irrelevant"], totalResolved), resolutions["irrelevant"], totalResolved)
+	}
+	if resolutions["no_signal"] > 0 {
+		fmt.Printf("    silence:   %.0f%% (%d/%d) — no papers found\n",
+			pct(resolutions["no_signal"], totalResolved), resolutions["no_signal"], totalResolved)
+	}
+	if unresolved > 0 {
+		fmt.Printf("    unresolved: %d cycles\n", unresolved)
+	}
+
+	// By vulnerability type
+	fmt.Printf("\n  by vulnerability type:\n")
+	for vt, s := range byVuln {
+		a := byVulnAcc[vt]
+		hitRate := pct(a.hits, a.hits+a.misses)
+		fmt.Printf("    %-25s %.0f%% signal (%d/%d cycles), %.0f%% hit rate (%d/%d hypotheses)\n",
+			vt, pct(s.withSignal, s.total), s.withSignal, s.total, hitRate, a.hits, a.hits+a.misses)
 	}
 
 	// Per-backend stats
@@ -666,27 +897,34 @@ func runCalibrate(dir string, jsonOut bool) {
 		}
 	}
 
-	// Hypothesis-level detail
+	// Per-hypothesis scorecard (replaces old flat list)
 	fmt.Println("\n  per hypothesis:")
-	for _, c := range mlog.Cycles {
-		signal := "no signal"
-		if c.PapersFound > 0 {
-			label := "papers"
-			if c.Backend == "zim" {
-				label = "articles"
-			}
-			signal = fmt.Sprintf("%d %s", c.PapersFound, label)
+	for _, s := range scores {
+		verdictMarker := " "
+		switch s.Verdict {
+		case "corroborated":
+			verdictMarker = "+"
+		case "challenged":
+			verdictMarker = "!"
+		case "irrelevant":
+			verdictMarker = "-"
+		case "no_signal":
+			verdictMarker = "."
+		case "pending":
+			verdictMarker = "?"
 		}
-		res := ""
-		if c.Resolution != "" {
-			res = " → " + c.Resolution
+		efficiency := ""
+		if s.CyclesToVerdict > 0 {
+			efficiency = fmt.Sprintf(" (%d cycles to hit)", s.CyclesToVerdict)
 		}
-		be := c.Backend
-		if be == "" {
-			be = "arxiv"
+		precisionStr := ""
+		if s.WithSignal > 0 {
+			precisionStr = fmt.Sprintf(", %.0f%% precision", s.Precision)
 		}
-		fmt.Printf("    %-40s [%s] %-5s%s  %s\n", c.Hypothesis, signal, be, res, c.Timestamp.Format("2006-01-02"))
+		fmt.Printf("  %s %-42s %-14s %d/%d signal%s%s\n",
+			verdictMarker, s.Name, s.Verdict, s.WithSignal, s.TotalCycles, precisionStr, efficiency)
 	}
+	fmt.Println("\n  legend: + corroborated  ! challenged  - irrelevant  . no_signal  ? pending")
 }
 
 func pct(n, d int) float64 {
