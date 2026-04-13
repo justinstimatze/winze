@@ -116,6 +116,38 @@ var (
 		Aliases: []string{"hot hand phenomenon", "hot hand"},
 		Brief:   "The belief that a person who has experienced success with a random event has a greater chance of further success in additional attempts. Contrast the Gambler's fallacy, which runs the opposite direction.",
 	}}
+
+	ConfirmationBias = Concept{&Entity{
+		ID:      "concept-confirmation-bias",
+		Name:    "Confirmation bias",
+		Kind:    "concept",
+		Aliases: []string{"confirmatory bias", "myside bias"},
+		Brief:   "The tendency to search for, interpret, favor, and recall information in a way that confirms or supports one's prior beliefs or values.",
+	}}
+
+	SurvivorshipBias = Concept{&Entity{
+		ID:      "concept-survivorship-bias",
+		Name:    "Survivorship bias",
+		Kind:    "concept",
+		Aliases: []string{"survival bias"},
+		Brief:   "The logical error of concentrating on entities that passed a selection process while overlooking those that did not, leading to incorrect conclusions about what caused success.",
+	}}
+
+	FramingEffect = Concept{&Entity{
+		ID:      "concept-framing-effect",
+		Name:    "Framing effect",
+		Kind:    "concept",
+		Aliases: []string{"framing bias"},
+		Brief:   "The tendency to draw different conclusions from the same information depending on how it is presented, such as whether outcomes are framed as gains or losses.",
+	}}
+
+	BaseRateNeglect = Concept{&Entity{
+		ID:      "concept-base-rate-neglect",
+		Name:    "Base rate neglect",
+		Kind:    "concept",
+		Aliases: []string{"base rate fallacy", "base rate bias"},
+		Brief:   "The tendency to ignore general statistical information (base rates) in favor of specific case information when making probability judgments.",
+	}}
 )
 
 // -----------------------------------------------------------------------------

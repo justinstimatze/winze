@@ -186,6 +186,15 @@ func auditConfirmationBias(dir string) BiasAuditorResult {
 	result.Detail = fmt.Sprintf("%d/%d signal cycles corroborated, %d challenged, %d irrelevant (+ %d no_signal excluded)",
 		corroborated, withSignal, challenged, irrelevant, noSignal)
 
+	// Cross-reference with survivorship: if 0 challenges, the corroboration
+	// rate is only measuring corroborated vs irrelevant, never vs challenged.
+	crossRef := ""
+	if challenged == 0 && irrelevant > 0 {
+		dismissRate := float64(irrelevant) / float64(withSignal) * 100
+		crossRef = fmt.Sprintf(" Note: zero challenges found — %.0f%% of signal was dismissed as "+
+			"irrelevant rather than classified as a challenge (see survivorship bias auditor).", dismissRate)
+	}
+
 	if rate > result.Threshold {
 		result.Triggered = true
 		result.Severity = "warning"
@@ -193,10 +202,11 @@ func auditConfirmationBias(dir string) BiasAuditorResult {
 			"Possible causes: (a) queries are too broad (anything matches), "+
 			"(b) LLM resolution judge is too generous, "+
 			"(c) the KB genuinely covers well-documented territory. "+
-			"Test: run 5 random-topic queries and measure their corroboration rate as a baseline.",
-			rate*100, result.Threshold*100)
+			"Test: run 5 random-topic queries and measure their corroboration rate as a baseline.%s",
+			rate*100, result.Threshold*100, crossRef)
 	} else {
-		result.Conclusion = fmt.Sprintf("%.0f%% corroboration rate (among signal cycles) is within expected range", rate*100)
+		result.Conclusion = fmt.Sprintf("%.0f%% corroboration rate (among signal cycles) is within expected range.%s",
+			rate*100, crossRef)
 	}
 
 	return result
@@ -940,9 +950,9 @@ func auditDunningKruger(dir string, topoReport *TopologyReport) BiasAuditorResul
 		lowZeroVuln, lowTotal, lowRate*100,
 		highZeroVuln, highTotal, highRate*100, excludedNote)
 
+	gap := lowRate - highRate
 	if lowRate > result.Threshold {
 		result.Triggered = true
-		gap := lowRate - highRate
 		if gap > 0.3 {
 			result.Severity = "warning"
 		} else {
@@ -954,8 +964,11 @@ func auditDunningKruger(dir string, topoReport *TopologyReport) BiasAuditorResul
 			"vulnerability detectors can't flag what they can't see.",
 			lowRate*100, highRate*100)
 	} else {
-		result.Conclusion = fmt.Sprintf("%.0f%% of low-complexity entities have zero vulns — "+
-			"within expected range", lowRate*100)
+		result.Conclusion = fmt.Sprintf("%.0f%% of low-complexity entities have zero vulns "+
+			"(vs %.0f%% high-complexity, gap: %.0f points). Below threshold but the gap "+
+			"is structural: topology detectors need connections to work, so simple entities "+
+			"escape scrutiny by default.",
+			lowRate*100, highRate*100, gap*100)
 	}
 
 	return result
