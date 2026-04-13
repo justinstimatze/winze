@@ -1,14 +1,113 @@
 # winze
 
-Go's type system as a knowledge-base consistency checker.
+A knowledge base that audits itself for cognitive biases, predicts where it's wrong, and is right 88% of the time.
 
-## The idea
+Built on Go's type system. The compiler catches ontological errors. No new query language. No new runtime. Standard tooling works unchanged.
 
-Source code IS knowledge. Entities are typed constants, predicates are generic types, claims are variable declarations. `go build` is the consistency checker — it enforces referential integrity and type safety across every claim in the graph. No binary is produced.
+## What this is
 
-Standard tooling works unchanged: LSP navigation, `go/ast` analysis, CI pipelines, code review, `git diff`, `git blame`. Every improvement to agentic coding tools (Claude Code, Cursor, Devin, etc.) directly improves the fleet's ability to maintain the knowledge base, because the knowledge base *is* code.
+189 entities. 242 claims. 132 directed epistemic support edges. 9 cognitive bias auditors. An 88% hit rate on structural fragility predictions.
 
-The 2026 agentic coding wave is building infrastructure for LLM agents to collaboratively write and maintain code. Winze repurposes that same infrastructure for collaborative knowledge maintenance.
+Winze is a knowledge base where source code IS the knowledge. Entities are typed constants, predicates are generic types, claims are variable declarations. `go build` is the consistency checker — it enforces referential integrity and type safety across every claim in the graph. No binary is produced.
+
+```bash
+go build ./...              # the compiler catches ontological errors
+go run ./cmd/lint .         # 7 lint rules check structural health
+go run ./cmd/metabolism --bias .  # the KB audits itself for cognitive biases
+```
+
+## Why this exists
+
+The 2026 agentic coding wave is building infrastructure for LLM agents to collaboratively write and maintain code. Winze repurposes that infrastructure for collaborative knowledge maintenance. Every improvement to Claude Code, Cursor, or Devin directly improves the fleet's ability to maintain this knowledge base — because the knowledge base *is* code.
+
+Standard tooling works unchanged: LSP navigation, `go/ast` analysis, CI pipelines, code review, `git diff`, `git blame`.
+
+## Five claims
+
+### 1. The compiler catches knowledge errors
+
+Change a Person entity to a Concept where a Person is required. `go build` fails with a type error pointing to the exact claim that references it. No YAML validator, no custom schema language — Go's type system enforces ontological constraints at compile time.
+
+```go
+// This builds:
+var AliceProposes = Proposes{Subject: Alice, Object: AttentionHypothesis, Prov: mySource}
+
+// Change Alice from Person to Concept → build fails:
+//   cannot use Alice (variable of type Concept) as Person value
+```
+
+### 2. It finds its own gaps and goes looking
+
+The topology analyzer identifies structurally fragile hypotheses — single-source, uncontested, thin-provenance. The metabolism loop generates sensor queries for each fragile hypothesis, polls external sources (arXiv, Wikipedia), and logs what it finds.
+
+```bash
+go run ./cmd/topology .              # 5 vulnerability detectors
+go run ./cmd/metabolism .            # query arXiv for fragile hypotheses
+go run ./cmd/metabolism --calibrate . # measure prediction accuracy
+```
+
+Current state: 10 hypotheses tracked, 7 confirmed by external sources, 1 irrelevant, 2 pending.
+
+### 3. It audits itself for cognitive biases — using biases it catalogs
+
+The KB contains entities for cognitive biases (confirmation bias, anchoring, availability heuristic, Dunning-Kruger, etc.). It applies those same biases as deterministic auditors checking its own structure.
+
+```bash
+go run ./cmd/metabolism --bias .
+```
+
+9 auditors. Each maps a bias entity in the KB to a structural check:
+
+| Auditor | What it measures | Current finding |
+|---------|-----------------|-----------------|
+| Confirmation bias | Corroboration rate among signal cycles | 58% (PASS) |
+| Anchoring | Correlation between file age and claim density | rho = -0.02 (PASS) |
+| Clustering illusion | Overlap between file grouping and topology clusters | 44% Jaccard (PASS) |
+| Availability heuristic | Provenance source concentration (HHI) | **0.70 — 83% Wikipedia (TRIGGERED)** |
+| Survivorship bias | Irrelevant-to-challenged resolution ratio | **8:0 — zero challenges found (TRIGGERED)** |
+| Framing effect | Evaluative language in entity Briefs | 3% (PASS) |
+| Dunning-Kruger | Low-complexity entities escaping vulnerability detection | 74% vs 37% gap (PASS) |
+| Base rate neglect | Predicate distribution entropy | 4.3 bits (PASS) |
+| Premature closure | Thought-terminating cliches + epistemic DAG leaf detection | 31 structural (PASS) |
+
+The epistemic support DAG (132 directed edges) is inferred from predicate semantics: `Proposes` flows from Person to Hypothesis, `DerivedFrom` flows from source to derived concept, `Disputes` is a contra edge excluded from support.
+
+Two findings are real: the KB is 83% sourced from Wikipedia (availability heuristic), and the metabolism loop has never classified any source as a challenge (survivorship bias). The KB found its own biases.
+
+### 4. It consolidates, speculates, and tightens
+
+Three maintenance modes, modeled on the biological sleep cycle:
+
+- **Dream** (NREM consolidation): analyzes topology + lint + adit without new ingest. Reports bridge entities, file balance, provenance splits, brief quality.
+- **Trip** (REM speculation): picks entity pairs from different topology clusters, LLM generates and scores speculative connections. Two axes: temperature (0.0–1.5) × prompt type (analogy, contradiction, genealogy, prediction).
+- **Fix**: LLM-assisted Brief tightening with quality gates and automatic revert on failure.
+
+```bash
+go run ./cmd/metabolism --dream .                    # consolidation report
+go run ./cmd/metabolism --dream --bias .             # + self-audit
+go run ./cmd/metabolism --dream --fix --tighten .    # auto-fix with quality gates
+go run ./cmd/metabolism --trip --temperature 1.0 .   # speculative connections
+```
+
+### 5. It makes predictions and tracks whether they're right
+
+The metabolism loop generates falsifiable predictions: "this hypothesis is structurally fragile → querying external sources should find evidence." The calibration system tracks whether those predictions were confirmed.
+
+```bash
+go run ./cmd/metabolism --calibrate --json .
+```
+
+Current calibration: 88% hit rate among hypotheses that received signal. Per-hypothesis scorecards with precision, cycles-to-verdict, and signal quality decomposition. The KB reifies its own predictions as first-class claims (`predictions.go`), creating a self-referential feedback loop.
+
+*The same architecture that powers prediction markets — falsifiable claims, resolution criteria, tracked accuracy — except the currency is epistemic accuracy, not money.*
+
+## What's next
+
+The system today is self-contained: it curates the epistemology-of-minds corpus, audits itself, and tracks its own predictions. The roadmap is about opening it up:
+
+- **PKM ingest**: Point it at your Obsidian vault. It converts your notes to typed entities with provenance. The metabolism loop finds gaps, the lint rules catch contradictions, the bias auditors flag systematic blind spots. Your notes work for you.
+- **Autonomous operation**: The full sleep cycle (metabolism → dream → trip → bias audit) on a timer. Leave it running. Come back to a morning report of what it found, what it fixed, what predictions resolved.
+- **Live-world sensors**: News feeds, economic data, event streams. The predictions become testable against reality, not just against what Wikipedia already documented.
 
 ## Quick start
 
@@ -17,6 +116,8 @@ git clone https://github.com/justinstimatze/winze.git
 cd winze
 go build ./...              # verify the seed corpus compiles
 go run ./cmd/lint .         # see the health dashboard
+go run ./cmd/topology .     # structural vulnerability report
+go run ./cmd/metabolism --bias .  # cognitive bias self-audit
 ```
 
 Study a corpus file (e.g., `tunguska.go`) to see the pattern: Provenance, entities, claims.
@@ -24,7 +125,7 @@ Study a corpus file (e.g., `tunguska.go`) to see the pattern: Provenance, entiti
 To start fresh with your own domain:
 
 ```bash
-./script/reset-corpus.sh    # removes seed corpus, creates starter.go
+./script/reset-corpus.sh    # removes seed corpus, keeps schema
 go build ./...              # verify the framework compiles
 ```
 
@@ -111,7 +212,7 @@ var AttentionHypothesis = Hypothesis{&Entity{
     Brief: "Cognitive attention is a serial bottleneck, not a parallel resource.",
 }}
 
-var AliceProposes = Proposes[Person, Hypothesis]{
+var AliceProposes = Proposes{
     Subject: Alice,
     Object:  AttentionHypothesis,
     Prov:    mySource,
@@ -123,7 +224,7 @@ Then: `go build ./...` to verify, `go run ./cmd/lint .` to check health.
 ## Lint rules
 
 ```bash
-go run ./cmd/lint .                         # 4 deterministic rules
+go run ./cmd/lint .                         # 7 deterministic rules
 go run ./cmd/lint . --llm --llm-max-calls=5 # + LLM contradiction check
 ```
 
@@ -133,76 +234,40 @@ go run ./cmd/lint . --llm --llm-max-calls=5 # + LLM contradiction check
 | orphan-report | Entities with zero claim references |
 | value-conflict | `//winze:functional` predicates with contradictory values |
 | contested-concept | `//winze:contested` predicates with multiple theories (informational, not failure) |
+| brief-check | Missing or overlong entity Briefs |
+| provenance-split | Same origin cited differently across files |
 | llm-contradiction | LLM-detected semantic contradictions across claim neighborhoods (opt-in, needs `ANTHROPIC_API_KEY`) |
 
-## Sensor (optional)
+## Metabolism
 
-Poll arXiv and Semantic Scholar for new papers matching your KB's domain:
+The epistemic metabolism loop: topology identifies fragile hypotheses → sensors query external sources → results are logged → calibration tracks accuracy.
 
 ```bash
-go run ./cmd/sensor --backend arxiv --limit 5 --json
-go run ./cmd/sensor --backend scholar --limit 5 --json  # needs SEMANTIC_SCHOLAR_API_KEY
-go run ./cmd/sensor --backend all --limit 5 --json
+go run ./cmd/metabolism .                              # arXiv backend (default)
+go run ./cmd/metabolism --backend zim --zim FILE .     # Wikipedia ZIM backend
+go run ./cmd/metabolism --backend all --zim FILE .     # both backends
+go run ./cmd/metabolism --dry-run .                    # show targets without querying
+go run ./cmd/metabolism --calibrate .                  # analyze accumulated cycle log
+go run ./cmd/metabolism --suggest .                    # generate ingest template from corroborated results
+go run ./cmd/metabolism --ingest --zim FILE .          # LLM-assisted ingest from corroborated ZIM cycles
+go run ./cmd/metabolism --pipeline --zim FILE .        # full quality pipeline: ingest → build → lint → llm → commit/reject
+go run ./cmd/metabolism --reify .                      # generate predictions.go from metabolism log
+go run ./cmd/metabolism --dream .                      # consolidation cycle (no new ingest)
+go run ./cmd/metabolism --dream --bias .               # + cognitive bias self-audit
+go run ./cmd/metabolism --dream --fix --tighten .      # auto-fix overlong Briefs via LLM
+go run ./cmd/metabolism --bias .                       # standalone bias audit
+go run ./cmd/metabolism --trip .                       # speculative cross-cluster connections
+go run ./cmd/metabolism --entity-cap 250 .             # refuse ingest above entity cap (default 250)
+go run ./cmd/metabolism --json .                       # JSON output
 ```
 
-Edit the `queries` slice in `cmd/sensor/main.go` to match your domain. State is tracked in `.sensor-state.json` (gitignored) to avoid re-reporting seen papers.
+### Wikipedia ZIM setup
 
-### Wikipedia ZIM setup (recommended)
+The metabolism loop can use a local Wikipedia ZIM file for offline fulltext search — no rate limits, better recall for non-STEM domains.
 
-The metabolism loop can use a local Wikipedia ZIM file for offline fulltext search — no rate limits, better recall for non-STEM domains than arXiv.
-
-1. Download a ZIM file from [download.kiwix.org](https://download.kiwix.org/zim/wikipedia/):
-   ```bash
-   # ~20GB, nopic variant (text only, recommended)
-   wget https://download.kiwix.org/zim/wikipedia/wikipedia_en_all_nopic_2025-12.zim
-   mkdir -p /opt/zim && mv wikipedia_en_all_nopic_2025-12.zim /opt/zim/
-   ```
-
-2. Run a metabolism cycle with the ZIM backend:
-   ```bash
-   go run ./cmd/metabolism --backend zim --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
-   ```
-   On first run, gozim builds a Bleve fulltext index (persisted to `<zimfile>.bleve/`).
-   Subsequent searches are instant.
-
-3. Run both backends together:
-   ```bash
-   go run ./cmd/metabolism --backend all --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
-   ```
-
-4. LLM-assisted ingest from corroborated results:
-   ```bash
-   go run ./cmd/metabolism --ingest --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
-   ```
-   Reads corroborated ZIM articles, extracts claims via LLM (Haiku), generates
-   a `.go` corpus file with provenance quotes verified against the source text.
-   Review the output before committing. Requires `ANTHROPIC_API_KEY`.
-
-5. Automated quality pipeline (no human review):
-   ```bash
-   go run ./cmd/metabolism --pipeline --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
-   ```
-   Runs the full chain: ingest → `go build` → `go vet` → deterministic lint →
-   LLM contradiction check → auto-commit if all pass. Exit 2 = quality gate
-   rejection (generated file removed). LLM contradictions are never auto-committed.
-
-6. Prediction reification (KB self-awareness):
-   ```bash
-   go run ./cmd/metabolism --reify .
-   ```
-   Reads the metabolism log and generates `predictions.go` encoding the loop's
-   predictions as first-class `Predicts` and `ResolvedAs` claims. The KB becomes
-   self-aware: it contains typed claims about its own structural weaknesses and
-   whether investigating them found useful evidence.
-
-## Gas Town integration (optional)
-
-Multi-agent curation workflow for autonomous KB maintenance via [Gas Town](https://github.com/gastownhall/gastown):
-
-- **Formula:** `.beads/formulas/mol-curate.formula.toml` — 5-step manual curation workflow (load-context, source-analysis, ingest, validate, submit)
-- **Formula:** `.beads/formulas/mol-curate-auto.formula.toml` — automated quality pipeline (`--pipeline` flag, 3 steps)
-- **Patrol plugin:** `plugins/kb-health/plugin.md` — periodic lint health check (2h cooldown)
-- **Interactive skill:** `.claude/skills/curate/SKILL.md` — `/curate status|ingest|audit|predict|resolve|sensor`
+1. Download a ZIM file from [download.kiwix.org](https://download.kiwix.org/zim/wikipedia/)
+2. Run: `go run ./cmd/metabolism --backend zim --zim /path/to/file.zim .`
+3. First run builds a Bleve fulltext index (persisted to `<zimfile>.bleve/`)
 
 ## Design principles
 
@@ -211,28 +276,18 @@ Multi-agent curation workflow for autonomous KB maintenance via [Gas Town](https
 - **Prose is I/O not state:** Ingest workers consume prose and produce typed claims. Source documents are transient; the KB is the canonical representation.
 - **LLM as expensive lint rule:** LLM judgment is one lint rule among many, not a separate architectural stage. Runs opt-in with an explicit token budget.
 - **Reification over schema extension:** Handle competing theories via Hypothesis entities + TheoryOf, not new role types.
-- **Depth over breadth:** The metabolism loop prioritizes deepening thin contested neighborhoods (concepts with only 2 competing theories) over expanding to new hypotheses. Entity count is capped at 250 by default (`--entity-cap`). The KB's domain is the epistemology of minds — how minds build, validate, and fail at modeling reality.
-
-## Roadmap
-
-- **PKM / second-brain ingest:** Import from Obsidian vaults, Logseq graphs, Roam JSON exports, Notion exports, plain markdown Zettelkasten, and plain text directories. An `ingest` command that reads a directory of markdown notes, extracts entities and relationships via LLM, and emits `.go` corpus files with provenance pointing back to the source note. Goal: dump your existing knowledge base into winze in one pass, then let the type system and lint rules surface what's inconsistent.
-- **~~Query generation improvements~~** Done. Proposer-name extraction + CamelCase concept phrases replace literal keyword concatenation.
-- **~~Pure Go ZIM reader~~** Done. [gozim](https://github.com/justinstimatze/gozim) integrated — Python bridge eliminated.
-- **~~Prediction schema~~** Done. `Predicts[Hypothesis, Event]`, `Credence[Hypothesis, *CredenceLevel]`, `ResolvedAs[Event, *ResolutionOutcome]` — encode falsifiable predictions and track calibration over time. First instances: `--reify` encodes the metabolism loop's own predictions about KB structural gaps.
-- **~~Calibration feedback loop~~** Done. Topology reads `.metabolism-log.json` to deprioritize already-queried hypotheses (bucket-based ranking: never-queried > unresolved > irrelevant > no-signal > corroborated). Zero-paper cycles auto-resolve as `no_signal`. `--suggest` generates ingest template `.go` files from corroborated results.
-- **Calibration scoring:** Accuracy metrics for topology-driven predictions — hit rate by vulnerability type, false positive rate.
-- **Autonomous patrol:** Continuous metabolism operation via Gas Town scheduled patrol (`mol-curate-auto`).
+- **Depth over breadth:** Prioritize deepening thin contested neighborhoods over expanding to new hypotheses. Entity count is capped at 250 by default.
 
 ## Prior art
 
-| Project | Substrate | Consistency mechanism | Agent-writable? |
-|---------|-----------|----------------------|----------------|
-| [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | Markdown | String-level lint | Yes |
-| [Monarch dismech](https://github.com/monarch-initiative/dismech) | YAML + LinkML | Schema validation + CI | Yes |
-| [Open Ontologies](https://github.com/fabio-rovai/open-ontologies) | RDF/OWL via Oxigraph | OWL2-DL reasoning | Via MCP |
-| Prolog/Datalog | Logic programs | Inference engine | Limited |
-| [Lean Mathlib](https://github.com/leanprover-community/mathlib4) | Dependent types | Proof checker | Limited |
-| **winze** | Go source code | `go build` + lint rules | Yes (mainstream language) |
+| Project | Substrate | Consistency | Agent-writable? | Predictions? |
+|---------|-----------|-------------|----------------|-------------|
+| [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | Markdown | String-level lint | Yes | No |
+| [Monarch dismech](https://github.com/monarch-initiative/dismech) | YAML + LinkML | Schema validation + CI | Yes | No |
+| [Open Ontologies](https://github.com/fabio-rovai/open-ontologies) | RDF/OWL | OWL2-DL reasoning | Via MCP | No |
+| Prolog/Datalog | Logic programs | Inference engine | Limited | No |
+| [Lean Mathlib](https://github.com/leanprover-community/mathlib4) | Dependent types | Proof checker | Limited | No |
+| **winze** | Go source | `go build` + 7 lint rules + 9 bias auditors | Yes | **Yes (88% hit rate)** |
 
 ## License
 
