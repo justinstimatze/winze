@@ -35,6 +35,7 @@ import (
 func main() {
 	jsonOut := flag.Bool("json", false, "output JSON instead of human-readable summary")
 	exportKB := flag.Bool("export-kb", false, "export claims as slimemold-compatible KBClaim JSON")
+	entityCap := flag.Int("entity-cap", 250, "max entities; suppresses breadth targets above this threshold")
 	flag.Parse()
 
 	dir := "."
@@ -50,7 +51,7 @@ func main() {
 		return
 	}
 
-	report, err := analyze(dir)
+	report, err := analyze(dir, *entityCap)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "topology: %v\n", err)
 		os.Exit(1)
@@ -121,7 +122,7 @@ type provenanceInfo struct {
 
 // --- analysis ---
 
-func analyze(dir string) (*Report, error) {
+func analyze(dir string, entityCap int) (*Report, error) {
 	entities, err := collectEntities(dir)
 	if err != nil {
 		return nil, fmt.Errorf("collect entities: %w", err)
@@ -157,7 +158,7 @@ func analyze(dir string) (*Report, error) {
 	// Collect entity metadata for sensor target generation
 	metas := collectEntityMetas(dir)
 
-	targets := generateSensorTargets(vulns, metas, claims, dir)
+	targets := generateSensorTargets(vulns, metas, claims, dir, len(entities), entityCap)
 
 	return &Report{
 		Entities:        len(entities),
@@ -467,6 +468,91 @@ func newtonSqrt(x float64) float64 {
 	return guess
 }
 
+// --- depth-first target selection ---
+
+// depthTarget represents a contested concept with too few theories.
+type depthTarget struct {
+	concept  string   // the contested concept (TheoryOf object)
+	theories []string // existing hypothesis subjects
+}
+
+// findThinContested identifies TheoryOf claims grouped by object with
+// exactly 2 subjects. These are contested concepts that need additional
+// perspectives — depth targets for the metabolism loop.
+func findThinContested(claims []claimInfo) []depthTarget {
+	// Group TheoryOf claims by object (the concept being theorized about)
+	byObject := map[string][]string{} // concept → list of theory subjects
+	for _, c := range claims {
+		if c.predicateType == "TheoryOf" {
+			// Deduplicate subjects per concept
+			subjects := byObject[c.object]
+			found := false
+			for _, s := range subjects {
+				if s == c.subject {
+					found = true
+					break
+				}
+			}
+			if !found {
+				byObject[c.object] = append(subjects, c.subject)
+			}
+		}
+	}
+
+	var targets []depthTarget
+	for concept, theories := range byObject {
+		if len(theories) == 2 {
+			targets = append(targets, depthTarget{concept: concept, theories: theories})
+		}
+	}
+	sort.Slice(targets, func(i, j int) bool {
+		return targets[i].concept < targets[j].concept
+	})
+	return targets
+}
+
+// buildDepthQuery constructs a search query for finding additional
+// perspectives on a contested concept. Simpler than breadth queries:
+// concept name content words + "alternative theory".
+func buildDepthQuery(conceptName string, meta entityMeta) string {
+	noise := map[string]bool{
+		"the": true, "of": true, "and": true, "in": true, "a": true,
+		"is": true, "for": true, "to": true, "as": true, "by": true,
+		"an": true, "on": true, "or": true, "that": true, "with": true,
+	}
+	filler := map[string]bool{
+		"thesis": true, "hypothesis": true, "framing": true, "typology": true,
+		"theory": true, "classification": true, "reframing": true,
+		"framework": true, "model": true, "approach": true, "perspective": true,
+	}
+
+	// Extract content words from the concept's Name (or var name)
+	name := meta.name
+	if name == "" {
+		name = strings.Join(splitCamelCase(conceptName), " ")
+	}
+
+	var parts []string
+	for _, w := range strings.Fields(name) {
+		lower := strings.ToLower(strings.Trim(w, ".,;:\"'()-/"))
+		if len(lower) >= 3 && !noise[lower] && !filler[lower] {
+			parts = append(parts, w)
+		}
+	}
+
+	// Cap concept words at 2 to leave room for discriminator
+	if len(parts) > 2 {
+		parts = parts[:2]
+	}
+	parts = append(parts, "alternative", "theory")
+
+	// Cap total at 4
+	if len(parts) > 4 {
+		parts = parts[:4]
+	}
+	return strings.Join(parts, " ")
+}
+
 // --- sensor target generation ---
 
 // metabolismCycle is a minimal struct for reading the metabolism log.
@@ -539,12 +625,12 @@ func historyBucket(resolution string, queried bool) int {
 	}
 }
 
-// generateSensorTargets picks the most vulnerable hypotheses and generates
-// search queries that would find corroboration or dispute on arXiv.
-// Hypotheses that are BOTH single-source AND uncontested are prioritized.
-// Metabolism history deprioritizes already-queried hypotheses so fresh
-// ones get sensor attention first.
-func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta, claims []claimInfo, dir string) []SensorTarget {
+// generateSensorTargets picks the most important targets for sensor queries.
+// Depth-first: thin contested concepts (exactly 2 theories) get priority
+// over breadth targets (structurally fragile hypotheses). When the entity
+// count exceeds entityCap, breadth targets are suppressed entirely — only
+// depth targets are emitted.
+func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta, claims []claimInfo, dir string, entityCount, entityCap int) []SensorTarget {
 	// Build proposer lookup: hypothesis var name → proposer var name(s)
 	proposerOf := map[string][]string{} // hypothesis → proposer var names
 	for _, c := range claims {
@@ -553,33 +639,63 @@ func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta, c
 		}
 	}
 
-	// Count vulnerability types per hypothesis
-	vulnTypes := map[string]map[string]bool{}
-	for _, v := range vulns {
-		if v.Type != "single_source" && v.Type != "uncontested" {
-			continue
-		}
-		if vulnTypes[v.Entity] == nil {
-			vulnTypes[v.Entity] = map[string]bool{}
-		}
-		vulnTypes[v.Entity][v.Type] = true
-	}
-
 	// Load metabolism history for calibration feedback
 	history := loadMetabolismHistory(dir)
 
-	// Rank by: history bucket (ascending), then vulnerability count (descending)
 	type candidate struct {
 		name      string
 		vulnCount int
 		bucket    int
+		vulnType  string // "thin_contested" or "structural_fragility"
 	}
 	var candidates []candidate
-	for name, types := range vulnTypes {
-		resolution, queried := history[name]
+
+	// --- Depth targets: thin contested concepts ---
+	thinContested := findThinContested(claims)
+	for _, dt := range thinContested {
+		// Use concept name as the target identifier
+		resolution, queried := history[dt.concept]
 		bucket := historyBucket(resolution, queried)
-		candidates = append(candidates, candidate{name, len(types), bucket})
+		// Depth targets get bucket -1 (always above any breadth target)
+		// unless they've been queried — then use normal bucket but still depth-typed
+		depthBucket := bucket - 1
+		if depthBucket < -1 {
+			depthBucket = -1
+		}
+		candidates = append(candidates, candidate{
+			name:      dt.concept,
+			vulnCount: len(dt.theories),
+			bucket:    depthBucket,
+			vulnType:  "thin_contested",
+		})
 	}
+
+	// --- Breadth targets: structurally fragile hypotheses ---
+	// Suppressed when entity count exceeds cap
+	if entityCount < entityCap {
+		vulnTypes := map[string]map[string]bool{}
+		for _, v := range vulns {
+			if v.Type != "single_source" && v.Type != "uncontested" {
+				continue
+			}
+			if vulnTypes[v.Entity] == nil {
+				vulnTypes[v.Entity] = map[string]bool{}
+			}
+			vulnTypes[v.Entity][v.Type] = true
+		}
+		for name, types := range vulnTypes {
+			resolution, queried := history[name]
+			bucket := historyBucket(resolution, queried)
+			candidates = append(candidates, candidate{
+				name:      name,
+				vulnCount: len(types),
+				bucket:    bucket,
+				vulnType:  "structural_fragility",
+			})
+		}
+	}
+
+	// Rank by: bucket (ascending), then vulnerability count (descending), then name
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].bucket != candidates[j].bucket {
 			return candidates[i].bucket < candidates[j].bucket
@@ -598,22 +714,30 @@ func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta, c
 	var targets []SensorTarget
 	for _, c := range candidates {
 		meta := metas[c.name]
-		// Enrich with proposer name if available
-		if proposers, ok := proposerOf[c.name]; ok && len(proposers) > 0 {
-			if pm, ok := metas[proposers[0]]; ok && pm.name != "" {
-				meta.proposer = pm.name
+		var query, prediction string
+
+		if c.vulnType == "thin_contested" {
+			query = buildDepthQuery(c.name, meta)
+			prediction = fmt.Sprintf("contested concept with only %d theories — needs additional perspective", c.vulnCount)
+		} else {
+			// Enrich with proposer name if available
+			if proposers, ok := proposerOf[c.name]; ok && len(proposers) > 0 {
+				if pm, ok := metas[proposers[0]]; ok && pm.name != "" {
+					meta.proposer = pm.name
+				}
+			}
+			query = buildSensorQuery(c.name, meta)
+			prediction = "single-source"
+			if c.vulnCount >= 2 {
+				prediction = "single-source AND uncontested — highest revision risk"
 			}
 		}
-		query := buildSensorQuery(c.name, meta)
-		prediction := "single-source"
-		if c.vulnCount >= 2 {
-			prediction = "single-source AND uncontested — highest revision risk"
-		}
+
 		targets = append(targets, SensorTarget{
 			Hypothesis: c.name,
 			Query:      query,
 			Prediction: prediction,
-			VulnType:   "structural_fragility",
+			VulnType:   c.vulnType,
 			VulnCount:  c.vulnCount,
 		})
 	}

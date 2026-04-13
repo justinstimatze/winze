@@ -54,6 +54,9 @@ rigs.json
 # Stray Claude session dirs
  /
 
+# Gas Town polecat worktrees (runtime, not source)
+polecats/
+
 # Gas Town (added by gt)
 .runtime/
 .claude/

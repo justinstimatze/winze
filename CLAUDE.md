@@ -37,6 +37,19 @@ source that explicitly commits to a relationship no existing predicate
 captures. When a third occurrence of a pattern surfaces, promote it to a
 named discipline.
 
+### Domain boundary
+
+The KB's domain is the epistemology of minds — how minds (human and
+artificial) build, validate, and fail at modeling reality. Concepts
+are in-domain when they illuminate how knowledge is constructed,
+contested, or mistaken. Ingest that doesn't serve this domain is bloat.
+
+The metabolism loop is depth-first: it prioritizes deepening thin
+contested neighborhoods (concepts with only 2 competing theories)
+over expanding to new hypotheses. Breadth targets only get sensor
+attention when depth targets are exhausted or the entity count is
+below `--entity-cap` (default 250).
+
 ### Existing predicate families
 
 **Attribution:** Proposes, Disputes, ProposesOrg, DisputesOrg
@@ -73,6 +86,8 @@ go run ./cmd/metabolism --suggest .                    # generate ingest templat
 go run ./cmd/metabolism --ingest --zim FILE .          # LLM-assisted ingest from corroborated ZIM cycles
 go run ./cmd/metabolism --pipeline --zim FILE .        # full quality pipeline: ingest → build → lint → llm → commit/reject
 go run ./cmd/metabolism --pipeline --zim FILE --llm-budget 5 .  # pipeline with custom LLM budget
+go run ./cmd/metabolism --reify .                      # generate predictions.go from metabolism log (Predicts/ResolvedAs claims)
+go run ./cmd/metabolism --entity-cap 250 .             # refuse ingest/pipeline above entity cap (default 250)
 go run ./cmd/metabolism --json .                       # JSON output
 ```
 
@@ -82,7 +97,9 @@ and/or Wikipedia ZIM) for external signal → results logged to
 predicts curation gaps. Topology reads the log to deprioritize already-queried
 hypotheses (fresh ones get sensor attention first). Zero-paper cycles
 auto-resolve as `no_signal`. `--suggest` generates ingest templates from
-corroborated results. `--pipeline` runs the full automated quality pipeline:
+corroborated results. `--reify` generates `predictions.go` encoding metabolism
+predictions as first-class Predicts/ResolvedAs claims (the KB becomes self-aware
+about its own epistemic performance). `--pipeline` runs the full automated quality pipeline:
 ingest → go build → go vet → deterministic lint → LLM contradiction check →
 commit if all pass, reject if any gate fails. Exit 2 = quality rejection.
 ZIM backend uses gozim (pure Go, no Python needed). Builds a Bleve fulltext

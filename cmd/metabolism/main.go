@@ -112,6 +112,8 @@ func main() {
 	resolve := flag.String("resolve", "", "resolve a hypothesis: HYPOTHESIS=corroborated|challenged|irrelevant|no_signal")
 	suggest := flag.Bool("suggest", false, "generate corpus template from corroborated cycles")
 	ingest := flag.Bool("ingest", false, "LLM-assisted ingest from corroborated ZIM cycles (needs --zim and ANTHROPIC_API_KEY)")
+	reify := flag.Bool("reify", false, "generate predictions.go from metabolism log (first-class Predicts/ResolvedAs claims)")
+	entityCap := flag.Int("entity-cap", 250, "max entities allowed in KB; refuse ingest/pipeline above this")
 	pipeline := flag.Bool("pipeline", false, "full quality pipeline: ingest → build → vet → lint → llm-contradiction → commit/reject")
 	llmBudget := flag.Int("llm-budget", 3, "max LLM calls for contradiction check in pipeline mode")
 	jsonOut := flag.Bool("json", false, "output as JSON")
@@ -148,9 +150,24 @@ func main() {
 		return
 	}
 
+	if *reify {
+		runReify(dir)
+		return
+	}
+
 	if *suggest {
 		runSuggest(dir)
 		return
+	}
+
+	// Entity cap: refuse ingest/pipeline when KB exceeds threshold
+	if (*pipeline || *ingest) && *entityCap > 0 {
+		count, err := countEntities(dir)
+		if err == nil && count >= *entityCap {
+			fmt.Fprintf(os.Stderr, "metabolism: entity cap reached (%d/%d) — refusing ingest\n", count, *entityCap)
+			fmt.Fprintf(os.Stderr, "metabolism: deepen existing neighborhoods or raise --entity-cap\n")
+			os.Exit(2)
+		}
 	}
 
 	if *pipeline {
@@ -332,6 +349,21 @@ func main() {
 	}
 	fmt.Printf("\n[calibration] %d total cycles logged, signal rate %.0f%% (%d/%d)\n",
 		len(mlog.Cycles), pct(withSignal, len(mlog.Cycles)), withSignal, len(mlog.Cycles))
+}
+
+// countEntities shells out to topology to get the current entity count.
+func countEntities(dir string) (int, error) {
+	cmd := exec.Command("go", "run", "./cmd/topology", "--json", dir)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("count entities: %w", err)
+	}
+	var report TopologyReport
+	if err := json.Unmarshal(out, &report); err != nil {
+		return 0, fmt.Errorf("parse topology: %w", err)
+	}
+	return report.Entities, nil
 }
 
 // runTopology shells out to cmd/topology and parses the JSON output.

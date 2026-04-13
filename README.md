@@ -186,6 +186,15 @@ The metabolism loop can use a local Wikipedia ZIM file for offline fulltext sear
    LLM contradiction check → auto-commit if all pass. Exit 2 = quality gate
    rejection (generated file removed). LLM contradictions are never auto-committed.
 
+6. Prediction reification (KB self-awareness):
+   ```bash
+   go run ./cmd/metabolism --reify .
+   ```
+   Reads the metabolism log and generates `predictions.go` encoding the loop's
+   predictions as first-class `Predicts` and `ResolvedAs` claims. The KB becomes
+   self-aware: it contains typed claims about its own structural weaknesses and
+   whether investigating them found useful evidence.
+
 ## Gas Town integration (optional)
 
 Multi-agent curation workflow for autonomous KB maintenance via [Gas Town](https://github.com/gastownhall/gastown):
@@ -202,14 +211,17 @@ Multi-agent curation workflow for autonomous KB maintenance via [Gas Town](https
 - **Prose is I/O not state:** Ingest workers consume prose and produce typed claims. Source documents are transient; the KB is the canonical representation.
 - **LLM as expensive lint rule:** LLM judgment is one lint rule among many, not a separate architectural stage. Runs opt-in with an explicit token budget.
 - **Reification over schema extension:** Handle competing theories via Hypothesis entities + TheoryOf, not new role types.
+- **Depth over breadth:** The metabolism loop prioritizes deepening thin contested neighborhoods (concepts with only 2 competing theories) over expanding to new hypotheses. Entity count is capped at 250 by default (`--entity-cap`). The KB's domain is the epistemology of minds — how minds build, validate, and fail at modeling reality.
 
 ## Roadmap
 
 - **PKM / second-brain ingest:** Import from Obsidian vaults, Logseq graphs, Roam JSON exports, Notion exports, plain markdown Zettelkasten, and plain text directories. An `ingest` command that reads a directory of markdown notes, extracts entities and relationships via LLM, and emits `.go` corpus files with provenance pointing back to the source note. Goal: dump your existing knowledge base into winze in one pass, then let the type system and lint rules surface what's inconsistent.
 - **~~Query generation improvements~~** Done. Proposer-name extraction + CamelCase concept phrases replace literal keyword concatenation.
 - **~~Pure Go ZIM reader~~** Done. [gozim](https://github.com/justinstimatze/gozim) integrated — Python bridge eliminated.
-- **~~Prediction schema~~** Done. `Predicts[Hypothesis, Event]`, `Credence[Hypothesis, *CredenceLevel]`, `ResolvedAs[Event, *ResolutionOutcome]` — encode falsifiable predictions and track calibration over time.
+- **~~Prediction schema~~** Done. `Predicts[Hypothesis, Event]`, `Credence[Hypothesis, *CredenceLevel]`, `ResolvedAs[Event, *ResolutionOutcome]` — encode falsifiable predictions and track calibration over time. First instances: `--reify` encodes the metabolism loop's own predictions about KB structural gaps.
 - **~~Calibration feedback loop~~** Done. Topology reads `.metabolism-log.json` to deprioritize already-queried hypotheses (bucket-based ranking: never-queried > unresolved > irrelevant > no-signal > corroborated). Zero-paper cycles auto-resolve as `no_signal`. `--suggest` generates ingest template `.go` files from corroborated results.
+- **Calibration scoring:** Accuracy metrics for topology-driven predictions — hit rate by vulnerability type, false positive rate.
+- **Autonomous patrol:** Continuous metabolism operation via Gas Town scheduled patrol (`mol-curate-auto`).
 
 ## Prior art
 
