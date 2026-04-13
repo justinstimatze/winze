@@ -50,6 +50,13 @@ type BiasAuditorResult struct {
 }
 
 func runDreamBias(dir string, jsonOut bool) {
+	collectBiasResults(dir, nil, jsonOut, true)
+}
+
+// collectBiasResults runs all bias auditors. If topoReport is non-nil,
+// reuses it instead of re-running topology (expensive).
+// Set printOutput to false when called from dream mode (dream handles display).
+func collectBiasResults(dir string, topoReport *TopologyReport, jsonOut bool, printOutput bool) BiasReport {
 	var results []BiasAuditorResult
 
 	results = append(results, auditConfirmationBias(dir))
@@ -58,7 +65,7 @@ func runDreamBias(dir string, jsonOut bool) {
 	results = append(results, auditAvailabilityHeuristic(dir))
 	results = append(results, auditSurvivorshipBias(dir))
 	results = append(results, auditFramingEffect(dir))
-	results = append(results, auditDunningKruger(dir))
+	results = append(results, auditDunningKruger(dir, topoReport))
 	results = append(results, auditBaseRateNeglect(dir))
 
 	triggered := 0
@@ -73,11 +80,15 @@ func runDreamBias(dir string, jsonOut bool) {
 		Summary:  fmt.Sprintf("%d of %d bias auditors triggered", triggered, len(results)),
 	}
 
+	if !printOutput {
+		return report
+	}
+
 	if jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(report)
-		return
+		return report
 	}
 
 	fmt.Printf("[dream-bias] cognitive bias self-audit — %d auditors\n\n", len(results))
@@ -108,6 +119,7 @@ func runDreamBias(dir string, jsonOut bool) {
 		fmt.Println()
 	}
 	fmt.Printf("[dream-bias] %s\n", report.Summary)
+	return report
 }
 
 // auditConfirmationBias checks whether the metabolism loop's corroboration
@@ -561,34 +573,38 @@ func auditSurvivorshipBias(dir string) BiasAuditorResult {
 		return result
 	}
 
-	var irrelevant, challenged, withSignal int
+	var irrelevant, challenged, resolved int
 	for _, c := range log.Cycles {
-		if c.Papers > 0 || c.Resolution == "corroborated" || c.Resolution == "challenged" || c.Resolution == "irrelevant" {
-			withSignal++
-		}
 		switch c.Resolution {
 		case "irrelevant":
 			irrelevant++
+			resolved++
 		case "challenged":
 			challenged++
+			resolved++
+		case "corroborated", "no_signal":
+			resolved++
 		}
 	}
 
-	if withSignal == 0 {
-		result.Detail = "no cycles with signal"
+	if resolved == 0 {
+		result.Detail = "no resolved cycles"
 		return result
 	}
 
 	var ratio float64
+	var ratioStr string
 	if challenged > 0 {
 		ratio = float64(irrelevant) / float64(challenged)
+		ratioStr = fmt.Sprintf("%.1f:1", ratio)
 	} else if irrelevant > 0 {
-		ratio = float64(irrelevant) // effectively infinite
+		ratio = float64(irrelevant + 1) // penalize zero-challenge case
+		ratioStr = fmt.Sprintf("%d:0 (no challenges ever found)", irrelevant)
 	}
 
 	result.Value = ratio
-	result.Detail = fmt.Sprintf("%d irrelevant, %d challenged, %d with signal (ratio: %.1f:1)",
-		irrelevant, challenged, withSignal, ratio)
+	result.Detail = fmt.Sprintf("%d irrelevant, %d challenged out of %d resolved (ratio: %s)",
+		irrelevant, challenged, resolved, ratioStr)
 
 	if challenged == 0 && irrelevant > 3 {
 		result.Triggered = true
@@ -636,10 +652,18 @@ func auditFramingEffect(dir string) BiasAuditorResult {
 	}
 	negativeFraming := []string{
 		"controversial", "flawed", "debunked", "discredited",
-		"pseudoscientific", "misleading", "simplistic", "naive",
-		"outdated", "rejected", "failed", "questionable",
+		"pseudoscientific", "misleading", "simplistic",
+		"outdated", "questionable",
 	}
-	allFraming := append(positiveFraming, negativeFraming...)
+
+	// Technical terms that look evaluative but are descriptive in context.
+	// "naive set theory" is a mathematical discipline, not a judgment.
+	// "rejected X" describes an entity's position, not our evaluation of it.
+	technicalExclusions := map[string][]string{
+		"naive":    {"naive set theory", "naive realism", "naive bayes"},
+		"rejected": {"rejected classical", "rejected the", "rejected by"},
+		"failed":   {"failed to replicate", "failed prediction"},
+	}
 
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
@@ -651,7 +675,8 @@ func auditFramingEffect(dir string) BiasAuditorResult {
 	roleTypes := collectDreamRoleTypes(pkgs)
 
 	totalBriefs := 0
-	framedBriefs := 0
+	positiveCount := 0
+	negativeCount := 0
 	var examples []string
 
 	for _, pkg := range pkgs {
@@ -686,13 +711,26 @@ func auditFramingEffect(dir string) BiasAuditorResult {
 
 					totalBriefs++
 					lower := strings.ToLower(brief)
-					for _, term := range allFraming {
-						if strings.Contains(lower, term) {
-							framedBriefs++
+					matched := false
+					for _, term := range positiveFraming {
+						if containsWord(lower, term, technicalExclusions) {
+							positiveCount++
+							matched = true
 							if len(examples) < 3 {
-								examples = append(examples, fmt.Sprintf("%s: contains %q", vs.Names[0].Name, term))
+								examples = append(examples, fmt.Sprintf("%s: +%q", vs.Names[0].Name, term))
 							}
 							break
+						}
+					}
+					if !matched {
+						for _, term := range negativeFraming {
+							if containsWord(lower, term, technicalExclusions) {
+								negativeCount++
+								if len(examples) < 3 {
+									examples = append(examples, fmt.Sprintf("%s: -%q", vs.Names[0].Name, term))
+								}
+								break
+							}
 						}
 					}
 				}
@@ -705,6 +743,7 @@ func auditFramingEffect(dir string) BiasAuditorResult {
 		return result
 	}
 
+	framedBriefs := positiveCount + negativeCount
 	fraction := float64(framedBriefs) / float64(totalBriefs)
 	result.Value = fraction
 
@@ -713,47 +752,65 @@ func auditFramingEffect(dir string) BiasAuditorResult {
 		exampleStr = " — e.g., " + strings.Join(examples, "; ")
 	}
 
-	result.Detail = fmt.Sprintf("%d/%d Briefs (%.0f%%) contain evaluative language%s",
-		framedBriefs, totalBriefs, fraction*100, exampleStr)
+	direction := "neutral"
+	if positiveCount > negativeCount*2 {
+		direction = "skews positive (pro-framing)"
+	} else if negativeCount > positiveCount*2 {
+		direction = "skews negative (anti-framing)"
+	}
+
+	result.Detail = fmt.Sprintf("%d/%d Briefs (%.0f%%) contain evaluative language "+
+		"(%d positive, %d negative — %s)%s",
+		framedBriefs, totalBriefs, fraction*100,
+		positiveCount, negativeCount, direction, exampleStr)
 
 	if fraction > result.Threshold {
 		result.Triggered = true
 		result.Severity = "info"
-		result.Conclusion = fmt.Sprintf("%.0f%% of Briefs use evaluative framing. "+
+		result.Conclusion = fmt.Sprintf("%.0f%% of Briefs use evaluative framing (%s). "+
 			"These terms may predispose the LLM contradiction checker toward or against "+
 			"entities. Consider: does the Brief describe what the entity IS, or evaluate "+
-			"how good/bad it is?", fraction*100)
+			"how good/bad it is?", fraction*100, direction)
 	} else {
-		result.Conclusion = fmt.Sprintf("%.0f%% evaluative framing — within acceptable range", fraction*100)
+		result.Conclusion = fmt.Sprintf("%.0f%% evaluative framing (%s) — within acceptable range",
+			fraction*100, direction)
 	}
 
 	return result
 }
 
-// auditDunningKruger checks whether structurally simple hypotheses (few
-// claims, short Briefs) appear disproportionately "healthy" in topology
-// analysis. Simple hypotheses have fewer attack surfaces — they can't be
-// flagged as single-source if they only have one claim, and they can't
-// have contradictions if they have no cross-references. This means the
-// topology may rate them as well-supported when they're actually just
-// under-examined.
+// auditDunningKruger checks whether structurally simple entities appear
+// disproportionately "healthy" in topology analysis. Simple entities have
+// fewer attack surfaces — they can't be flagged as single-source if they
+// only have one claim, and they can't have contradictions if they have no
+// cross-references. The topology may rate them as well-supported when
+// they're actually just under-examined. This is the Dunning-Kruger analog:
+// low complexity → apparent competence.
 //
-// Metric: correlation between hypothesis complexity (claim count) and
-// vulnerability count. A strong negative correlation means simple
-// hypotheses systematically look healthier.
-func auditDunningKruger(dir string) BiasAuditorResult {
+// Metric: fraction of low-complexity entities (≤2 claim references) that
+// have zero topology vulnerabilities. If near 100%, simple entities are
+// systematically escaping scrutiny.
+//
+// topoReport may be nil; if so, topology is run fresh.
+func auditDunningKruger(dir string, topoReport *TopologyReport) BiasAuditorResult {
 	result := BiasAuditorResult{
 		Bias:      "DunningKrugerEffect",
 		BiasName:  "Dunning-Kruger effect",
-		Metric:    "complexity_vulnerability_correlation",
-		Threshold: 0.6, // strong negative correlation (reported as abs value)
+		Metric:    "low_complexity_zero_vuln_rate",
+		Threshold: 0.90, // >90% of simple entities have zero vulns
 	}
 
 	// Get topology vulnerabilities per entity
-	_, report, err := runTopology(dir)
-	if err != nil {
-		result.Detail = fmt.Sprintf("topology error: %v", err)
-		return result
+	var report TopologyReport
+	if topoReport != nil {
+		report = *topoReport
+	} else {
+		_, r, err := runTopology(dir)
+		if err != nil {
+			result.Detail = fmt.Sprintf("topology error: %v", err)
+			return result
+		}
+		report = r
 	}
 
 	vulnCount := map[string]int{}
@@ -761,7 +818,7 @@ func auditDunningKruger(dir string) BiasAuditorResult {
 		vulnCount[v.Entity]++
 	}
 
-	// Get claim counts per entity from AST
+	// Get claim reference counts per entity from AST
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
 	if err != nil {
@@ -819,7 +876,6 @@ func auditDunningKruger(dir string) BiasAuditorResult {
 					if roleTypes[typeName] || typeName == "Provenance" || typeName == "" {
 						continue
 					}
-					// This is a claim — extract subject and object references
 					for _, elt := range cl.Elts {
 						kv, ok := elt.(*ast.KeyValueExpr)
 						if !ok {
@@ -841,63 +897,58 @@ func auditDunningKruger(dir string) BiasAuditorResult {
 		}
 	}
 
-	// Only analyze Hypothesis entities (the ones topology evaluates)
-	type hypData struct {
-		claims int
-		vulns  int
-	}
-	var hypotheses []hypData
+	// Split entities into low-complexity (≤2 refs) and high-complexity (>2 refs)
+	var lowTotal, lowZeroVuln, highTotal, highZeroVuln int
 	for name := range entityNames {
 		refs := claimRefs[name]
 		vulns := vulnCount[name]
-		if refs > 0 { // only include entities that participate in claims
-			hypotheses = append(hypotheses, hypData{claims: refs, vulns: vulns})
+		if refs <= 2 {
+			lowTotal++
+			if vulns == 0 {
+				lowZeroVuln++
+			}
+		} else {
+			highTotal++
+			if vulns == 0 {
+				highZeroVuln++
+			}
 		}
 	}
 
-	if len(hypotheses) < 8 {
-		result.Detail = fmt.Sprintf("only %d entities with claims — too few for correlation", len(hypotheses))
+	if lowTotal < 5 {
+		result.Detail = fmt.Sprintf("only %d low-complexity entities — too few for analysis", lowTotal)
 		return result
 	}
 
-	// Compute correlation between claim count and vulnerability count
-	claimVals := make([]float64, len(hypotheses))
-	vulnVals := make([]float64, len(hypotheses))
-	for i, h := range hypotheses {
-		claimVals[i] = float64(h.claims)
-		vulnVals[i] = float64(h.vulns)
+	lowRate := float64(lowZeroVuln) / float64(lowTotal)
+	result.Value = lowRate
+
+	var highRate float64
+	if highTotal > 0 {
+		highRate = float64(highZeroVuln) / float64(highTotal)
 	}
 
-	rho := spearmanRho(claimVals, vulnVals)
-	result.Value = math.Abs(rho)
+	result.Detail = fmt.Sprintf("low-complexity (≤2 refs): %d/%d (%.0f%%) zero vulns; "+
+		"high-complexity (>2 refs): %d/%d (%.0f%%) zero vulns",
+		lowZeroVuln, lowTotal, lowRate*100,
+		highZeroVuln, highTotal, highRate*100)
 
-	// Count entities with zero vulns
-	zeroVulns := 0
-	for _, h := range hypotheses {
-		if h.vulns == 0 {
-			zeroVulns++
+	if lowRate > result.Threshold {
+		result.Triggered = true
+		gap := lowRate - highRate
+		if gap > 0.3 {
+			result.Severity = "warning"
+		} else {
+			result.Severity = "info"
 		}
-	}
-
-	result.Detail = fmt.Sprintf("Spearman rho = %.3f across %d entities (%d with zero vulnerabilities)",
-		rho, len(hypotheses), zeroVulns)
-
-	if rho > result.Threshold {
-		// Positive correlation: more complex = more vulnerable (expected, not bias)
-		result.Conclusion = fmt.Sprintf("Positive correlation (%.2f): more claims correlate with more "+
-			"vulnerabilities. This is expected — more claims = more attack surfaces. But it means "+
-			"simple hypotheses may appear healthier simply because they're under-examined, not "+
-			"because they're well-supported.", rho)
-		result.Triggered = true
-		result.Severity = "info"
-	} else if rho < -result.Threshold {
-		// Negative: more complex = fewer vulns (opposite of expected)
-		result.Conclusion = fmt.Sprintf("Negative correlation (%.2f): unexpectedly, more claims correlate with "+
-			"fewer vulnerabilities. Well-connected entities may be shielded from structural critique.", rho)
-		result.Triggered = true
-		result.Severity = "warning"
+		result.Conclusion = fmt.Sprintf("%.0f%% of low-complexity entities have zero vulnerabilities "+
+			"(vs %.0f%% of high-complexity). Simple entities may appear healthy because "+
+			"they're under-examined, not because they're well-supported. The topology's "+
+			"vulnerability detectors can't flag what they can't see.",
+			lowRate*100, highRate*100)
 	} else {
-		result.Conclusion = "No strong correlation between entity complexity and vulnerability count"
+		result.Conclusion = fmt.Sprintf("%.0f%% of low-complexity entities have zero vulns — "+
+			"within expected range", lowRate*100)
 	}
 
 	return result
@@ -916,7 +967,7 @@ func auditBaseRateNeglect(dir string) BiasAuditorResult {
 		Bias:      "CognitiveBias",
 		BiasName:  "Base rate neglect",
 		Metric:    "predicate_entropy",
-		Threshold: 2.0, // Shannon entropy below 2.0 bits = too concentrated
+		Threshold: 3.0, // Shannon entropy below 3.0 bits = concentrated (max ~5 for this KB)
 	}
 
 	fset := token.NewFileSet()
@@ -1021,6 +1072,23 @@ func auditBaseRateNeglect(dir string) BiasAuditorResult {
 }
 
 // --- helpers ---
+
+// containsWord checks if text contains the evaluative term, excluding
+// known technical uses where the term is descriptive, not evaluative.
+func containsWord(text, term string, exclusions map[string][]string) bool {
+	if !strings.Contains(text, term) {
+		return false
+	}
+	// Check if this is a technical use
+	if excl, ok := exclusions[term]; ok {
+		for _, pattern := range excl {
+			if strings.Contains(text, pattern) {
+				return false
+			}
+		}
+	}
+	return true
+}
 
 // classifyOrigin categorizes a provenance origin string into a source type.
 func classifyOrigin(origin string) string {

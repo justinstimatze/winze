@@ -98,27 +98,10 @@ func runDream(dir string, includeBias bool, jsonOut bool) {
 	// 6. Adit scores (if available)
 	dream.AditScores = runAditScoring(dir)
 
-	// 7. Bias audit (if requested)
+	// 7. Bias audit (if requested) — passes topology report to avoid re-running
 	if includeBias {
-		var results []BiasAuditorResult
-		results = append(results, auditConfirmationBias(dir))
-		results = append(results, auditAnchoringBias(dir))
-		results = append(results, auditClusteringIllusion(dir))
-		results = append(results, auditAvailabilityHeuristic(dir))
-		results = append(results, auditSurvivorshipBias(dir))
-		results = append(results, auditFramingEffect(dir))
-		results = append(results, auditDunningKruger(dir))
-		results = append(results, auditBaseRateNeglect(dir))
-		triggered := 0
-		for _, r := range results {
-			if r.Triggered {
-				triggered++
-			}
-		}
-		dream.BiasAudit = &BiasReport{
-			Auditors: results,
-			Summary:  fmt.Sprintf("%d of %d bias auditors triggered", triggered, len(results)),
-		}
+		biasReport := collectBiasResults(dir, &report, false, false)
+		dream.BiasAudit = &biasReport
 	}
 
 	// Count total
