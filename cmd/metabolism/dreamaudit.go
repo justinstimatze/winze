@@ -4,7 +4,7 @@
 // Each auditor maps a cognitive bias entity already in the KB to a
 // deterministic check on KB structure. The KB eats its own dogfood.
 //
-// Eight deterministic auditors:
+// Nine deterministic auditors:
 //
 //  1. Confirmation bias      — is the metabolism corroboration rate suspiciously high?
 //  2. Anchoring               — are early-ingested entities disproportionately central?
@@ -14,6 +14,7 @@
 //  6. Framing effect          — do Briefs use evaluative language that biases LLM judges?
 //  7. Dunning-Kruger effect   — do simple entities appear healthy because they're under-examined?
 //  8. Base rate neglect       — is the predicate distribution so skewed that common edges drown rare signal?
+//  9. Premature closure       — do Briefs use thought-terminating cliches that cap open inquiry?
 package main
 
 import (
@@ -67,6 +68,7 @@ func collectBiasResults(dir string, topoReport *TopologyReport, jsonOut bool, pr
 	results = append(results, auditFramingEffect(dir))
 	results = append(results, auditDunningKruger(dir, topoReport))
 	results = append(results, auditBaseRateNeglect(dir))
+	results = append(results, auditPrematureClosure(dir))
 
 	triggered := 0
 	for _, r := range results {
@@ -1122,6 +1124,169 @@ func auditBaseRateNeglect(dir string) BiasAuditorResult {
 	} else {
 		result.Conclusion = fmt.Sprintf("Predicate distribution has reasonable entropy (%.1f bits) — "+
 			"diverse enough that base rates aren't drowning signal", entropy)
+	}
+
+	return result
+}
+
+// auditPrematureClosure detects thought-terminating cliches in entity Briefs.
+// These are phrases that frame open questions as settled, preventing further
+// investigation. "It goes without saying", "obviously", "everyone knows" are
+// rhetorical stop signals that cap inquiry.
+//
+// Inspired by slimemold's premature closure detector (d0b74d1), which uses
+// two signals: (1) LLM-flagged terminates_inquiry, (2) structural leaf-capping
+// weak upstream. Winze's claims are flat (no dependency DAG), so we use only
+// the rhetorical signal. A future directional claim DAG (inferred from
+// predicate semantics like DerivedFrom, TheoryOf, InfluencedBy) would enable
+// the structural signal.
+//
+// KB entity: CognitiveBias (premature closure is documented but not yet
+// a standalone entity in the KB — candidate for addition).
+func auditPrematureClosure(dir string) BiasAuditorResult {
+	result := BiasAuditorResult{
+		Bias:      "CognitiveBias",
+		BiasName:  "Premature closure",
+		Metric:    "closure_cliche_brief_fraction",
+		Threshold: 0.05, // more than 5% of Briefs using closure language
+	}
+
+	// Thought-terminating cliches and rhetorical stop signals.
+	// These phrases frame open questions as settled.
+	closurePhrases := []string{
+		"it goes without saying",
+		"obviously",
+		"everyone knows",
+		"it is well known",
+		"it is well established",
+		"there is no doubt",
+		"undeniably",
+		"unquestionably",
+		"it is clear that",
+		"needless to say",
+		"of course",
+		"self-evident",
+		"beyond dispute",
+		"universally accepted",
+		"widely recognized",
+		"generally agreed",
+	}
+
+	// Context-dependent: some phrases are fine in specific domains.
+	// "self-evident" in a Brief about the Declaration of Independence
+	// is a quote, not a closure cliche. "of course" in "of course
+	// this remains debated" is the opposite of closure.
+	antiClosureContext := []string{
+		"remains debated",
+		"remains contested",
+		"still debated",
+		"still contested",
+		"not universally",
+		"despite",
+		"although",
+		"however",
+	}
+
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	if err != nil {
+		result.Detail = "cannot parse Go files"
+		return result
+	}
+
+	roleTypes := collectDreamRoleTypes(pkgs)
+
+	totalBriefs := 0
+	closureBriefs := 0
+	var examples []string
+
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			base := filepath.Base(f.Name.Name)
+			_ = base
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Values) == 0 {
+						continue
+					}
+					cl, ok := vs.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					typeName := compositeTypeName(cl)
+					if !roleTypes[typeName] {
+						continue
+					}
+
+					brief := extractEntityBrief(cl)
+					if brief == "" {
+						continue
+					}
+
+					totalBriefs++
+					lower := strings.ToLower(brief)
+
+					for _, phrase := range closurePhrases {
+						if !strings.Contains(lower, phrase) {
+							continue
+						}
+						// Check anti-closure context: does the Brief
+						// qualify or negate the closure phrase?
+						negated := false
+						for _, anti := range antiClosureContext {
+							if strings.Contains(lower, anti) {
+								negated = true
+								break
+							}
+						}
+						if negated {
+							continue
+						}
+
+						closureBriefs++
+						if len(examples) < 3 {
+							examples = append(examples, fmt.Sprintf("%s: %q", vs.Names[0].Name, phrase))
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if totalBriefs == 0 {
+		result.Detail = "no Briefs found"
+		return result
+	}
+
+	fraction := float64(closureBriefs) / float64(totalBriefs)
+	result.Value = fraction
+
+	exampleStr := ""
+	if len(examples) > 0 {
+		exampleStr = " — e.g., " + strings.Join(examples, "; ")
+	}
+
+	result.Detail = fmt.Sprintf("%d/%d Briefs (%.0f%%) contain thought-terminating cliches%s",
+		closureBriefs, totalBriefs, fraction*100, exampleStr)
+
+	if fraction > result.Threshold {
+		result.Triggered = true
+		result.Severity = "warning"
+		result.Conclusion = fmt.Sprintf("%.0f%% of Briefs use thought-terminating language. "+
+			"These phrases cap open questions as settled, preventing the metabolism loop "+
+			"and LLM judges from investigating further. Consider: does the Brief assert "+
+			"consensus that doesn't exist, or frame an open question as closed?",
+			fraction*100)
+	} else {
+		result.Conclusion = fmt.Sprintf("%.0f%% closure cliches — within acceptable range "+
+			"(rhetorical signal only; structural signal requires a directional claim DAG)",
+			fraction*100)
 	}
 
 	return result
