@@ -1,5 +1,7 @@
 # winze
 
+[![CI](https://github.com/justinstimatze/winze/actions/workflows/ci.yml/badge.svg)](https://github.com/justinstimatze/winze/actions/workflows/ci.yml)
+
 A knowledge base that audits itself for cognitive biases, predicts where it's wrong, and is right 88% of the time.
 
 Built on Go's type system. The compiler catches ontological errors. No new query language. No new runtime. Standard tooling works unchanged.
