@@ -1129,30 +1129,35 @@ func auditBaseRateNeglect(dir string) BiasAuditorResult {
 	return result
 }
 
-// auditPrematureClosure detects thought-terminating cliches in entity Briefs.
-// These are phrases that frame open questions as settled, preventing further
-// investigation. "It goes without saying", "obviously", "everyone knows" are
-// rhetorical stop signals that cap inquiry.
+// auditPrematureClosure detects thought-terminating cliches that cap open
+// inquiry, using two signals inspired by slimemold's premature closure
+// detector (d0b74d1):
 //
-// Inspired by slimemold's premature closure detector (d0b74d1), which uses
-// two signals: (1) LLM-flagged terminates_inquiry, (2) structural leaf-capping
-// weak upstream. Winze's claims are flat (no dependency DAG), so we use only
-// the rhetorical signal. A future directional claim DAG (inferred from
-// predicate semantics like DerivedFrom, TheoryOf, InfluencedBy) would enable
-// the structural signal.
+//  1. Rhetorical signal: Brief contains thought-terminating cliches
+//  2. Structural signal: entity is a leaf in the epistemic support DAG
+//     AND its upstream entities have topology vulnerabilities
 //
-// KB entity: CognitiveBias (premature closure is documented but not yet
-// a standalone entity in the KB — candidate for addition).
+// The epistemic DAG is inferred from predicate semantics. Each claim type
+// implies a support direction:
+//
+//	Proposes(Person, Hyp)       → Person grounds Hypothesis
+//	TheoryOf(Hyp, Concept)      → Hypothesis explains Concept
+//	DerivedFrom(A, B)           → B grounds A (reversed)
+//	InfluencedBy(A, B)          → B grounds A (reversed)
+//	BelongsTo(Child, Parent)    → Parent grounds Child (reversed)
+//	Authored(Person, Work)      → Person grounds Work
+//	Disputes(A, B)              → challenge edge (contra, not support)
+//
+// Either signal alone = info. Both together = warning.
 func auditPrematureClosure(dir string) BiasAuditorResult {
 	result := BiasAuditorResult{
 		Bias:      "CognitiveBias",
 		BiasName:  "Premature closure",
-		Metric:    "closure_cliche_brief_fraction",
-		Threshold: 0.05, // more than 5% of Briefs using closure language
+		Metric:    "closure_findings",
+		Threshold: 1.0, // any structural+rhetorical finding triggers
 	}
 
 	// Thought-terminating cliches and rhetorical stop signals.
-	// These phrases frame open questions as settled.
 	closurePhrases := []string{
 		"it goes without saying",
 		"obviously",
@@ -1172,19 +1177,10 @@ func auditPrematureClosure(dir string) BiasAuditorResult {
 		"generally agreed",
 	}
 
-	// Context-dependent: some phrases are fine in specific domains.
-	// "self-evident" in a Brief about the Declaration of Independence
-	// is a quote, not a closure cliche. "of course" in "of course
-	// this remains debated" is the opposite of closure.
 	antiClosureContext := []string{
-		"remains debated",
-		"remains contested",
-		"still debated",
-		"still contested",
-		"not universally",
-		"despite",
-		"although",
-		"however",
+		"remains debated", "remains contested",
+		"still debated", "still contested",
+		"not universally", "despite", "although", "however",
 	}
 
 	fset := token.NewFileSet()
@@ -1196,14 +1192,17 @@ func auditPrematureClosure(dir string) BiasAuditorResult {
 
 	roleTypes := collectDreamRoleTypes(pkgs)
 
-	totalBriefs := 0
-	closureBriefs := 0
-	var examples []string
+	// --- Pass 1: collect entities and Briefs ---
+	type entityInfo struct {
+		name     string
+		brief    string
+		roleType string
+	}
+	entities := map[string]*entityInfo{}
+	entityNames := map[string]bool{}
 
 	for _, pkg := range pkgs {
 		for _, f := range pkg.Files {
-			base := filepath.Base(f.Name.Name)
-			_ = base
 			for _, decl := range f.Decls {
 				gd, ok := decl.(*ast.GenDecl)
 				if !ok || gd.Tok != token.VAR {
@@ -1219,77 +1218,305 @@ func auditPrematureClosure(dir string) BiasAuditorResult {
 						continue
 					}
 					typeName := compositeTypeName(cl)
-					if !roleTypes[typeName] {
-						continue
-					}
-
-					brief := extractEntityBrief(cl)
-					if brief == "" {
-						continue
-					}
-
-					totalBriefs++
-					lower := strings.ToLower(brief)
-
-					for _, phrase := range closurePhrases {
-						if !strings.Contains(lower, phrase) {
-							continue
+					if roleTypes[typeName] {
+						name := vs.Names[0].Name
+						entities[name] = &entityInfo{
+							name:     name,
+							brief:    extractEntityBrief(cl),
+							roleType: typeName,
 						}
-						// Check anti-closure context: does the Brief
-						// qualify or negate the closure phrase?
-						negated := false
-						for _, anti := range antiClosureContext {
-							if strings.Contains(lower, anti) {
-								negated = true
-								break
-							}
-						}
-						if negated {
-							continue
-						}
-
-						closureBriefs++
-						if len(examples) < 3 {
-							examples = append(examples, fmt.Sprintf("%s: %q", vs.Names[0].Name, phrase))
-						}
-						break
+						entityNames[name] = true
 					}
 				}
 			}
 		}
 	}
 
-	if totalBriefs == 0 {
-		result.Detail = "no Briefs found"
+	// --- Pass 2: build epistemic support DAG ---
+	// supports[A] = [B, C] means A epistemically grounds B and C
+	supports := map[string][]string{}
+	// supportedBy[B] = [A] means B is grounded by A
+	supportedBy := map[string][]string{}
+
+	// Predicate types where Subject grounds Object (subject→object support)
+	subjectGrounds := map[string]bool{
+		"Proposes": true, "ProposesOrg": true,
+		"Authored": true, "AuthoredOrg": true,
+		"TheoryOf": true, "HypothesisExplains": true,
+		"CommentaryOn": true,
+	}
+	// Predicate types where Object grounds Subject (reversed direction)
+	objectGrounds := map[string]bool{
+		"DerivedFrom": true, "InfluencedBy": true,
+		"BelongsTo": true, "IsFictional": true,
+	}
+
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Values) == 0 {
+						continue
+					}
+					cl, ok := vs.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					typeName := compositeTypeName(cl)
+					if typeName == "" || typeName == "Provenance" || roleTypes[typeName] {
+						continue
+					}
+
+					// Extract Subject and Object
+					var subj, obj string
+					for _, elt := range cl.Elts {
+						kv, ok := elt.(*ast.KeyValueExpr)
+						if !ok {
+							continue
+						}
+						key, ok := kv.Key.(*ast.Ident)
+						if !ok {
+							continue
+						}
+						ref := exprIdent(kv.Value)
+						if ref == "" || !entityNames[ref] {
+							continue
+						}
+						switch key.Name {
+						case "Subject":
+							subj = ref
+						case "Object":
+							obj = ref
+						}
+					}
+
+					if subj == "" || obj == "" {
+						continue
+					}
+
+					if subjectGrounds[typeName] {
+						// Subject grounds Object
+						supports[subj] = append(supports[subj], obj)
+						supportedBy[obj] = append(supportedBy[obj], subj)
+					} else if objectGrounds[typeName] {
+						// Object grounds Subject
+						supports[obj] = append(supports[obj], subj)
+						supportedBy[subj] = append(supportedBy[subj], obj)
+					}
+					// Other predicates (Disputes, spatial, unary) don't
+					// contribute to the support DAG.
+				}
+			}
+		}
+	}
+
+	// --- Pass 3: find leaf entities (nothing depends on them) ---
+	leafEntities := map[string]bool{}
+	for name := range entities {
+		if len(supports[name]) == 0 {
+			leafEntities[name] = true
+		}
+	}
+
+	// --- Pass 4: check upstream vulnerability ---
+	// An entity has "weak upstream" if any entity that supports it has
+	// thin provenance (appears in few claims — proxy for weak basis).
+	claimRefs := map[string]int{}
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Values) == 0 {
+						continue
+					}
+					cl, ok := vs.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					typeName := compositeTypeName(cl)
+					if typeName == "" || typeName == "Provenance" || roleTypes[typeName] {
+						continue
+					}
+					for _, elt := range cl.Elts {
+						kv, ok := elt.(*ast.KeyValueExpr)
+						if !ok {
+							continue
+						}
+						key, ok := kv.Key.(*ast.Ident)
+						if !ok {
+							continue
+						}
+						if key.Name == "Subject" || key.Name == "Object" {
+							ref := exprIdent(kv.Value)
+							if ref != "" && entityNames[ref] {
+								claimRefs[ref]++
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	hasWeakUpstream := func(name string) bool {
+		for _, upstream := range supportedBy[name] {
+			if claimRefs[upstream] <= 2 {
+				return true
+			}
+		}
+		// Walk one more level (like slimemold)
+		for _, upstream := range supportedBy[name] {
+			for _, grandUpstream := range supportedBy[upstream] {
+				if claimRefs[grandUpstream] <= 2 {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	// --- Pass 5: combine signals ---
+	type closureFinding struct {
+		entity     string
+		phrase     string
+		isLeaf     bool
+		weakUpstream bool
+		severity   string
+	}
+	var findings []closureFinding
+
+	for name, ent := range entities {
+		if ent.brief == "" {
+			continue
+		}
+		lower := strings.ToLower(ent.brief)
+
+		// Rhetorical signal: closure cliche in Brief
+		var matchedPhrase string
+		for _, phrase := range closurePhrases {
+			if !strings.Contains(lower, phrase) {
+				continue
+			}
+			negated := false
+			for _, anti := range antiClosureContext {
+				if strings.Contains(lower, anti) {
+					negated = true
+					break
+				}
+			}
+			if !negated {
+				matchedPhrase = phrase
+				break
+			}
+		}
+
+		rhetorical := matchedPhrase != ""
+		isLeaf := leafEntities[name]
+		weak := hasWeakUpstream(name)
+		structural := isLeaf && weak
+
+		if !rhetorical && !structural {
+			continue
+		}
+
+		sev := "info"
+		if rhetorical && structural {
+			sev = "warning"
+		}
+
+		findings = append(findings, closureFinding{
+			entity:       name,
+			phrase:       matchedPhrase,
+			isLeaf:       isLeaf,
+			weakUpstream: weak,
+			severity:     sev,
+		})
+	}
+
+	sort.Slice(findings, func(i, j int) bool {
+		if findings[i].severity != findings[j].severity {
+			return findings[i].severity > findings[j].severity // warning before info
+		}
+		return findings[i].entity < findings[j].entity
+	})
+
+	// Count warnings (both signals) as the primary metric
+	warnings := 0
+	for _, f := range findings {
+		if f.severity == "warning" {
+			warnings++
+		}
+	}
+
+	result.Value = float64(warnings)
+
+	// Build detail
+	dagStats := fmt.Sprintf("DAG: %d entities, %d support edges, %d leaves",
+		len(entities), countSupportEdges(supports), len(leafEntities))
+
+	if len(findings) == 0 {
+		result.Detail = fmt.Sprintf("no closure findings (%s)", dagStats)
+		result.Conclusion = "No premature closure detected in Briefs or DAG structure"
 		return result
 	}
 
-	fraction := float64(closureBriefs) / float64(totalBriefs)
-	result.Value = fraction
-
-	exampleStr := ""
-	if len(examples) > 0 {
-		exampleStr = " — e.g., " + strings.Join(examples, "; ")
+	var exampleStrs []string
+	for i, f := range findings {
+		if i >= 3 {
+			break
+		}
+		parts := []string{f.entity}
+		if f.phrase != "" {
+			parts = append(parts, fmt.Sprintf("cliche=%q", f.phrase))
+		}
+		if f.isLeaf {
+			parts = append(parts, "leaf")
+		}
+		if f.weakUpstream {
+			parts = append(parts, "weak-upstream")
+		}
+		parts = append(parts, fmt.Sprintf("[%s]", f.severity))
+		exampleStrs = append(exampleStrs, strings.Join(parts, " "))
 	}
 
-	result.Detail = fmt.Sprintf("%d/%d Briefs (%.0f%%) contain thought-terminating cliches%s",
-		closureBriefs, totalBriefs, fraction*100, exampleStr)
+	result.Detail = fmt.Sprintf("%d findings (%d warning, %d info) — %s — %s",
+		len(findings), warnings, len(findings)-warnings, dagStats,
+		strings.Join(exampleStrs, "; "))
 
-	if fraction > result.Threshold {
+	if warnings > 0 {
 		result.Triggered = true
 		result.Severity = "warning"
-		result.Conclusion = fmt.Sprintf("%.0f%% of Briefs use thought-terminating language. "+
-			"These phrases cap open questions as settled, preventing the metabolism loop "+
-			"and LLM judges from investigating further. Consider: does the Brief assert "+
-			"consensus that doesn't exist, or frame an open question as closed?",
-			fraction*100)
+		result.Conclusion = fmt.Sprintf("%d entities have BOTH closure cliches in their Briefs AND "+
+			"are leaf nodes capping weak upstream in the epistemic DAG. "+
+			"These are the highest-risk premature closures: a rhetorical stop signal "+
+			"where the reasoning chain is already structurally weak.",
+			warnings)
 	} else {
-		result.Conclusion = fmt.Sprintf("%.0f%% closure cliches — within acceptable range "+
-			"(rhetorical signal only; structural signal requires a directional claim DAG)",
-			fraction*100)
+		result.Conclusion = fmt.Sprintf("%d info-level findings (single signal only). "+
+			"Closure cliches exist but don't coincide with structural weakness, "+
+			"or structural leaves exist without rhetorical stop signals.",
+			len(findings))
 	}
 
 	return result
+}
+
+func countSupportEdges(supports map[string][]string) int {
+	n := 0
+	for _, targets := range supports {
+		n += len(targets)
+	}
+	return n
 }
 
 // --- helpers ---
