@@ -178,11 +178,20 @@ The metabolism loop can use a local Wikipedia ZIM file for offline fulltext sear
    a `.go` corpus file with provenance quotes verified against the source text.
    Review the output before committing. Requires `ANTHROPIC_API_KEY`.
 
+5. Automated quality pipeline (no human review):
+   ```bash
+   go run ./cmd/metabolism --pipeline --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
+   ```
+   Runs the full chain: ingest → `go build` → `go vet` → deterministic lint →
+   LLM contradiction check → auto-commit if all pass. Exit 2 = quality gate
+   rejection (generated file removed). LLM contradictions are never auto-committed.
+
 ## Gas Town integration (optional)
 
 Multi-agent curation workflow for autonomous KB maintenance via [Gas Town](https://github.com/gastownhall/gastown):
 
-- **Formula:** `.beads/formulas/mol-curate.formula.toml` — 5-step curation workflow (load-context, source-analysis, ingest, validate, submit)
+- **Formula:** `.beads/formulas/mol-curate.formula.toml` — 5-step manual curation workflow (load-context, source-analysis, ingest, validate, submit)
+- **Formula:** `.beads/formulas/mol-curate-auto.formula.toml` — automated quality pipeline (`--pipeline` flag, 3 steps)
 - **Patrol plugin:** `plugins/kb-health/plugin.md` — periodic lint health check (2h cooldown)
 - **Interactive skill:** `.claude/skills/curate/SKILL.md` — `/curate status|ingest|audit|predict|resolve|sensor`
 

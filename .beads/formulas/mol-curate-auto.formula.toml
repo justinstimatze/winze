@@ -1,0 +1,139 @@
+description = """
+Automated KB ingest with full quality pipeline.
+
+Runs the metabolism `--pipeline` flag which chains:
+ingest → build → vet → lint → llm-contradiction → commit/reject.
+
+Unlike mol-curate (manual curation), this formula runs the entire pipeline
+as a single command. The polecat's job is to execute it, handle failures,
+and submit the result. No human review needed — the quality gates ARE the
+review.
+
+## Polecat Contract
+
+Same self-cleaning model as mol-polecat-work. The pipeline command handles
+all quality decisions internally:
+- Build/vet/lint failure → pipeline removes the generated file and exits 2
+- LLM contradiction found → pipeline rejects and exits 2
+- All gates pass → pipeline commits automatically
+
+Your job: run the command, report the outcome, `gt done`.
+
+## Variables
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| issue | hook_bead | The bead tracking this ingest run |
+| base_branch | sling vars | Branch to rebase on (default: main) |
+| zim_path | sling vars | Path to the ZIM file |
+| llm_budget | sling vars | Max LLM calls for contradiction check (default: 3) |
+"""
+formula = "mol-curate-auto"
+version = 1
+
+[[steps]]
+id = "setup"
+title = "Prime and verify prerequisites"
+description = """
+**1. Prime environment:**
+```bash
+gt prime && bd prime
+gt hook
+bd show {{issue}}
+```
+
+**2. Verify prerequisites:**
+```bash
+# ZIM file exists
+ls -la {{zim_path}}
+
+# API key is set
+test -n "$ANTHROPIC_API_KEY" || source .env
+
+# Corroborated cycles exist
+go run ./cmd/metabolism --calibrate . 2>&1 | grep -c corroborated
+```
+
+**3. Check current KB state:**
+```bash
+go build ./...
+go run ./cmd/lint .
+```
+
+**Exit criteria:** Environment ready, at least one corroborated ZIM cycle in the log."""
+
+[[steps]]
+id = "run-pipeline"
+title = "Execute the automated quality pipeline"
+needs = ["setup"]
+description = """
+Run the full pipeline:
+
+```bash
+go run ./cmd/metabolism --pipeline --zim {{zim_path}} --llm-budget {{llm_budget}} .
+```
+
+**Interpret the exit code:**
+- Exit 0: All gates passed, file committed automatically. Proceed to submit.
+- Exit 2: Quality gate rejection. Read the diagnostics. If it's a build/lint
+  failure, the generated file was already removed — nothing to clean up.
+  If it's an LLM contradiction, note the finding in the bead.
+- Exit 1: Fatal error (missing API key, ZIM file, etc.). Fix and retry.
+
+**If rejected (exit 2):**
+```bash
+bd update {{issue}} --notes "Pipeline rejected: <reason from output>"
+```
+Do NOT retry automatically. The rejection is correct. Close the bead as
+"rejected" or escalate if the finding seems wrong.
+
+**If successful (exit 0):**
+Verify the commit looks right:
+```bash
+git log -1 --stat
+git show HEAD -- '*.go' | head -50
+```
+
+**Exit criteria:** Pipeline completed with exit 0 and commit exists."""
+
+[[steps]]
+id = "submit-and-exit"
+title = "Submit work and self-clean"
+needs = ["run-pipeline"]
+description = """
+Rebase, verify, and submit.
+
+**1. Rebase onto latest:**
+```bash
+git fetch origin {{base_branch}}
+git rebase origin/{{base_branch}}
+```
+
+**2. Re-run build after rebase (quick sanity check):**
+```bash
+go build ./...
+```
+
+**3. Submit:**
+```bash
+gt done --pre-verified --target {{base_branch}}
+```
+
+Done means gone."""
+
+[vars]
+[vars.issue]
+description = "The bead tracking this ingest run"
+required = true
+
+[vars.base_branch]
+description = "Branch to rebase on"
+default = "main"
+
+[vars.zim_path]
+description = "Path to the ZIM file"
+default = "/opt/zim/wikipedia_en_all_nopic_2025-12.zim"
+
+[vars.llm_budget]
+description = "Max LLM calls for contradiction check"
+default = "3"

@@ -71,6 +71,8 @@ go run ./cmd/metabolism --dry-run .                    # show targets without qu
 go run ./cmd/metabolism --calibrate .                  # analyze accumulated cycle log
 go run ./cmd/metabolism --suggest .                    # generate ingest template from corroborated results
 go run ./cmd/metabolism --ingest --zim FILE .          # LLM-assisted ingest from corroborated ZIM cycles
+go run ./cmd/metabolism --pipeline --zim FILE .        # full quality pipeline: ingest → build → lint → llm → commit/reject
+go run ./cmd/metabolism --pipeline --zim FILE --llm-budget 5 .  # pipeline with custom LLM budget
 go run ./cmd/metabolism --json .                       # JSON output
 ```
 
@@ -80,8 +82,12 @@ and/or Wikipedia ZIM) for external signal → results logged to
 predicts curation gaps. Topology reads the log to deprioritize already-queried
 hypotheses (fresh ones get sensor attention first). Zero-paper cycles
 auto-resolve as `no_signal`. `--suggest` generates ingest templates from
-corroborated results. ZIM backend uses gozim (pure Go, no Python needed).
-Builds a Bleve fulltext index on first use (persisted to `<zimfile>.bleve/`).
+corroborated results. `--pipeline` runs the full automated quality pipeline:
+ingest → go build → go vet → deterministic lint → LLM contradiction check →
+commit if all pass, reject if any gate fails. Exit 2 = quality rejection.
+ZIM backend uses gozim (pure Go, no Python needed). Builds a Bleve fulltext
+index on first use (persisted to `<zimfile>.bleve/`).
+Gas Town formula: `mol-curate-auto` wraps `--pipeline` for polecat execution.
 
 ### Skeptical ingest (sensor defense)
 

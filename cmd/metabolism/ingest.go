@@ -19,7 +19,14 @@ import (
 	zim "github.com/justinstimatze/gozim"
 )
 
+// ingestResult holds the outcome of an LLM-assisted ingest run.
+type ingestOutcome struct {
+	OutPath    string // path to generated .go file ("" if nothing generated)
+	ClaimCount int    // number of claims extracted
+}
+
 // runIngest performs LLM-assisted ingest from corroborated ZIM metabolism cycles.
+// Returns the outcome (file path + claim count). Exits on fatal errors.
 //
 // Pipeline:
 //  1. Load metabolism log, filter for corroborated ZIM cycles with papers
@@ -28,7 +35,7 @@ import (
 //  4. Call Anthropic API: extract claims the source explicitly commits to
 //  5. Generate .go corpus file from LLM response
 //  6. Validate with go build
-func runIngest(dir, zimPath, zimIndex string) {
+func runIngest(dir, zimPath, zimIndex string) ingestOutcome {
 	loadDotEnv(dir)
 
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
@@ -75,7 +82,7 @@ func runIngest(dir, zimPath, zimIndex string) {
 
 	if len(order) == 0 {
 		fmt.Fprintln(os.Stderr, "metabolism: no corroborated ZIM cycles with papers — nothing to ingest")
-		return
+		return ingestOutcome{}
 	}
 
 	// Deduplicate articles per hypothesis
@@ -183,7 +190,7 @@ func runIngest(dir, zimPath, zimIndex string) {
 
 	if totalClaims == 0 {
 		fmt.Println("\n[ingest] no actionable claims extracted — sources didn't commit to relationships")
-		return
+		return ingestOutcome{}
 	}
 
 	// Write the file
@@ -205,6 +212,8 @@ func runIngest(dir, zimPath, zimIndex string) {
 	} else {
 		fmt.Printf("[ingest] go build passed — %d claims ready for review\n", totalClaims)
 	}
+
+	return ingestOutcome{OutPath: outPath, ClaimCount: totalClaims}
 }
 
 // readZimArticle reads a ZIM article by path and returns stripped plaintext.

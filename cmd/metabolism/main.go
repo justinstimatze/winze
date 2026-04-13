@@ -112,6 +112,8 @@ func main() {
 	resolve := flag.String("resolve", "", "resolve a hypothesis: HYPOTHESIS=corroborated|challenged|irrelevant|no_signal")
 	suggest := flag.Bool("suggest", false, "generate corpus template from corroborated cycles")
 	ingest := flag.Bool("ingest", false, "LLM-assisted ingest from corroborated ZIM cycles (needs --zim and ANTHROPIC_API_KEY)")
+	pipeline := flag.Bool("pipeline", false, "full quality pipeline: ingest → build → vet → lint → llm-contradiction → commit/reject")
+	llmBudget := flag.Int("llm-budget", 3, "max LLM calls for contradiction check in pipeline mode")
 	jsonOut := flag.Bool("json", false, "output as JSON")
 	backend := flag.String("backend", "arxiv", "sensor backend: arxiv, zim, or all")
 	zimPath := flag.String("zim", "", "path to .zim file (required for zim backend)")
@@ -148,6 +150,15 @@ func main() {
 
 	if *suggest {
 		runSuggest(dir)
+		return
+	}
+
+	if *pipeline {
+		if *zimPath == "" {
+			fmt.Fprintf(os.Stderr, "metabolism: --pipeline requires --zim\n")
+			os.Exit(1)
+		}
+		runPipeline(dir, *zimPath, *zimIndex, *llmBudget)
 		return
 	}
 
