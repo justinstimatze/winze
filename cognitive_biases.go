@@ -215,6 +215,46 @@ var (
 		Prov:    cognitiveBiasesSource,
 	}
 
+	ConfirmationBiasIsBias = IsCognitiveBias{
+		Subject: ConfirmationBias,
+		Prov:    cognitiveBiasesSource,
+	}
+	SurvivorshipBiasIsBias = IsCognitiveBias{
+		Subject: SurvivorshipBias,
+		Prov:    cognitiveBiasesSource,
+	}
+	FramingEffectIsBias = IsCognitiveBias{
+		Subject: FramingEffect,
+		Prov:    cognitiveBiasesSource,
+	}
+	BaseRateNeglectIsBias = IsCognitiveBias{
+		Subject: BaseRateNeglect,
+		Prov:    cognitiveBiasesSource,
+	}
+
+	// New biases belong directly to CognitiveBias umbrella (different
+	// task families than the Estimation family above).
+	ConfirmationBelongsToCognitiveBias = BelongsTo{
+		Subject: ConfirmationBias,
+		Object:  CognitiveBias,
+		Prov:    cognitiveBiasesSource,
+	}
+	SurvivorshipBelongsToCognitiveBias = BelongsTo{
+		Subject: SurvivorshipBias,
+		Object:  CognitiveBias,
+		Prov:    cognitiveBiasesSource,
+	}
+	FramingBelongsToCognitiveBias = BelongsTo{
+		Subject: FramingEffect,
+		Object:  CognitiveBias,
+		Prov:    cognitiveBiasesSource,
+	}
+	BaseRateNeglectBelongsToCognitiveBias = BelongsTo{
+		Subject: BaseRateNeglect,
+		Object:  CognitiveBias,
+		Prov:    cognitiveBiasesSource,
+	}
+
 	AvailabilityBelongsToEstimation = BelongsTo{
 		Subject: AvailabilityHeuristic,
 		Object:  EstimationBiases,

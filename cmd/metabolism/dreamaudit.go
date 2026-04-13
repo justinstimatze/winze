@@ -132,7 +132,7 @@ func collectBiasResults(dir string, topoReport *TopologyReport, jsonOut bool, pr
 // above this suggests confirmation bias in the pipeline.
 func auditConfirmationBias(dir string) BiasAuditorResult {
 	result := BiasAuditorResult{
-		Bias:      "CognitiveBias",
+		Bias:      "ConfirmationBias",
 		BiasName:  "Confirmation bias",
 		Metric:    "corroboration_rate",
 		Threshold: 0.75, // 75% corroboration rate is suspicious
@@ -554,7 +554,7 @@ func auditAvailabilityHeuristic(dir string) BiasAuditorResult {
 // filtering out valid dissent.
 func auditSurvivorshipBias(dir string) BiasAuditorResult {
 	result := BiasAuditorResult{
-		Bias:      "CognitiveBias", // general reference
+		Bias:      "SurvivorshipBias",
 		BiasName:  "Survivorship bias",
 		Metric:    "irrelevant_to_challenged_ratio",
 		Threshold: 5.0, // more than 5:1 irrelevant:challenged is suspicious
@@ -644,7 +644,7 @@ func auditSurvivorshipBias(dir string) BiasAuditorResult {
 // KB entity: CognitiveBias (framing effect is a documented bias)
 func auditFramingEffect(dir string) BiasAuditorResult {
 	result := BiasAuditorResult{
-		Bias:      "CognitiveBias",
+		Bias:      "FramingEffect",
 		BiasName:  "Framing effect",
 		Metric:    "evaluative_brief_fraction",
 		Threshold: 0.15, // more than 15% of Briefs using loaded language
@@ -717,9 +717,33 @@ func auditFramingEffect(dir string) BiasAuditorResult {
 
 					totalBriefs++
 					lower := strings.ToLower(brief)
+
+					// Role-type context: some terms are descriptive for
+					// certain entity types. "debunked" is factual for a
+					// misconception/concept but evaluative for a hypothesis.
+					entityType := typeName
+					roleAware := map[string][]string{
+						"debunked":    {"Concept"},     // factual for misconceptions
+						"discredited": {"Concept"},     // factual for misconceptions
+						"celebrated":  {"Person"},      // factual for notable people
+						"pioneering":  {"Person"},      // factual for notable people
+					}
+
 					matched := false
 					for _, term := range positiveFraming {
 						if containsWord(lower, term, technicalExclusions) {
+							if allowedTypes, ok := roleAware[term]; ok {
+								skip := false
+								for _, at := range allowedTypes {
+									if entityType == at {
+										skip = true
+										break
+									}
+								}
+								if skip {
+									continue
+								}
+							}
 							positiveCount++
 							matched = true
 							if len(examples) < 3 {
@@ -731,6 +755,18 @@ func auditFramingEffect(dir string) BiasAuditorResult {
 					if !matched {
 						for _, term := range negativeFraming {
 							if containsWord(lower, term, technicalExclusions) {
+								if allowedTypes, ok := roleAware[term]; ok {
+									skip := false
+									for _, at := range allowedTypes {
+										if entityType == at {
+											skip = true
+											break
+										}
+									}
+									if skip {
+										continue
+									}
+								}
 								negativeCount++
 								if len(examples) < 3 {
 									examples = append(examples, fmt.Sprintf("%s: -%q", vs.Names[0].Name, term))
@@ -984,7 +1020,7 @@ func auditDunningKruger(dir string, topoReport *TopologyReport) BiasAuditorResul
 // Metric: entropy of predicate distribution. Low entropy = concentrated.
 func auditBaseRateNeglect(dir string) BiasAuditorResult {
 	result := BiasAuditorResult{
-		Bias:      "CognitiveBias",
+		Bias:      "BaseRateNeglect",
 		BiasName:  "Base rate neglect",
 		Metric:    "predicate_entropy",
 		Threshold: 3.0, // Shannon entropy below 3.0 bits = concentrated (max ~5 for this KB)
