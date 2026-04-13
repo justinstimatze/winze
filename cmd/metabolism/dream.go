@@ -106,6 +106,9 @@ func runDream(dir string, includeBias bool, jsonOut bool) {
 		results = append(results, auditClusteringIllusion(dir))
 		results = append(results, auditAvailabilityHeuristic(dir))
 		results = append(results, auditSurvivorshipBias(dir))
+		results = append(results, auditFramingEffect(dir))
+		results = append(results, auditDunningKruger(dir))
+		results = append(results, auditBaseRateNeglect(dir))
 		triggered := 0
 		for _, r := range results {
 			if r.Triggered {

@@ -54,6 +54,9 @@ func runDreamBias(dir string, jsonOut bool) {
 	results = append(results, auditClusteringIllusion(dir))
 	results = append(results, auditAvailabilityHeuristic(dir))
 	results = append(results, auditSurvivorshipBias(dir))
+	results = append(results, auditFramingEffect(dir))
+	results = append(results, auditDunningKruger(dir))
+	results = append(results, auditBaseRateNeglect(dir))
 
 	triggered := 0
 	for _, r := range results {
@@ -601,6 +604,415 @@ func auditSurvivorshipBias(dir string) BiasAuditorResult {
 			ratio)
 	} else {
 		result.Conclusion = "Challenge/irrelevant ratio is within expected range"
+	}
+
+	return result
+}
+
+// auditFramingEffect checks whether entity Briefs use evaluative language
+// that frames hypotheses rather than describing them. Loaded terms like
+// "groundbreaking", "controversial", "seminal", "flawed" predispose LLM
+// judges (and human readers) toward or against an entity before examining
+// its claims.
+//
+// Metric: fraction of Briefs containing evaluative terms.
+// KB entity: CognitiveBias (framing effect is a documented bias)
+func auditFramingEffect(dir string) BiasAuditorResult {
+	result := BiasAuditorResult{
+		Bias:      "CognitiveBias",
+		BiasName:  "Framing effect",
+		Metric:    "evaluative_brief_fraction",
+		Threshold: 0.15, // more than 15% of Briefs using loaded language
+	}
+
+	// Evaluative terms that frame rather than describe.
+	// Split into positive and negative to report framing direction.
+	positiveFraming := []string{
+		"groundbreaking", "seminal", "landmark", "revolutionary",
+		"brilliant", "influential", "pioneering", "definitive",
+		"canonical", "masterful", "profound", "celebrated",
+	}
+	negativeFraming := []string{
+		"controversial", "flawed", "debunked", "discredited",
+		"pseudoscientific", "misleading", "simplistic", "naive",
+		"outdated", "rejected", "failed", "questionable",
+	}
+	allFraming := append(positiveFraming, negativeFraming...)
+
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	if err != nil {
+		result.Detail = "cannot parse Go files"
+		return result
+	}
+
+	roleTypes := collectDreamRoleTypes(pkgs)
+
+	totalBriefs := 0
+	framedBriefs := 0
+	var examples []string
+
+	for _, pkg := range pkgs {
+		for fname, f := range pkg.Files {
+			base := filepath.Base(fname)
+			if isInfraFile(base) {
+				continue
+			}
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Values) == 0 {
+						continue
+					}
+					cl, ok := vs.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					typeName := compositeTypeName(cl)
+					if !roleTypes[typeName] {
+						continue
+					}
+
+					brief := extractEntityBrief(cl)
+					if brief == "" {
+						continue
+					}
+
+					totalBriefs++
+					lower := strings.ToLower(brief)
+					for _, term := range allFraming {
+						if strings.Contains(lower, term) {
+							framedBriefs++
+							if len(examples) < 3 {
+								examples = append(examples, fmt.Sprintf("%s: contains %q", vs.Names[0].Name, term))
+							}
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if totalBriefs == 0 {
+		result.Detail = "no Briefs found"
+		return result
+	}
+
+	fraction := float64(framedBriefs) / float64(totalBriefs)
+	result.Value = fraction
+
+	exampleStr := ""
+	if len(examples) > 0 {
+		exampleStr = " — e.g., " + strings.Join(examples, "; ")
+	}
+
+	result.Detail = fmt.Sprintf("%d/%d Briefs (%.0f%%) contain evaluative language%s",
+		framedBriefs, totalBriefs, fraction*100, exampleStr)
+
+	if fraction > result.Threshold {
+		result.Triggered = true
+		result.Severity = "info"
+		result.Conclusion = fmt.Sprintf("%.0f%% of Briefs use evaluative framing. "+
+			"These terms may predispose the LLM contradiction checker toward or against "+
+			"entities. Consider: does the Brief describe what the entity IS, or evaluate "+
+			"how good/bad it is?", fraction*100)
+	} else {
+		result.Conclusion = fmt.Sprintf("%.0f%% evaluative framing — within acceptable range", fraction*100)
+	}
+
+	return result
+}
+
+// auditDunningKruger checks whether structurally simple hypotheses (few
+// claims, short Briefs) appear disproportionately "healthy" in topology
+// analysis. Simple hypotheses have fewer attack surfaces — they can't be
+// flagged as single-source if they only have one claim, and they can't
+// have contradictions if they have no cross-references. This means the
+// topology may rate them as well-supported when they're actually just
+// under-examined.
+//
+// Metric: correlation between hypothesis complexity (claim count) and
+// vulnerability count. A strong negative correlation means simple
+// hypotheses systematically look healthier.
+func auditDunningKruger(dir string) BiasAuditorResult {
+	result := BiasAuditorResult{
+		Bias:      "DunningKrugerEffect",
+		BiasName:  "Dunning-Kruger effect",
+		Metric:    "complexity_vulnerability_correlation",
+		Threshold: 0.6, // strong negative correlation (reported as abs value)
+	}
+
+	// Get topology vulnerabilities per entity
+	_, report, err := runTopology(dir)
+	if err != nil {
+		result.Detail = fmt.Sprintf("topology error: %v", err)
+		return result
+	}
+
+	vulnCount := map[string]int{}
+	for _, v := range report.Vulnerabilities {
+		vulnCount[v.Entity]++
+	}
+
+	// Get claim counts per entity from AST
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	if err != nil {
+		result.Detail = "cannot parse Go files"
+		return result
+	}
+
+	roleTypes := collectDreamRoleTypes(pkgs)
+
+	// Collect entity names
+	entityNames := map[string]bool{}
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Values) == 0 {
+						continue
+					}
+					cl, ok := vs.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					if roleTypes[compositeTypeName(cl)] {
+						entityNames[vs.Names[0].Name] = true
+					}
+				}
+			}
+		}
+	}
+
+	// Count claims referencing each entity (as subject or object)
+	claimRefs := map[string]int{}
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Values) == 0 {
+						continue
+					}
+					cl, ok := vs.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					typeName := compositeTypeName(cl)
+					if roleTypes[typeName] || typeName == "Provenance" || typeName == "" {
+						continue
+					}
+					// This is a claim — extract subject and object references
+					for _, elt := range cl.Elts {
+						kv, ok := elt.(*ast.KeyValueExpr)
+						if !ok {
+							continue
+						}
+						key, ok := kv.Key.(*ast.Ident)
+						if !ok {
+							continue
+						}
+						if key.Name == "Subject" || key.Name == "Object" {
+							ref := exprIdent(kv.Value)
+							if ref != "" && entityNames[ref] {
+								claimRefs[ref]++
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Only analyze Hypothesis entities (the ones topology evaluates)
+	type hypData struct {
+		claims int
+		vulns  int
+	}
+	var hypotheses []hypData
+	for name := range entityNames {
+		refs := claimRefs[name]
+		vulns := vulnCount[name]
+		if refs > 0 { // only include entities that participate in claims
+			hypotheses = append(hypotheses, hypData{claims: refs, vulns: vulns})
+		}
+	}
+
+	if len(hypotheses) < 8 {
+		result.Detail = fmt.Sprintf("only %d entities with claims — too few for correlation", len(hypotheses))
+		return result
+	}
+
+	// Compute correlation between claim count and vulnerability count
+	claimVals := make([]float64, len(hypotheses))
+	vulnVals := make([]float64, len(hypotheses))
+	for i, h := range hypotheses {
+		claimVals[i] = float64(h.claims)
+		vulnVals[i] = float64(h.vulns)
+	}
+
+	rho := spearmanRho(claimVals, vulnVals)
+	result.Value = math.Abs(rho)
+
+	// Count entities with zero vulns
+	zeroVulns := 0
+	for _, h := range hypotheses {
+		if h.vulns == 0 {
+			zeroVulns++
+		}
+	}
+
+	result.Detail = fmt.Sprintf("Spearman rho = %.3f across %d entities (%d with zero vulnerabilities)",
+		rho, len(hypotheses), zeroVulns)
+
+	if rho > result.Threshold {
+		// Positive correlation: more complex = more vulnerable (expected, not bias)
+		result.Conclusion = fmt.Sprintf("Positive correlation (%.2f): more claims correlate with more "+
+			"vulnerabilities. This is expected — more claims = more attack surfaces. But it means "+
+			"simple hypotheses may appear healthier simply because they're under-examined, not "+
+			"because they're well-supported.", rho)
+		result.Triggered = true
+		result.Severity = "info"
+	} else if rho < -result.Threshold {
+		// Negative: more complex = fewer vulns (opposite of expected)
+		result.Conclusion = fmt.Sprintf("Negative correlation (%.2f): unexpectedly, more claims correlate with "+
+			"fewer vulnerabilities. Well-connected entities may be shielded from structural critique.", rho)
+		result.Triggered = true
+		result.Severity = "warning"
+	} else {
+		result.Conclusion = "No strong correlation between entity complexity and vulnerability count"
+	}
+
+	return result
+}
+
+// auditBaseRateNeglect checks whether the KB's predicate distribution is
+// so skewed that common predicates (BelongsTo, InfluencedBy) drown out
+// rare but high-signal predicates (Disputes, Refutes). When one predicate
+// type dominates, pattern-matching (LLM or human) may treat all
+// connections as equally likely, ignoring that a Disputes edge is far
+// more informative than a BelongsTo edge.
+//
+// Metric: entropy of predicate distribution. Low entropy = concentrated.
+func auditBaseRateNeglect(dir string) BiasAuditorResult {
+	result := BiasAuditorResult{
+		Bias:      "CognitiveBias",
+		BiasName:  "Base rate neglect",
+		Metric:    "predicate_entropy",
+		Threshold: 2.0, // Shannon entropy below 2.0 bits = too concentrated
+	}
+
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	if err != nil {
+		result.Detail = "cannot parse Go files"
+		return result
+	}
+
+	roleTypes := collectDreamRoleTypes(pkgs)
+
+	// Count predicate types (claim composite types that aren't roles or provenance)
+	predCounts := map[string]int{}
+	total := 0
+
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Values) == 0 {
+						continue
+					}
+					cl, ok := vs.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					typeName := compositeTypeName(cl)
+					if typeName == "" || typeName == "Provenance" || roleTypes[typeName] {
+						continue
+					}
+					predCounts[typeName]++
+					total++
+				}
+			}
+		}
+	}
+
+	if total == 0 || len(predCounts) < 2 {
+		result.Detail = "not enough predicate types for analysis"
+		return result
+	}
+
+	// Compute Shannon entropy
+	var entropy float64
+	for _, count := range predCounts {
+		p := float64(count) / float64(total)
+		if p > 0 {
+			entropy -= p * math.Log2(p)
+		}
+	}
+
+	// Max entropy for this many types
+	maxEntropy := math.Log2(float64(len(predCounts)))
+
+	result.Value = entropy
+
+	// Build distribution summary
+	type predInfo struct {
+		name  string
+		count int
+	}
+	var preds []predInfo
+	for name, count := range predCounts {
+		preds = append(preds, predInfo{name, count})
+	}
+	sort.Slice(preds, func(i, j int) bool { return preds[i].count > preds[j].count })
+
+	var top3 []string
+	for i, p := range preds {
+		if i >= 3 {
+			break
+		}
+		top3 = append(top3, fmt.Sprintf("%s: %d (%.0f%%)", p.name, p.count, float64(p.count)/float64(total)*100))
+	}
+
+	result.Detail = fmt.Sprintf("entropy = %.2f bits (max %.2f for %d types, %d claims) — top: %s",
+		entropy, maxEntropy, len(predCounts), total, strings.Join(top3, ", "))
+
+	if entropy < result.Threshold {
+		result.Triggered = true
+		result.Severity = "info"
+
+		// Find the dominant predicate
+		dominant := preds[0]
+		result.Conclusion = fmt.Sprintf("Predicate distribution is concentrated (%.1f bits vs %.1f max). "+
+			"%s accounts for %.0f%% of claims. Rare predicates like Disputes carry more "+
+			"epistemic weight but may be undervalued in automated analysis because they "+
+			"occur less frequently. Consider: is the LLM contradiction checker treating "+
+			"a Disputes edge as seriously as a BelongsTo edge?",
+			entropy, maxEntropy, dominant.name, float64(dominant.count)/float64(total)*100)
+	} else {
+		result.Conclusion = fmt.Sprintf("Predicate distribution has reasonable entropy (%.1f bits) — "+
+			"diverse enough that base rates aren't drowning signal", entropy)
 	}
 
 	return result
