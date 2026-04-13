@@ -157,7 +157,7 @@ func analyze(dir string) (*Report, error) {
 	// Collect entity metadata for sensor target generation
 	metas := collectEntityMetas(dir)
 
-	targets := generateSensorTargets(vulns, metas, claims)
+	targets := generateSensorTargets(vulns, metas, claims, dir)
 
 	return &Report{
 		Entities:        len(entities),
@@ -469,10 +469,82 @@ func newtonSqrt(x float64) float64 {
 
 // --- sensor target generation ---
 
+// metabolismCycle is a minimal struct for reading the metabolism log.
+// Only the fields needed for calibration feedback are included.
+type metabolismCycle struct {
+	Hypothesis  string `json:"hypothesis"`
+	Resolution  string `json:"resolution"`
+	PapersFound int    `json:"papers_found"`
+}
+
+// loadMetabolismHistory reads .metabolism-log.json and returns the "best"
+// resolution per hypothesis. Priority: corroborated > challenged >
+// irrelevant > no_signal > "" (unresolved). This lets topology deprioritize
+// hypotheses that have already been queried.
+func loadMetabolismHistory(dir string) map[string]string {
+	data, err := os.ReadFile(filepath.Join(dir, ".metabolism-log.json"))
+	if err != nil {
+		return nil // no log yet — all hypotheses are fresh
+	}
+
+	var log struct {
+		Cycles []metabolismCycle `json:"cycles"`
+	}
+	if err := json.Unmarshal(data, &log); err != nil {
+		return nil
+	}
+
+	// Resolution priority (higher = more "resolved", less need for re-query)
+	priority := map[string]int{
+		"":            0,
+		"no_signal":   1,
+		"irrelevant":  2,
+		"challenged":  2,
+		"corroborated": 3,
+	}
+
+	best := map[string]string{}
+	for _, c := range log.Cycles {
+		prev := best[c.Hypothesis]
+		if priority[c.Resolution] > priority[prev] {
+			best[c.Hypothesis] = c.Resolution
+		}
+	}
+	return best
+}
+
+// historyBucket assigns a priority bucket for sensor target ranking.
+// Lower bucket = higher priority for querying.
+//
+//	0: never queried (highest priority — fresh hypothesis)
+//	1: queried but unresolved
+//	2: resolved irrelevant or challenged (signal found but not useful)
+//	3: resolved no_signal (query didn't find anything)
+//	4: resolved corroborated (needs ingest, not more queries)
+func historyBucket(resolution string, queried bool) int {
+	if !queried {
+		return 0
+	}
+	switch resolution {
+	case "":
+		return 1
+	case "irrelevant", "challenged":
+		return 2
+	case "no_signal":
+		return 3
+	case "corroborated":
+		return 4
+	default:
+		return 1
+	}
+}
+
 // generateSensorTargets picks the most vulnerable hypotheses and generates
 // search queries that would find corroboration or dispute on arXiv.
 // Hypotheses that are BOTH single-source AND uncontested are prioritized.
-func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta, claims []claimInfo) []SensorTarget {
+// Metabolism history deprioritizes already-queried hypotheses so fresh
+// ones get sensor attention first.
+func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta, claims []claimInfo, dir string) []SensorTarget {
 	// Build proposer lookup: hypothesis var name → proposer var name(s)
 	proposerOf := map[string][]string{} // hypothesis → proposer var names
 	for _, c := range claims {
@@ -493,16 +565,25 @@ func generateSensorTargets(vulns []Vulnerability, metas map[string]entityMeta, c
 		vulnTypes[v.Entity][v.Type] = true
 	}
 
-	// Rank by number of vulnerability types (2 = both single-source + uncontested)
+	// Load metabolism history for calibration feedback
+	history := loadMetabolismHistory(dir)
+
+	// Rank by: history bucket (ascending), then vulnerability count (descending)
 	type candidate struct {
 		name      string
 		vulnCount int
+		bucket    int
 	}
 	var candidates []candidate
 	for name, types := range vulnTypes {
-		candidates = append(candidates, candidate{name, len(types)})
+		resolution, queried := history[name]
+		bucket := historyBucket(resolution, queried)
+		candidates = append(candidates, candidate{name, len(types), bucket})
 	}
 	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].bucket != candidates[j].bucket {
+			return candidates[i].bucket < candidates[j].bucket
+		}
 		if candidates[i].vulnCount != candidates[j].vulnCount {
 			return candidates[i].vulnCount > candidates[j].vulnCount
 		}

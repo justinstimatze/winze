@@ -170,6 +170,14 @@ The metabolism loop can use a local Wikipedia ZIM file for offline fulltext sear
    go run ./cmd/metabolism --backend all --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
    ```
 
+4. LLM-assisted ingest from corroborated results:
+   ```bash
+   go run ./cmd/metabolism --ingest --zim /opt/zim/wikipedia_en_all_nopic_2025-12.zim .
+   ```
+   Reads corroborated ZIM articles, extracts claims via LLM (Haiku), generates
+   a `.go` corpus file with provenance quotes verified against the source text.
+   Review the output before committing. Requires `ANTHROPIC_API_KEY`.
+
 ## Gas Town integration (optional)
 
 Multi-agent curation workflow for autonomous KB maintenance via [Gas Town](https://github.com/gastownhall/gastown):
@@ -192,7 +200,7 @@ Multi-agent curation workflow for autonomous KB maintenance via [Gas Town](https
 - **~~Query generation improvements~~** Done. Proposer-name extraction + CamelCase concept phrases replace literal keyword concatenation.
 - **~~Pure Go ZIM reader~~** Done. [gozim](https://github.com/justinstimatze/gozim) integrated — Python bridge eliminated.
 - **~~Prediction schema~~** Done. `Predicts[Hypothesis, Event]`, `Credence[Hypothesis, *CredenceLevel]`, `ResolvedAs[Event, *ResolutionOutcome]` — encode falsifiable predictions and track calibration over time.
-- **Calibration feedback loop:** Metabolism calibration results should feed back into topology weights and sensor strategy (step 5 of epistemic metabolism).
+- **~~Calibration feedback loop~~** Done. Topology reads `.metabolism-log.json` to deprioritize already-queried hypotheses (bucket-based ranking: never-queried > unresolved > irrelevant > no-signal > corroborated). Zero-paper cycles auto-resolve as `no_signal`. `--suggest` generates ingest template `.go` files from corroborated results.
 
 ## Prior art
 

@@ -69,13 +69,18 @@ go run ./cmd/metabolism --backend zim --zim FILE .     # Wikipedia ZIM backend
 go run ./cmd/metabolism --backend all --zim FILE .     # both backends
 go run ./cmd/metabolism --dry-run .                    # show targets without querying
 go run ./cmd/metabolism --calibrate .                  # analyze accumulated cycle log
+go run ./cmd/metabolism --suggest .                    # generate ingest template from corroborated results
+go run ./cmd/metabolism --ingest --zim FILE .          # LLM-assisted ingest from corroborated ZIM cycles
 go run ./cmd/metabolism --json .                       # JSON output
 ```
 
 One cycle: topology identifies fragile hypotheses → sensor queries (arXiv
 and/or Wikipedia ZIM) for external signal → results logged to
 `.metabolism-log.json` → calibration tracks whether structural fragility
-predicts curation gaps. ZIM backend uses gozim (pure Go, no Python needed).
+predicts curation gaps. Topology reads the log to deprioritize already-queried
+hypotheses (fresh ones get sensor attention first). Zero-paper cycles
+auto-resolve as `no_signal`. `--suggest` generates ingest templates from
+corroborated results. ZIM backend uses gozim (pure Go, no Python needed).
 Builds a Bleve fulltext index on first use (persisted to `<zimfile>.bleve/`).
 
 ### Skeptical ingest (sensor defense)
