@@ -91,6 +91,8 @@ go run ./cmd/metabolism --reify .                      # generate predictions.go
 go run ./cmd/metabolism --dream .                      # consolidation cycle: topology+lint+adit analysis, no new ingest
 go run ./cmd/metabolism --dream --fix --tighten .      # auto-fix overlong Briefs via LLM (needs ANTHROPIC_API_KEY)
 go run ./cmd/metabolism --dream --fix --dry-run .      # show what would be fixed
+go run ./cmd/metabolism --bias .                       # cognitive bias self-audit (standalone)
+go run ./cmd/metabolism --dream --bias .               # dream cycle with bias audit included
 go run ./cmd/metabolism --trip .                       # speculative cross-cluster connections (needs ANTHROPIC_API_KEY)
 go run ./cmd/metabolism --trip --temperature 1.3 --prompt-type contradiction --pairs 10 .  # custom drug profile
 go run ./cmd/metabolism --entity-cap 250 .             # refuse ingest/pipeline above entity cap (default 250)
@@ -121,6 +123,11 @@ entity pairs from different topology clusters, LLM generates and scores
 speculative connections. Two orthogonal axes: `--temperature` (0.0-1.5,
 wildness) and `--prompt-type` (analogy, contradiction, genealogy, prediction).
 Together they form a "drug profile." Score >= 3 = interesting, >= 4 = promote.
+`--bias` runs cognitive bias self-audit: the KB's own bias catalog (confirmation
+bias, anchoring, clustering illusion, availability heuristic, survivorship bias)
+applied as deterministic auditors checking KB structure. Runs standalone or as
+part of dream (`--dream --bias`). Each auditor reports a metric, threshold,
+and whether the bias was triggered. The KB eats its own dogfood.
 `--calibrate` now includes prediction accuracy scoring per hypothesis with
 hit rate, precision, and efficiency metrics.
 

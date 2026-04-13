@@ -128,6 +128,7 @@ func main() {
 	dream := flag.Bool("dream", false, "consolidation cycle: analyze KB health via topology+lint+adit, report maintenance opportunities (no new ingest)")
 	fix := flag.Bool("fix", false, "auto-fix dream findings (with --dream; requires ANTHROPIC_API_KEY for --tighten)")
 	tighten := flag.Bool("tighten", false, "also tighten overlong Briefs via LLM (with --dream --fix)")
+	bias := flag.Bool("bias", false, "run cognitive bias self-audit on KB structure (standalone or with --dream)")
 	trip := flag.Bool("trip", false, "speculative cross-cluster connection generation (needs ANTHROPIC_API_KEY)")
 	tripTemp := flag.Float64("temperature", 1.0, "LLM temperature for --trip (0.0-1.5; higher = wilder connections)")
 	tripPrompt := flag.String("prompt-type", "analogy", "connection type for --trip: analogy, contradiction, genealogy, prediction")
@@ -209,11 +210,16 @@ func main() {
 		return
 	}
 
+	if *bias && !*dream {
+		runDreamBias(dir, *jsonOut)
+		return
+	}
+
 	if *dream {
 		if *fix {
 			runDreamFix(dir, *tighten, *dryRun, *jsonOut)
 		} else {
-			runDream(dir, *jsonOut)
+			runDream(dir, *bias, *jsonOut)
 		}
 		return
 	}

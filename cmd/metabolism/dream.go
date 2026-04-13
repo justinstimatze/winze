@@ -38,6 +38,7 @@ type DreamReport struct {
 	ProvenanceSplits  []DreamFinding `json:"provenance_splits"`
 	BriefQuality      []DreamFinding `json:"brief_quality"`
 	AditScores        []DreamFinding `json:"adit_scores,omitempty"`
+	BiasAudit         *BiasReport    `json:"bias_audit,omitempty"`
 
 	// Summary counts
 	TotalFindings int `json:"total_findings"`
@@ -52,7 +53,7 @@ type DreamFinding struct {
 	Description string `json:"description"`
 }
 
-func runDream(dir string, jsonOut bool) {
+func runDream(dir string, includeBias bool, jsonOut bool) {
 	// 1. Topology analysis
 	_, report, err := runTopology(dir)
 	if err != nil {
@@ -97,6 +98,26 @@ func runDream(dir string, jsonOut bool) {
 	// 6. Adit scores (if available)
 	dream.AditScores = runAditScoring(dir)
 
+	// 7. Bias audit (if requested)
+	if includeBias {
+		var results []BiasAuditorResult
+		results = append(results, auditConfirmationBias(dir))
+		results = append(results, auditAnchoringBias(dir))
+		results = append(results, auditClusteringIllusion(dir))
+		results = append(results, auditAvailabilityHeuristic(dir))
+		results = append(results, auditSurvivorshipBias(dir))
+		triggered := 0
+		for _, r := range results {
+			if r.Triggered {
+				triggered++
+			}
+		}
+		dream.BiasAudit = &BiasReport{
+			Auditors: results,
+			Summary:  fmt.Sprintf("%d of %d bias auditors triggered", triggered, len(results)),
+		}
+	}
+
 	// Count total
 	dream.TotalFindings = len(dream.BridgeEntities) + len(dream.ConcentrationRisk) +
 		len(dream.FileBalance) + len(dream.ProvenanceSplits) +
@@ -119,6 +140,21 @@ func runDream(dir string, jsonOut bool) {
 	printDreamSection("provenance splits (same source, different citation)", dream.ProvenanceSplits)
 	printDreamSection("brief quality", dream.BriefQuality)
 	printDreamSection("adit scores (agent-writability)", dream.AditScores)
+
+	if dream.BiasAudit != nil {
+		fmt.Printf("  bias self-audit (%s):\n", dream.BiasAudit.Summary)
+		for _, r := range dream.BiasAudit.Auditors {
+			status := "PASS"
+			marker := "  "
+			if r.Triggered {
+				status = "TRIGGERED"
+				marker = "* "
+			}
+			fmt.Printf("    %s%s: %s (%.2f vs %.2f threshold)\n",
+				marker, r.BiasName, status, r.Value, r.Threshold)
+		}
+		fmt.Println()
+	}
 
 	fmt.Printf("\n[dream] %d findings total\n", dream.TotalFindings)
 	if dream.TotalFindings == 0 {

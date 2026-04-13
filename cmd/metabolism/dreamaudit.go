@@ -1,0 +1,680 @@
+// Dream --bias: cognitive bias auditors that check the KB's own structure
+// against the biases cataloged within it.
+//
+// Each auditor maps a cognitive bias entity already in the KB to a
+// deterministic check on KB structure. The KB eats its own dogfood.
+//
+// Five deterministic auditors:
+//
+//  1. Confirmation bias   — is the metabolism corroboration rate suspiciously high?
+//  2. Anchoring            — are early-ingested entities disproportionately central?
+//  3. Clustering illusion  — do topology clusters map to files rather than concepts?
+//  4. Availability heuristic — is the KB over-indexed on one source type?
+//  5. Survivorship bias    — are rejected sources systematically filtered out?
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+// BiasReport holds findings from all bias auditors.
+type BiasReport struct {
+	Auditors []BiasAuditorResult `json:"auditors"`
+	Summary  string              `json:"summary"`
+}
+
+// BiasAuditorResult is a single auditor's output.
+type BiasAuditorResult struct {
+	Bias       string  `json:"bias"`        // KB entity variable name
+	BiasName   string  `json:"bias_name"`   // human-readable name
+	Metric     string  `json:"metric"`      // what was measured
+	Value      float64 `json:"value"`       // measured value
+	Threshold  float64 `json:"threshold"`   // alerting threshold
+	Triggered  bool    `json:"triggered"`   // value exceeds threshold
+	Severity   string  `json:"severity"`    // info, warning, critical
+	Detail     string  `json:"detail"`      // explanation
+	Conclusion string  `json:"conclusion"`  // what this means for the KB
+}
+
+func runDreamBias(dir string, jsonOut bool) {
+	var results []BiasAuditorResult
+
+	results = append(results, auditConfirmationBias(dir))
+	results = append(results, auditAnchoringBias(dir))
+	results = append(results, auditClusteringIllusion(dir))
+	results = append(results, auditAvailabilityHeuristic(dir))
+	results = append(results, auditSurvivorshipBias(dir))
+
+	triggered := 0
+	for _, r := range results {
+		if r.Triggered {
+			triggered++
+		}
+	}
+
+	report := BiasReport{
+		Auditors: results,
+		Summary:  fmt.Sprintf("%d of %d bias auditors triggered", triggered, len(results)),
+	}
+
+	if jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(report)
+		return
+	}
+
+	fmt.Printf("[dream-bias] cognitive bias self-audit — %d auditors\n\n", len(results))
+	for _, r := range results {
+		marker := "  "
+		if r.Triggered {
+			switch r.Severity {
+			case "critical":
+				marker = "! "
+			case "warning":
+				marker = "* "
+			default:
+				marker = "~ "
+			}
+		} else {
+			marker = "  "
+		}
+		status := "PASS"
+		if r.Triggered {
+			status = "TRIGGERED"
+		}
+		fmt.Printf("  %s%s (%s): %s\n", marker, r.BiasName, r.Bias, status)
+		fmt.Printf("      metric: %s = %.2f (threshold: %.2f)\n", r.Metric, r.Value, r.Threshold)
+		fmt.Printf("      %s\n", r.Detail)
+		if r.Conclusion != "" {
+			fmt.Printf("      conclusion: %s\n", r.Conclusion)
+		}
+		fmt.Println()
+	}
+	fmt.Printf("[dream-bias] %s\n", report.Summary)
+}
+
+// auditConfirmationBias checks whether the metabolism loop's corroboration
+// rate is suspiciously high — suggesting the LLM judge or query design is
+// biased toward confirming rather than genuinely testing hypotheses.
+//
+// KB entity: ConfirmationBias (not yet declared — references the concept)
+// Null model: random queries on a general-knowledge corpus should corroborate
+// at ~30-50% (many topics are findable in Wikipedia). A rate significantly
+// above this suggests confirmation bias in the pipeline.
+func auditConfirmationBias(dir string) BiasAuditorResult {
+	result := BiasAuditorResult{
+		Bias:      "CognitiveBias",
+		BiasName:  "Confirmation bias",
+		Metric:    "corroboration_rate",
+		Threshold: 0.75, // 75% corroboration rate is suspicious
+	}
+
+	logPath := filepath.Join(dir, ".metabolism-log.json")
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		result.Detail = "no metabolism log found"
+		return result
+	}
+
+	var log struct {
+		Cycles []struct {
+			Resolution string `json:"resolution"`
+			Backend    string `json:"backend"`
+			Papers     int    `json:"papers_found"`
+		} `json:"cycles"`
+	}
+	if err := json.Unmarshal(data, &log); err != nil {
+		result.Detail = fmt.Sprintf("error parsing log: %v", err)
+		return result
+	}
+
+	// Only count resolved cycles (exclude pending)
+	var resolved, corroborated, challenged, irrelevant, noSignal int
+	for _, c := range log.Cycles {
+		switch c.Resolution {
+		case "corroborated":
+			resolved++
+			corroborated++
+		case "challenged":
+			resolved++
+			challenged++
+		case "irrelevant":
+			resolved++
+			irrelevant++
+		case "no_signal":
+			resolved++
+			noSignal++
+		}
+	}
+
+	if resolved == 0 {
+		result.Detail = "no resolved cycles"
+		return result
+	}
+
+	rate := float64(corroborated) / float64(resolved)
+	result.Value = rate
+
+	result.Detail = fmt.Sprintf("%d/%d cycles corroborated, %d challenged, %d irrelevant, %d no_signal",
+		corroborated, resolved, challenged, irrelevant, noSignal)
+
+	if rate > result.Threshold {
+		result.Triggered = true
+		result.Severity = "warning"
+		result.Conclusion = fmt.Sprintf("%.0f%% corroboration rate exceeds %.0f%% threshold. "+
+			"Possible causes: (a) queries are too broad (anything matches), "+
+			"(b) LLM resolution judge is too generous, "+
+			"(c) the KB genuinely covers well-documented territory. "+
+			"Test: run 5 random-topic queries and measure their corroboration rate as a baseline.",
+			rate*100, result.Threshold*100)
+	} else {
+		result.Conclusion = fmt.Sprintf("%.0f%% corroboration rate is within expected range", rate*100)
+	}
+
+	return result
+}
+
+// auditAnchoringBias checks whether early-ingested entities are
+// disproportionately central (high claim count). If the first entities
+// added to the KB accumulate more claims over time, the topology may be
+// anchored to the seed corpus rather than reflecting domain importance.
+//
+// Measures: correlation between file creation order and entity degree.
+func auditAnchoringBias(dir string) BiasAuditorResult {
+	result := BiasAuditorResult{
+		Bias:      "AnchoringBias",
+		BiasName:  "Anchoring bias",
+		Metric:    "degree_vs_age_correlation",
+		Threshold: 0.5, // Spearman rank correlation > 0.5 is suspicious
+	}
+
+	// Get file creation order from git
+	cmd := exec.Command("git", "log", "--format=%H", "--diff-filter=A", "--name-only", "--", "*.go")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		result.Detail = "cannot read git history"
+		return result
+	}
+
+	// Parse git output: commit hash lines alternate with file paths
+	fileOrder := map[string]int{} // filename -> creation rank (lower = older)
+	rank := 0
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || len(line) == 40 { // skip blank lines and commit hashes
+			continue
+		}
+		base := filepath.Base(line)
+		if strings.HasSuffix(base, ".go") && !isInfraFile(base) && !strings.HasPrefix(line, "cmd/") {
+			if _, exists := fileOrder[base]; !exists {
+				fileOrder[base] = rank
+				rank++
+			}
+		}
+	}
+
+	// Count entity degree (claims as subject or object) per file
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	if err != nil {
+		result.Detail = "cannot parse Go files"
+		return result
+	}
+
+	roleTypes := collectDreamRoleTypes(pkgs)
+
+	// Count entities and claims per file
+	type fileStat struct {
+		entities int
+		claims   int
+		rank     int
+	}
+	fileStats := map[string]*fileStat{}
+
+	for _, pkg := range pkgs {
+		for fname, f := range pkg.Files {
+			base := filepath.Base(fname)
+			if isInfraFile(base) {
+				continue
+			}
+			r, ok := fileOrder[base]
+			if !ok {
+				continue
+			}
+			fs := &fileStat{rank: r}
+			fileStats[base] = fs
+
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Values) == 0 {
+						continue
+					}
+					cl, ok := vs.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					typeName := compositeTypeName(cl)
+					if roleTypes[typeName] {
+						fs.entities++
+					} else if typeName != "Provenance" && typeName != "" {
+						fs.claims++
+					}
+				}
+			}
+		}
+	}
+
+	// Compute Spearman rank correlation between file age rank and claim density
+	type pair struct {
+		ageRank int
+		density float64
+	}
+	var pairs []pair
+	for _, fs := range fileStats {
+		if fs.entities == 0 {
+			continue
+		}
+		density := float64(fs.claims) / float64(fs.entities)
+		pairs = append(pairs, pair{ageRank: fs.rank, density: density})
+	}
+
+	if len(pairs) < 5 {
+		result.Detail = fmt.Sprintf("only %d corpus files — too few for correlation analysis", len(pairs))
+		return result
+	}
+
+	// Sort by density and assign density ranks
+	sort.Slice(pairs, func(i, j int) bool { return pairs[i].density < pairs[j].density })
+	densityRank := make([]float64, len(pairs))
+	ageRank := make([]float64, len(pairs))
+	for i, p := range pairs {
+		densityRank[i] = float64(i)
+		ageRank[i] = float64(p.ageRank)
+	}
+
+	rho := spearmanRho(ageRank, densityRank)
+	result.Value = math.Abs(rho)
+
+	result.Detail = fmt.Sprintf("Spearman rho = %.3f across %d corpus files (negative = older files have higher degree)",
+		rho, len(pairs))
+
+	if math.Abs(rho) > result.Threshold {
+		result.Triggered = true
+		result.Severity = "info"
+		if rho < 0 {
+			result.Conclusion = "Older files have disproportionately more claims per entity. " +
+				"The KB's graph topology may be anchored to its seed corpus. " +
+				"Consider: are newer entities under-connected because they lack claims, " +
+				"or because the seed entities are genuinely more important?"
+		} else {
+			result.Conclusion = "Newer files have disproportionately more claims per entity. " +
+				"This is the opposite of anchoring — newer ingest may be over-claiming."
+		}
+	} else {
+		result.Conclusion = "No significant correlation between file age and claim density"
+	}
+
+	return result
+}
+
+// auditClusteringIllusion checks whether topology clusters are artifacts
+// of file organization rather than genuine conceptual groupings. If
+// within-cluster entities share files more than cross-cluster entities,
+// the structure reflects filing decisions, not domain relationships.
+//
+// Metric: Jaccard index between file co-occurrence and cluster co-occurrence.
+func auditClusteringIllusion(dir string) BiasAuditorResult {
+	result := BiasAuditorResult{
+		Bias:      "HotHandFallacy", // closest KB entity to clustering illusion
+		BiasName:  "Clustering illusion",
+		Metric:    "file_cluster_overlap",
+		Threshold: 0.7, // 70% overlap means clusters ≈ files
+	}
+
+	// Collect entities with file and cluster membership
+	entities := collectTripEntities(dir)
+	if len(entities) < 10 {
+		result.Detail = fmt.Sprintf("only %d entities — too few for clustering analysis", len(entities))
+		return result
+	}
+
+	// Count how many entity pairs share file vs share cluster
+	type entityMeta struct {
+		file    string
+		cluster int
+	}
+	meta := map[string]entityMeta{}
+	for _, e := range entities {
+		meta[e.name] = entityMeta{file: e.file, cluster: e.cluster}
+	}
+
+	var sameFile, sameCluster, sameBoth, totalPairs int
+	names := make([]string, 0, len(meta))
+	for n := range meta {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	for i := 0; i < len(names); i++ {
+		for j := i + 1; j < len(names); j++ {
+			a, b := meta[names[i]], meta[names[j]]
+			totalPairs++
+			sf := a.file == b.file
+			sc := a.cluster == b.cluster
+			if sf {
+				sameFile++
+			}
+			if sc {
+				sameCluster++
+			}
+			if sf && sc {
+				sameBoth++
+			}
+		}
+	}
+
+	if sameFile == 0 && sameCluster == 0 {
+		result.Detail = "no file or cluster co-occurrence"
+		return result
+	}
+
+	// Jaccard index: intersection / union
+	union := sameFile + sameCluster - sameBoth
+	var jaccard float64
+	if union > 0 {
+		jaccard = float64(sameBoth) / float64(union)
+	}
+
+	result.Value = jaccard
+	result.Detail = fmt.Sprintf("Jaccard(file, cluster) = %.3f — %d pairs same-file, %d same-cluster, %d both, %d total",
+		jaccard, sameFile, sameCluster, sameBoth, totalPairs)
+
+	if jaccard > result.Threshold {
+		result.Triggered = true
+		result.Severity = "warning"
+		result.Conclusion = fmt.Sprintf("%.0f%% overlap between file grouping and topology clusters. "+
+			"Clusters may reflect file organization, not conceptual structure. "+
+			"Test: move entities between files and re-run topology — if clusters change, they're file artifacts.",
+			jaccard*100)
+	} else {
+		result.Conclusion = fmt.Sprintf("%.0f%% overlap — clusters reflect conceptual structure, not just filing", jaccard*100)
+	}
+
+	return result
+}
+
+// auditAvailabilityHeuristic checks whether the KB is over-indexed on
+// sources that were available (Wikipedia ZIM) vs sources that are actually
+// important for the domain. A healthy KB should have diverse provenance.
+//
+// Metric: Herfindahl-Hirschman Index (HHI) of provenance origins.
+// HHI = sum of squared market shares. HHI > 0.25 = concentrated.
+func auditAvailabilityHeuristic(dir string) BiasAuditorResult {
+	result := BiasAuditorResult{
+		Bias:      "AvailabilityHeuristic",
+		BiasName:  "Availability heuristic",
+		Metric:    "provenance_hhi",
+		Threshold: 0.25, // HHI > 0.25 = moderately concentrated
+	}
+
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	if err != nil {
+		result.Detail = "cannot parse Go files"
+		return result
+	}
+
+	// Collect provenance origins and classify by source type
+	sourceTypes := map[string]int{} // source type -> count
+	total := 0
+
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Values) == 0 {
+						continue
+					}
+					cl, ok := vs.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					if compositeTypeName(cl) != "Provenance" {
+						continue
+					}
+					origin := extractStringField(cl, "Origin")
+					if origin == "" {
+						continue
+					}
+
+					// Classify by source type
+					stype := classifyOrigin(origin)
+					sourceTypes[stype]++
+					total++
+				}
+			}
+		}
+	}
+
+	if total == 0 {
+		result.Detail = "no provenance records found"
+		return result
+	}
+
+	// Compute HHI
+	var hhi float64
+	var breakdown []string
+	for stype, count := range sourceTypes {
+		share := float64(count) / float64(total)
+		hhi += share * share
+		breakdown = append(breakdown, fmt.Sprintf("%s: %d (%.0f%%)", stype, count, share*100))
+	}
+	sort.Strings(breakdown)
+
+	result.Value = hhi
+	result.Detail = fmt.Sprintf("HHI = %.3f across %d provenance records: %s",
+		hhi, total, strings.Join(breakdown, ", "))
+
+	if hhi > result.Threshold {
+		result.Triggered = true
+		result.Severity = "info"
+
+		// Find the dominant source
+		var dominant string
+		var maxShare float64
+		for stype, count := range sourceTypes {
+			share := float64(count) / float64(total)
+			if share > maxShare {
+				maxShare = share
+				dominant = stype
+			}
+		}
+		result.Conclusion = fmt.Sprintf("Provenance is concentrated: %s accounts for %.0f%%. "+
+			"The KB may reflect source availability rather than domain importance. "+
+			"Consider adding claims from under-represented source types.",
+			dominant, maxShare*100)
+	} else {
+		result.Conclusion = "Provenance sources are reasonably diverse"
+	}
+
+	return result
+}
+
+// auditSurvivorshipBias checks whether the metabolism loop's rejection
+// pipeline is systematically filtering out valid contrarian perspectives.
+// Sources resolved as "irrelevant" might contain legitimate challenges
+// that the pipeline's quality criteria can't recognize.
+//
+// Metric: irrelevant-to-challenged ratio. If the pipeline finds lots of
+// sources but almost none are classified as challenges, it may be
+// filtering out valid dissent.
+func auditSurvivorshipBias(dir string) BiasAuditorResult {
+	result := BiasAuditorResult{
+		Bias:      "CognitiveBias", // general reference
+		BiasName:  "Survivorship bias",
+		Metric:    "irrelevant_to_challenged_ratio",
+		Threshold: 5.0, // more than 5:1 irrelevant:challenged is suspicious
+	}
+
+	logPath := filepath.Join(dir, ".metabolism-log.json")
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		result.Detail = "no metabolism log found"
+		return result
+	}
+
+	var log struct {
+		Cycles []struct {
+			Resolution string `json:"resolution"`
+			Papers     int    `json:"papers_found"`
+		} `json:"cycles"`
+	}
+	if err := json.Unmarshal(data, &log); err != nil {
+		result.Detail = fmt.Sprintf("error parsing log: %v", err)
+		return result
+	}
+
+	var irrelevant, challenged, withSignal int
+	for _, c := range log.Cycles {
+		if c.Papers > 0 || c.Resolution == "corroborated" || c.Resolution == "challenged" || c.Resolution == "irrelevant" {
+			withSignal++
+		}
+		switch c.Resolution {
+		case "irrelevant":
+			irrelevant++
+		case "challenged":
+			challenged++
+		}
+	}
+
+	if withSignal == 0 {
+		result.Detail = "no cycles with signal"
+		return result
+	}
+
+	var ratio float64
+	if challenged > 0 {
+		ratio = float64(irrelevant) / float64(challenged)
+	} else if irrelevant > 0 {
+		ratio = float64(irrelevant) // effectively infinite
+	}
+
+	result.Value = ratio
+	result.Detail = fmt.Sprintf("%d irrelevant, %d challenged, %d with signal (ratio: %.1f:1)",
+		irrelevant, challenged, withSignal, ratio)
+
+	if challenged == 0 && irrelevant > 3 {
+		result.Triggered = true
+		result.Severity = "warning"
+		result.Conclusion = fmt.Sprintf("Zero challenges found despite %d irrelevant resolutions. "+
+			"The metabolism pipeline may be systematically classifying challenges as irrelevant. "+
+			"Review: are any 'irrelevant' sources actually presenting contrarian positions that "+
+			"the resolution judge dismissed?", irrelevant)
+	} else if ratio > result.Threshold {
+		result.Triggered = true
+		result.Severity = "info"
+		result.Conclusion = fmt.Sprintf("%.0f:1 irrelevant-to-challenged ratio suggests the pipeline "+
+			"may filter out valid dissent. Not necessarily wrong — the domain may genuinely "+
+			"have few challenges — but worth auditing a sample of 'irrelevant' resolutions.",
+			ratio)
+	} else {
+		result.Conclusion = "Challenge/irrelevant ratio is within expected range"
+	}
+
+	return result
+}
+
+// --- helpers ---
+
+// classifyOrigin categorizes a provenance origin string into a source type.
+func classifyOrigin(origin string) string {
+	lower := strings.ToLower(origin)
+	switch {
+	case strings.Contains(lower, "wikipedia") || strings.Contains(lower, "zim"):
+		return "wikipedia"
+	case strings.Contains(lower, "arxiv"):
+		return "arxiv"
+	case strings.Contains(lower, "doi.org") || strings.Contains(lower, "doi:"):
+		return "doi"
+	case strings.Contains(lower, "isbn"):
+		return "book"
+	case strings.Contains(lower, "manual") || strings.Contains(lower, "direct"):
+		return "manual"
+	default:
+		return "other"
+	}
+}
+
+// spearmanRho computes Spearman's rank correlation coefficient.
+// Assumes inputs are already rank values (or can be used as-is for ranking).
+func spearmanRho(x, y []float64) float64 {
+	n := len(x)
+	if n != len(y) || n < 3 {
+		return 0
+	}
+
+	// Rank both arrays
+	xRanks := assignRanks(x)
+	yRanks := assignRanks(y)
+
+	// Compute using Pearson's on ranks
+	var sumD2 float64
+	for i := range xRanks {
+		d := xRanks[i] - yRanks[i]
+		sumD2 += d * d
+	}
+
+	nf := float64(n)
+	return 1 - (6*sumD2)/(nf*(nf*nf-1))
+}
+
+// assignRanks returns rank values (1-based, averaged for ties).
+func assignRanks(vals []float64) []float64 {
+	n := len(vals)
+	type indexed struct {
+		val float64
+		idx int
+	}
+	items := make([]indexed, n)
+	for i, v := range vals {
+		items[i] = indexed{val: v, idx: i}
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].val < items[j].val })
+
+	ranks := make([]float64, n)
+	i := 0
+	for i < n {
+		j := i
+		for j < n && items[j].val == items[i].val {
+			j++
+		}
+		avgRank := float64(i+j+1) / 2.0 // average rank for ties
+		for k := i; k < j; k++ {
+			ranks[items[k].idx] = avgRank
+		}
+		i = j
+	}
+	return ranks
+}
