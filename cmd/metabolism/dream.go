@@ -574,6 +574,7 @@ func collectDreamRoleTypes(pkgs map[string]*ast.Package) map[string]bool {
 }
 
 // extractStringField extracts a string field value from a composite literal.
+// Uses resolveStringExpr to handle concatenated strings ("a" + "b").
 func extractStringField(cl *ast.CompositeLit, fieldName string) string {
 	for _, elt := range cl.Elts {
 		kv, ok := elt.(*ast.KeyValueExpr)
@@ -584,11 +585,7 @@ func extractStringField(cl *ast.CompositeLit, fieldName string) string {
 		if !ok || key.Name != fieldName {
 			continue
 		}
-		lit, ok := kv.Value.(*ast.BasicLit)
-		if !ok || lit.Kind != token.STRING {
-			continue
-		}
-		return strings.Trim(lit.Value, "\"`")
+		return resolveStringExpr(kv.Value)
 	}
 	return ""
 }

@@ -4,13 +4,16 @@
 // Each auditor maps a cognitive bias entity already in the KB to a
 // deterministic check on KB structure. The KB eats its own dogfood.
 //
-// Five deterministic auditors:
+// Eight deterministic auditors:
 //
-//  1. Confirmation bias   — is the metabolism corroboration rate suspiciously high?
-//  2. Anchoring            — are early-ingested entities disproportionately central?
-//  3. Clustering illusion  — do topology clusters map to files rather than concepts?
-//  4. Availability heuristic — is the KB over-indexed on one source type?
-//  5. Survivorship bias    — are rejected sources systematically filtered out?
+//  1. Confirmation bias      — is the metabolism corroboration rate suspiciously high?
+//  2. Anchoring               — are early-ingested entities disproportionately central?
+//  3. Clustering illusion     — do topology clusters map to files rather than concepts?
+//  4. Availability heuristic  — is the KB over-indexed on one source type?
+//  5. Survivorship bias       — are rejected sources systematically filtered out?
+//  6. Framing effect          — do Briefs use evaluative language that biases LLM judges?
+//  7. Dunning-Kruger effect   — do simple entities appear healthy because they're under-examined?
+//  8. Base rate neglect       — is the predicate distribution so skewed that common edges drown rare signal?
 package main
 
 import (
@@ -142,47 +145,46 @@ func auditConfirmationBias(dir string) BiasAuditorResult {
 		return result
 	}
 
-	// Only count resolved cycles (exclude pending)
-	var resolved, corroborated, challenged, irrelevant, noSignal int
+	// Count resolutions. Exclude no_signal from the denominator:
+	// a cycle that found nothing isn't a genuine test of the hypothesis,
+	// so it shouldn't dilute the corroboration rate.
+	var corroborated, challenged, irrelevant, noSignal int
 	for _, c := range log.Cycles {
 		switch c.Resolution {
 		case "corroborated":
-			resolved++
 			corroborated++
 		case "challenged":
-			resolved++
 			challenged++
 		case "irrelevant":
-			resolved++
 			irrelevant++
 		case "no_signal":
-			resolved++
 			noSignal++
 		}
 	}
 
-	if resolved == 0 {
-		result.Detail = "no resolved cycles"
+	withSignal := corroborated + challenged + irrelevant
+	if withSignal == 0 {
+		result.Detail = fmt.Sprintf("no cycles with signal (%d no_signal)", noSignal)
 		return result
 	}
 
-	rate := float64(corroborated) / float64(resolved)
+	rate := float64(corroborated) / float64(withSignal)
 	result.Value = rate
 
-	result.Detail = fmt.Sprintf("%d/%d cycles corroborated, %d challenged, %d irrelevant, %d no_signal",
-		corroborated, resolved, challenged, irrelevant, noSignal)
+	result.Detail = fmt.Sprintf("%d/%d signal cycles corroborated, %d challenged, %d irrelevant (+ %d no_signal excluded)",
+		corroborated, withSignal, challenged, irrelevant, noSignal)
 
 	if rate > result.Threshold {
 		result.Triggered = true
 		result.Severity = "warning"
-		result.Conclusion = fmt.Sprintf("%.0f%% corroboration rate exceeds %.0f%% threshold. "+
+		result.Conclusion = fmt.Sprintf("%.0f%% corroboration rate (among signal cycles) exceeds %.0f%% threshold. "+
 			"Possible causes: (a) queries are too broad (anything matches), "+
 			"(b) LLM resolution judge is too generous, "+
 			"(c) the KB genuinely covers well-documented territory. "+
 			"Test: run 5 random-topic queries and measure their corroboration rate as a baseline.",
 			rate*100, result.Threshold*100)
 	} else {
-		result.Conclusion = fmt.Sprintf("%.0f%% corroboration rate is within expected range", rate*100)
+		result.Conclusion = fmt.Sprintf("%.0f%% corroboration rate (among signal cycles) is within expected range", rate*100)
 	}
 
 	return result
