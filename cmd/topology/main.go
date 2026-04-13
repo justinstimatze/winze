@@ -35,6 +35,7 @@ import (
 func main() {
 	jsonOut := flag.Bool("json", false, "output JSON instead of human-readable summary")
 	exportKB := flag.Bool("export-kb", false, "export claims as slimemold-compatible KBClaim JSON")
+	dotOut := flag.Bool("dot", false, "export epistemic support DAG as Graphviz DOT (pipe to dot -Tsvg)")
 	entityCap := flag.Int("entity-cap", 250, "max entities; suppresses breadth targets above this threshold")
 	flag.Parse()
 
@@ -46,6 +47,14 @@ func main() {
 	if *exportKB {
 		if err := runExportKB(dir); err != nil {
 			fmt.Fprintf(os.Stderr, "topology: export-kb: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *dotOut {
+		if err := runDotExport(dir); err != nil {
+			fmt.Fprintf(os.Stderr, "topology: dot: %v\n", err)
 			os.Exit(1)
 		}
 		return
@@ -1356,6 +1365,210 @@ type KBExportPayload struct {
 // runExportKB walks the winze corpus and emits a slimemold-compatible
 // analyze_kb payload. Uses the same AST extraction as topology analysis
 // but outputs KBClaim format instead of vulnerability reports.
+// runDotExport outputs the epistemic support DAG as Graphviz DOT.
+// Nodes are entities colored by cluster and shaped by role type.
+// Edges are directed support edges inferred from predicate semantics.
+// Contra edges (Disputes) are dashed. Vulnerability annotations are tooltips.
+//
+// Usage: go run ./cmd/topology --dot . | dot -Tsvg > dag.svg
+func runDotExport(dir string) error {
+	entities, err := collectEntities(dir)
+	if err != nil {
+		return fmt.Errorf("collect entities: %w", err)
+	}
+
+	claims, err := collectClaims(dir)
+	if err != nil {
+		return fmt.Errorf("collect claims: %w", err)
+	}
+
+	// Build undirected adjacency for cluster detection
+	adj := buildAdjacency(claims)
+
+	// Assign clusters via BFS
+	clusterOf := map[string]int{}
+	clusterID := 0
+	visited := map[string]bool{}
+	for _, e := range entities {
+		if visited[e.name] || adj[e.name] == nil {
+			continue
+		}
+		queue := []string{e.name}
+		visited[e.name] = true
+		for len(queue) > 0 {
+			cur := queue[0]
+			queue = queue[1:]
+			clusterOf[cur] = clusterID
+			for neighbor := range adj[cur] {
+				if !visited[neighbor] {
+					visited[neighbor] = true
+					queue = append(queue, neighbor)
+				}
+			}
+		}
+		clusterID++
+	}
+
+	// Predicate direction classification
+	subjectGrounds := map[string]bool{
+		"Proposes": true, "ProposesOrg": true,
+		"Authored": true, "AuthoredOrg": true,
+		"TheoryOf": true, "HypothesisExplains": true,
+		"CommentaryOn": true,
+	}
+	objectGrounds := map[string]bool{
+		"DerivedFrom": true, "InfluencedBy": true,
+		"BelongsTo": true,
+	}
+	contraEdge := map[string]bool{
+		"Disputes": true, "DisputesOrg": true,
+	}
+
+	// Role type → shape
+	shapeOf := map[string]string{
+		"Person":       "ellipse",
+		"Hypothesis":   "diamond",
+		"Concept":      "box",
+		"Event":        "hexagon",
+		"Organization": "house",
+		"Place":        "tab",
+		"CreativeWork": "note",
+	}
+
+	// Cluster colors (cycle through)
+	colors := []string{
+		"#e8f4f8", "#f8e8e8", "#e8f8e8", "#f8f4e8",
+		"#f0e8f8", "#e8f0f8", "#f8e8f0", "#f4f8e8",
+		"#e8e8f8", "#f8f0e8", "#e8f8f0", "#f0f8e8",
+		"#f8e8f4", "#e8f8f4", "#f4e8f8", "#f8f4f0",
+	}
+
+	// Collect vulnerability counts per entity for annotation
+	report, err := analyze(dir, 250)
+	if err != nil {
+		return fmt.Errorf("analyze: %w", err)
+	}
+	vulnCount := map[string]int{}
+	for _, v := range report.Vulnerabilities {
+		vulnCount[v.Entity]++
+	}
+
+	// Group entities by cluster
+	byCluster := map[int][]entityInfo{}
+	for _, e := range entities {
+		c := clusterOf[e.name]
+		byCluster[c] = append(byCluster[c], e)
+	}
+
+	// Output DOT
+	fmt.Println("digraph winze {")
+	fmt.Println("  rankdir=LR;")
+	fmt.Println("  graph [fontname=\"Helvetica\" fontsize=10];")
+	fmt.Println("  node [fontname=\"Helvetica\" fontsize=9 style=filled];")
+	fmt.Println("  edge [fontname=\"Helvetica\" fontsize=7];")
+	fmt.Println()
+
+	// Cluster subgraphs
+	clusterIDs := make([]int, 0, len(byCluster))
+	for id := range byCluster {
+		clusterIDs = append(clusterIDs, id)
+	}
+	sort.Ints(clusterIDs)
+
+	for _, cid := range clusterIDs {
+		ents := byCluster[cid]
+		if len(ents) < 2 {
+			// Singletons outside any cluster subgraph
+			for _, e := range ents {
+				shape := shapeOf[e.roleType]
+				if shape == "" {
+					shape = "box"
+				}
+				vuln := vulnCount[e.name]
+				penwidth := "1"
+				if vuln >= 3 {
+					penwidth = "3"
+				} else if vuln >= 1 {
+					penwidth = "2"
+				}
+				fmt.Printf("  %s [shape=%s fillcolor=\"#f0f0f0\" penwidth=%s label=%q];\n",
+					dotID(e.name), shape, penwidth, dotLabel(e))
+			}
+			continue
+		}
+		color := colors[cid%len(colors)]
+		fmt.Printf("  subgraph cluster_%d {\n", cid)
+		fmt.Printf("    style=filled; color=%q; label=\"\";\n", color)
+		for _, e := range ents {
+			shape := shapeOf[e.roleType]
+			if shape == "" {
+				shape = "box"
+			}
+			vuln := vulnCount[e.name]
+			penwidth := "1"
+			if vuln >= 3 {
+				penwidth = "3"
+			} else if vuln >= 1 {
+				penwidth = "2"
+			}
+			fmt.Printf("    %s [shape=%s fillcolor=\"white\" penwidth=%s label=%q];\n",
+				dotID(e.name), shape, penwidth, dotLabel(e))
+		}
+		fmt.Println("  }")
+		fmt.Println()
+	}
+
+	// Edges
+	entitySet := map[string]bool{}
+	for _, e := range entities {
+		entitySet[e.name] = true
+	}
+
+	for _, c := range claims {
+		if !entitySet[c.subject] || !entitySet[c.object] {
+			continue
+		}
+
+		if subjectGrounds[c.predicateType] {
+			// Subject → Object (subject grounds object)
+			fmt.Printf("  %s -> %s [label=%q];\n",
+				dotID(c.subject), dotID(c.object), c.predicateType)
+		} else if objectGrounds[c.predicateType] {
+			// Object → Subject (object grounds subject)
+			fmt.Printf("  %s -> %s [label=%q];\n",
+				dotID(c.object), dotID(c.subject), c.predicateType)
+		} else if contraEdge[c.predicateType] {
+			// Dashed contra edge
+			fmt.Printf("  %s -> %s [label=%q style=dashed color=red];\n",
+				dotID(c.subject), dotID(c.object), c.predicateType)
+		} else {
+			// Undirected (spatial, unary-like with two slots, etc.)
+			fmt.Printf("  %s -> %s [label=%q dir=none color=gray];\n",
+				dotID(c.subject), dotID(c.object), c.predicateType)
+		}
+	}
+
+	fmt.Println("}")
+	return nil
+}
+
+// dotID sanitizes an entity name for use as a Graphviz node ID.
+func dotID(name string) string {
+	// Graphviz IDs must be quoted if they contain special chars.
+	// Go variable names are safe but quote anyway for consistency.
+	return fmt.Sprintf("%q", name)
+}
+
+// dotLabel creates a short node label: "Name\n(RoleType)"
+func dotLabel(e entityInfo) string {
+	// Convert CamelCase to spaces for readability
+	name := e.name
+	if len(name) > 25 {
+		name = name[:22] + "..."
+	}
+	return name + "\n(" + e.roleType + ")"
+}
+
 func runExportKB(dir string) error {
 	claims, err := collectClaims(dir)
 	if err != nil {
