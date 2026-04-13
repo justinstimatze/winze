@@ -298,39 +298,34 @@ func auditAnchoringBias(dir string) BiasAuditorResult {
 		}
 	}
 
-	// Compute Spearman rank correlation between file age rank and claim density
-	type pair struct {
-		ageRank int
-		density float64
+	// Compute Spearman rank correlation between file age rank and claim density.
+	// Collect raw values and let spearmanRho handle all ranking (including ties).
+	var ageVals, densityVals []float64
+	// Iterate in deterministic key order to avoid map iteration non-determinism.
+	fileNames := make([]string, 0, len(fileStats))
+	for name := range fileStats {
+		fileNames = append(fileNames, name)
 	}
-	var pairs []pair
-	for _, fs := range fileStats {
+	sort.Strings(fileNames)
+	for _, name := range fileNames {
+		fs := fileStats[name]
 		if fs.entities == 0 {
 			continue
 		}
-		density := float64(fs.claims) / float64(fs.entities)
-		pairs = append(pairs, pair{ageRank: fs.rank, density: density})
+		ageVals = append(ageVals, float64(fs.rank))
+		densityVals = append(densityVals, float64(fs.claims)/float64(fs.entities))
 	}
 
-	if len(pairs) < 5 {
-		result.Detail = fmt.Sprintf("only %d corpus files — too few for correlation analysis", len(pairs))
+	if len(ageVals) < 5 {
+		result.Detail = fmt.Sprintf("only %d corpus files — too few for correlation analysis", len(ageVals))
 		return result
 	}
 
-	// Sort by density and assign density ranks
-	sort.Slice(pairs, func(i, j int) bool { return pairs[i].density < pairs[j].density })
-	densityRank := make([]float64, len(pairs))
-	ageRank := make([]float64, len(pairs))
-	for i, p := range pairs {
-		densityRank[i] = float64(i)
-		ageRank[i] = float64(p.ageRank)
-	}
-
-	rho := spearmanRho(ageRank, densityRank)
+	rho := spearmanRho(ageVals, densityVals)
 	result.Value = math.Abs(rho)
 
 	result.Detail = fmt.Sprintf("Spearman rho = %.3f across %d corpus files (negative = older files have higher degree)",
-		rho, len(pairs))
+		rho, len(ageVals))
 
 	if math.Abs(rho) > result.Threshold {
 		result.Triggered = true
@@ -600,6 +595,8 @@ func auditSurvivorshipBias(dir string) BiasAuditorResult {
 	} else if irrelevant > 0 {
 		ratio = float64(irrelevant + 1) // penalize zero-challenge case
 		ratioStr = fmt.Sprintf("%d:0 (no challenges ever found)", irrelevant)
+	} else {
+		ratioStr = "n/a (no irrelevant or challenged cycles)"
 	}
 
 	result.Value = ratio
@@ -657,12 +654,11 @@ func auditFramingEffect(dir string) BiasAuditorResult {
 	}
 
 	// Technical terms that look evaluative but are descriptive in context.
-	// "naive set theory" is a mathematical discipline, not a judgment.
-	// "rejected X" describes an entity's position, not our evaluation of it.
+	// Ambiguous words (naive, rejected, failed) are omitted from the word
+	// lists entirely rather than excluded — too context-dependent.
 	technicalExclusions := map[string][]string{
-		"naive":    {"naive set theory", "naive realism", "naive bayes"},
-		"rejected": {"rejected classical", "rejected the", "rejected by"},
-		"failed":   {"failed to replicate", "failed prediction"},
+		"controversial": {"controversial claim that", "controversial in"},
+		"simplistic":    {"simplistic model", "simplistic view"},
 	}
 
 	fset := token.NewFileSet()
@@ -897,10 +893,17 @@ func auditDunningKruger(dir string, topoReport *TopologyReport) BiasAuditorResul
 		}
 	}
 
-	// Split entities into low-complexity (≤2 refs) and high-complexity (>2 refs)
-	var lowTotal, lowZeroVuln, highTotal, highZeroVuln int
+	// Split entities into low-complexity (1-2 refs) and high-complexity (>2 refs).
+	// Exclude entities with 0 refs — these are entities whose references
+	// exprIdent can't resolve, not truly isolated nodes. Including them
+	// inflates the low-complexity bucket with unmeasurable entities.
+	var lowTotal, lowZeroVuln, highTotal, highZeroVuln, unresolvedRefs int
 	for name := range entityNames {
 		refs := claimRefs[name]
+		if refs == 0 {
+			unresolvedRefs++
+			continue
+		}
 		vulns := vulnCount[name]
 		if refs <= 2 {
 			lowTotal++
@@ -928,10 +931,14 @@ func auditDunningKruger(dir string, topoReport *TopologyReport) BiasAuditorResul
 		highRate = float64(highZeroVuln) / float64(highTotal)
 	}
 
-	result.Detail = fmt.Sprintf("low-complexity (≤2 refs): %d/%d (%.0f%%) zero vulns; "+
-		"high-complexity (>2 refs): %d/%d (%.0f%%) zero vulns",
+	excludedNote := ""
+	if unresolvedRefs > 0 {
+		excludedNote = fmt.Sprintf(" (%d entities excluded: unresolved refs)", unresolvedRefs)
+	}
+	result.Detail = fmt.Sprintf("low-complexity (1-2 refs): %d/%d (%.0f%%) zero vulns; "+
+		"high-complexity (>2 refs): %d/%d (%.0f%%) zero vulns%s",
 		lowZeroVuln, lowTotal, lowRate*100,
-		highZeroVuln, highTotal, highRate*100)
+		highZeroVuln, highTotal, highRate*100, excludedNote)
 
 	if lowRate > result.Threshold {
 		result.Triggered = true
