@@ -36,6 +36,7 @@ func main() {
 	jsonOut := flag.Bool("json", false, "output JSON instead of human-readable summary")
 	exportKB := flag.Bool("export-kb", false, "export claims as slimemold-compatible KBClaim JSON")
 	dotOut := flag.Bool("dot", false, "export epistemic support DAG as Graphviz DOT (pipe to dot -Tsvg)")
+	why := flag.String("why", "", "trace epistemic support chain for named entity (e.g., --why ChalmersHardProblemThesis)")
 	entityCap := flag.Int("entity-cap", 250, "max entities; suppresses breadth targets above this threshold")
 	flag.Parse()
 
@@ -55,6 +56,14 @@ func main() {
 	if *dotOut {
 		if err := runDotExport(dir); err != nil {
 			fmt.Fprintf(os.Stderr, "topology: dot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *why != "" {
+		if err := runWhy(dir, *why, *jsonOut); err != nil {
+			fmt.Fprintf(os.Stderr, "topology: why: %v\n", err)
 			os.Exit(1)
 		}
 		return
@@ -121,12 +130,22 @@ type claimInfo struct {
 	subject       string
 	object        string
 	file          string
+	provRef       string // variable name of the Prov field (e.g., "mySource")
+}
+
+type supportEdge struct {
+	supporter string
+	claim     claimInfo
+	prov      provenanceInfo
+	direction string // "supports", "challenges", "related", "grounds"
 }
 
 type provenanceInfo struct {
 	file     string
 	hasQuote bool
 	origin   string // Provenance.Origin field (e.g. "Wikipedia (zim 2025-12) / Tunguska_event")
+	quote    string // Provenance.Quote field (exact source text)
+	varName  string // the Go variable name
 }
 
 // --- analysis ---
@@ -1194,7 +1213,7 @@ func collectClaims(dir string) ([]claimInfo, error) {
 					if !ok {
 						continue
 					}
-					predType, subj, obj, ok := extractClaim(cl)
+					predType, subj, obj, prov, ok := extractClaimFull(cl)
 					if !ok {
 						continue
 					}
@@ -1204,6 +1223,7 @@ func collectClaims(dir string) ([]claimInfo, error) {
 						subject:       subj,
 						object:        obj,
 						file:          e.Name(),
+						provRef:       prov,
 					})
 				}
 			}
@@ -1213,9 +1233,14 @@ func collectClaims(dir string) ([]claimInfo, error) {
 }
 
 func extractClaim(cl *ast.CompositeLit) (predType, subject, object string, ok bool) {
+	predType, subject, object, _, ok = extractClaimFull(cl)
+	return
+}
+
+func extractClaimFull(cl *ast.CompositeLit) (predType, subject, object, provRef string, ok bool) {
 	typeIdent, typeOK := cl.Type.(*ast.Ident)
 	if !typeOK {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
 	var haveSubject, haveObject bool
 	for _, elt := range cl.Elts {
@@ -1234,12 +1259,14 @@ func extractClaim(cl *ast.CompositeLit) (predType, subject, object string, ok bo
 		case "Object":
 			haveObject = true
 			object = exprString(kv.Value)
+		case "Prov":
+			provRef = exprString(kv.Value)
 		}
 	}
 	if !haveSubject || !haveObject {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
-	return typeIdent.Name, subject, object, true
+	return typeIdent.Name, subject, object, provRef, true
 }
 
 func exprString(e ast.Expr) string {
@@ -1261,15 +1288,22 @@ func exprString(e ast.Expr) string {
 
 // collectProvenance walks .go files looking for Provenance composite
 // literals assigned to package-level vars. Records whether the Quote
-// field is non-empty. This is a heuristic: most corpus files declare a
-// single shared provenance var that all claims in the file reference.
+// field is non-empty. Returns map keyed by FILE name (for backward compat
+// with thin-provenance detector).
 func collectProvenance(dir string) (map[string]provenanceInfo, error) {
+	byFile, _, err := collectProvenanceFull(dir)
+	return byFile, err
+}
+
+// collectProvenanceFull returns provenance keyed both by file and by var name.
+func collectProvenanceFull(dir string) (byFile map[string]provenanceInfo, byVar map[string]provenanceInfo, err error) {
 	fset := token.NewFileSet()
-	prov := map[string]provenanceInfo{}
+	byFile = map[string]provenanceInfo{}
+	byVar = map[string]provenanceInfo{}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
@@ -1307,6 +1341,7 @@ func collectProvenance(dir string) (map[string]provenanceInfo, error) {
 					}
 					hasQuote := false
 					origin := ""
+					quote := ""
 					for _, elt := range cl.Elts {
 						kv, ok := elt.(*ast.KeyValueExpr)
 						if !ok {
@@ -1318,29 +1353,38 @@ func collectProvenance(dir string) (map[string]provenanceInfo, error) {
 						}
 						switch key.Name {
 						case "Quote":
-							lit, ok := kv.Value.(*ast.BasicLit)
-							if ok && lit.Kind == token.STRING && len(lit.Value) > 2 {
+							q := basicLitString(kv.Value)
+							if q != "" {
 								hasQuote = true
+								quote = q
 							}
 						case "Origin":
 							origin = basicLitString(kv.Value)
 						}
 					}
-					// Update: if any provenance in this file has a quote, mark it
-					existing, exists := prov[e.Name()]
-					if !exists || hasQuote {
-						existing.file = e.Name()
-						existing.hasQuote = existing.hasQuote || hasQuote
-						if origin != "" {
-							existing.origin = origin
-						}
-						prov[e.Name()] = existing
+					varName := vs.Names[i].Name
+					info := provenanceInfo{
+						file:     e.Name(),
+						hasQuote: hasQuote,
+						origin:   origin,
+						quote:    quote,
+						varName:  varName,
 					}
+					byVar[varName] = info
+
+					// Update file-level: if any provenance in this file has a quote, mark it
+					existing := byFile[e.Name()]
+					existing.file = e.Name()
+					existing.hasQuote = existing.hasQuote || hasQuote
+					if origin != "" {
+						existing.origin = origin
+					}
+					byFile[e.Name()] = existing
 				}
 			}
 		}
 	}
-	return prov, nil
+	return byFile, byVar, nil
 }
 
 // --- slimemold KB export ---
@@ -1365,6 +1409,300 @@ type KBExportPayload struct {
 // runExportKB walks the winze corpus and emits a slimemold-compatible
 // analyze_kb payload. Uses the same AST extraction as topology analysis
 // but outputs KBClaim format instead of vulnerability reports.
+// runWhy traces the epistemic support chain for a named entity.
+// Walks the directional support DAG backward, collecting provenance
+// at each step, annotating with topology vulnerability data.
+//
+// Usage: go run ./cmd/topology --why ChalmersHardProblemThesis .
+func runWhy(dir, entityName string, jsonOut bool) error {
+	entities, err := collectEntities(dir)
+	if err != nil {
+		return fmt.Errorf("collect entities: %w", err)
+	}
+
+	// Verify entity exists
+	entityMap := map[string]entityInfo{}
+	for _, e := range entities {
+		entityMap[e.name] = e
+	}
+	root, exists := entityMap[entityName]
+	if !exists {
+		// Try fuzzy match
+		var candidates []string
+		lower := strings.ToLower(entityName)
+		for _, e := range entities {
+			if strings.Contains(strings.ToLower(e.name), lower) {
+				candidates = append(candidates, e.name)
+			}
+		}
+		if len(candidates) == 0 {
+			return fmt.Errorf("entity %q not found", entityName)
+		}
+		if len(candidates) == 1 {
+			entityName = candidates[0]
+			root = entityMap[entityName]
+		} else {
+			fmt.Fprintf(os.Stderr, "entity %q not found. Did you mean:\n", entityName)
+			for _, c := range candidates {
+				fmt.Fprintf(os.Stderr, "  %s\n", c)
+			}
+			return fmt.Errorf("ambiguous entity name")
+		}
+	}
+
+	claims, err := collectClaims(dir)
+	if err != nil {
+		return fmt.Errorf("collect claims: %w", err)
+	}
+
+	_, provByVar, err := collectProvenanceFull(dir)
+	if err != nil {
+		return fmt.Errorf("collect provenance: %w", err)
+	}
+
+	// Get vulnerability data
+	report, err := analyze(dir, 250)
+	if err != nil {
+		return fmt.Errorf("analyze: %w", err)
+	}
+	vulnsByEntity := map[string][]Vulnerability{}
+	for _, v := range report.Vulnerabilities {
+		vulnsByEntity[v.Entity] = append(vulnsByEntity[v.Entity], v)
+	}
+
+	// Predicate direction classification (same as --dot and dreamaudit.go)
+	subjectGrounds := map[string]bool{
+		"Proposes": true, "ProposesOrg": true,
+		"Authored": true, "AuthoredOrg": true,
+		"TheoryOf": true, "HypothesisExplains": true,
+		"CommentaryOn": true,
+	}
+	objectGrounds := map[string]bool{
+		"DerivedFrom": true, "InfluencedBy": true,
+		"BelongsTo": true,
+	}
+	contraEdge := map[string]bool{
+		"Disputes": true, "DisputesOrg": true,
+	}
+
+	// Build support edges: supportedBy[entity] = list of (supporter, claim)
+	edges := map[string][]supportEdge{}
+
+	for _, c := range claims {
+		if c.subject == entityName || c.object == entityName {
+			prov := provByVar[c.provRef]
+			if subjectGrounds[c.predicateType] {
+				if c.object == entityName {
+					edges[entityName] = append(edges[entityName], supportEdge{
+						supporter: c.subject, claim: c, prov: prov, direction: "supports",
+					})
+				}
+			} else if objectGrounds[c.predicateType] {
+				if c.subject == entityName {
+					edges[entityName] = append(edges[entityName], supportEdge{
+						supporter: c.object, claim: c, prov: prov, direction: "supports",
+					})
+				}
+			} else if contraEdge[c.predicateType] {
+				if c.object == entityName {
+					edges[entityName] = append(edges[entityName], supportEdge{
+						supporter: c.subject, claim: c, prov: prov, direction: "challenges",
+					})
+				} else {
+					edges[entityName] = append(edges[entityName], supportEdge{
+						supporter: c.object, claim: c, prov: prov, direction: "challenges",
+					})
+				}
+			} else {
+				other := c.object
+				if c.object == entityName {
+					other = c.subject
+				}
+				edges[entityName] = append(edges[entityName], supportEdge{
+					supporter: other, claim: c, prov: prov, direction: "related",
+				})
+			}
+		}
+	}
+
+	// Also collect claims where this entity is Subject grounding others
+	var grounds []supportEdge
+	for _, c := range claims {
+		if c.subject == entityName && subjectGrounds[c.predicateType] {
+			prov := provByVar[c.provRef]
+			grounds = append(grounds, supportEdge{
+				supporter: c.object, claim: c, prov: prov, direction: "grounds",
+			})
+		}
+		if c.object == entityName && objectGrounds[c.predicateType] {
+			prov := provByVar[c.provRef]
+			grounds = append(grounds, supportEdge{
+				supporter: c.subject, claim: c, prov: prov, direction: "grounds",
+			})
+		}
+	}
+
+	if jsonOut {
+		type whyJSON struct {
+			Entity  string        `json:"entity"`
+			Role    string        `json:"role_type"`
+			File    string        `json:"file"`
+			Brief   string        `json:"brief,omitempty"`
+			Vulns   int           `json:"vulnerabilities"`
+			Support []interface{} `json:"support_chain"`
+		}
+		// Collect brief
+		metas := collectEntityMetas(dir)
+		brief := ""
+		if m, ok := metas[entityName]; ok {
+			brief = m.brief
+		}
+		w := whyJSON{
+			Entity: entityName,
+			Role:   root.roleType,
+			File:   root.file,
+			Brief:  brief,
+			Vulns:  len(vulnsByEntity[entityName]),
+		}
+		for _, e := range edges[entityName] {
+			entry := map[string]interface{}{
+				"direction": e.direction,
+				"entity":    e.supporter,
+				"predicate": e.claim.predicateType,
+				"claim":     e.claim.name,
+			}
+			if e.prov.origin != "" {
+				entry["origin"] = e.prov.origin
+			}
+			if e.prov.quote != "" {
+				entry["quote"] = e.prov.quote
+			}
+			w.Support = append(w.Support, entry)
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(w)
+	}
+
+	// Text output
+	metas := collectEntityMetas(dir)
+	brief := ""
+	if m, ok := metas[entityName]; ok {
+		brief = m.brief
+	}
+
+	fmt.Printf("%s (%s)\n", entityName, root.roleType)
+	if brief != "" {
+		fmt.Printf("  %s\n", brief)
+	}
+	fmt.Printf("  file: %s\n", root.file)
+
+	vulns := vulnsByEntity[entityName]
+	if len(vulns) > 0 {
+		fmt.Printf("  vulnerabilities: %d\n", len(vulns))
+		for _, v := range vulns {
+			fmt.Printf("    [%s] %s\n", v.Severity, v.Type)
+		}
+	}
+
+	incoming := edges[entityName]
+	if len(incoming) > 0 {
+		// Group by direction
+		var supports, challenges, related []supportEdge
+		for _, e := range incoming {
+			switch e.direction {
+			case "supports":
+				supports = append(supports, e)
+			case "challenges":
+				challenges = append(challenges, e)
+			default:
+				related = append(related, e)
+			}
+		}
+
+		if len(supports) > 0 {
+			fmt.Println("\n  supported by:")
+			for _, e := range supports {
+				printWhyEdge(e, entityMap)
+			}
+		}
+
+		if len(challenges) > 0 {
+			fmt.Println("\n  challenged by:")
+			for _, e := range challenges {
+				printWhyEdge(e, entityMap)
+			}
+		}
+
+		if len(related) > 0 {
+			fmt.Println("\n  related:")
+			for _, e := range related {
+				printWhyEdge(e, entityMap)
+			}
+		}
+	}
+
+	if len(grounds) > 0 {
+		fmt.Println("\n  grounds:")
+		for _, e := range grounds {
+			ei := entityMap[e.supporter]
+			fmt.Printf("    → %s (%s) via %s\n", e.supporter, ei.roleType, e.claim.predicateType)
+		}
+	}
+
+	// Summary
+	fmt.Printf("\n  %d sources, %d supports, %d challenges, %d vulnerabilities\n",
+		countUniqueSources(incoming, provByVar),
+		len(supports(incoming)), len(challengeEdges(incoming)), len(vulns))
+
+	return nil
+}
+
+func printWhyEdge(e supportEdge, entityMap map[string]entityInfo) {
+	ei := entityMap[e.supporter]
+	fmt.Printf("    ← %s: %s (%s)\n", e.claim.predicateType, e.supporter, ei.roleType)
+	if e.prov.origin != "" {
+		fmt.Printf("      prov: %s\n", e.prov.origin)
+	}
+	if e.prov.quote != "" {
+		q := e.prov.quote
+		if len(q) > 120 {
+			q = q[:117] + "..."
+		}
+		fmt.Printf("      quote: %q\n", q)
+	}
+}
+
+func countUniqueSources(edges []supportEdge, provByVar map[string]provenanceInfo) int {
+	origins := map[string]bool{}
+	for _, e := range edges {
+		if e.prov.origin != "" {
+			origins[e.prov.origin] = true
+		}
+	}
+	return len(origins)
+}
+
+func supports(edges []supportEdge) []supportEdge {
+	var out []supportEdge
+	for _, e := range edges {
+		if e.direction == "supports" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func challengeEdges(edges []supportEdge) []supportEdge {
+	var out []supportEdge
+	for _, e := range edges {
+		if e.direction == "challenges" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // runDotExport outputs the epistemic support DAG as Graphviz DOT.
 // Nodes are entities colored by cluster and shaped by role type.
 // Edges are directed support edges inferred from predicate semantics.
