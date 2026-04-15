@@ -1162,30 +1162,16 @@ func collectEntities(dir string) ([]entityInfo, error) {
 }
 
 func collectEntitiesDefn(client *defndb.Client) ([]entityInfo, error) {
-	roleTypes, err := client.RoleTypeSet()
+	varRoles, err := client.EntityVarsWithRoles()
 	if err != nil {
 		return nil, err
 	}
-	fields, err := client.EntityFields()
-	if err != nil {
-		return nil, err
-	}
-	seen := map[string]bool{}
-	var out []entityInfo
-	for _, f := range fields {
-		if seen[f.DefName] {
-			continue
-		}
-		typeParts := strings.Split(f.TypeName, ".")
-		typeName := typeParts[len(typeParts)-1]
-		if !roleTypes[typeName] {
-			continue
-		}
-		seen[f.DefName] = true
+	out := make([]entityInfo, 0, len(varRoles))
+	for _, vr := range varRoles {
 		out = append(out, entityInfo{
-			name:     f.DefName,
-			roleType: typeName,
-			file:     filepath.Base(f.SourceFile),
+			name:     vr.VarName,
+			roleType: vr.RoleType,
+			file:     filepath.Base(vr.SourceFile),
 		})
 	}
 	return out, nil
