@@ -499,7 +499,7 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 		}
 	}
 	for _, rec := range claimMap {
-		if rec.Subject != "" {
+		if rec.Subject != "" && rec.Object != "" {
 			kb.Claims = append(kb.Claims, *rec)
 		}
 	}

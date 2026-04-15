@@ -24,7 +24,7 @@ var ErrNotAvailable = errors.New("defndb: defn not available")
 
 // queryTimeout caps each defn CLI invocation to avoid lock contention
 // with a concurrent defn MCP server.
-const queryTimeout = 5 * time.Second
+const queryTimeout = 10 * time.Second
 
 // Client wraps defn CLI shell-out with typed queries. A Client caches
 // its availability state: after the first failure, all subsequent calls
