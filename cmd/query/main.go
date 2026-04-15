@@ -431,6 +431,18 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 
 	kb := &kbIndex{RoleTypes: roleTypes}
 
+	// Get var-to-role-type mapping via constructor refs
+	varRoles, err := client.EntityVarsWithRoles()
+	if err != nil {
+		return nil, err
+	}
+	varRoleMap := map[string]string{}
+	varFileMap := map[string]string{}
+	for _, vr := range varRoles {
+		varRoleMap[vr.VarName] = vr.RoleType
+		varFileMap[vr.VarName] = filepath.Base(vr.SourceFile)
+	}
+
 	// Entity fields (Name, Brief, ID)
 	eFields, err := client.EntityFields()
 	if err != nil {
@@ -438,16 +450,13 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 	}
 	entityMap := map[string]*entityRecord{}
 	for _, f := range eFields {
-		base := filepath.Base(f.SourceFile)
+		rt, ok := varRoleMap[f.DefName]
+		if !ok {
+			continue // not an entity var
+		}
 		rec, ok := entityMap[f.DefName]
 		if !ok {
-			// Determine role type from type_name suffix
-			typeParts := strings.Split(f.TypeName, ".")
-			typeName := typeParts[len(typeParts)-1]
-			if !roleTypes[typeName] {
-				continue
-			}
-			rec = &entityRecord{VarName: f.DefName, RoleType: typeName, File: base}
+			rec = &entityRecord{VarName: f.DefName, RoleType: rt, File: varFileMap[f.DefName]}
 			entityMap[f.DefName] = rec
 		}
 		val := strings.Trim(f.FieldValue, "\"")
