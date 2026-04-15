@@ -591,6 +591,45 @@ type entitySite struct {
 // vars and are expected never to be claim-subjects, so including them
 // would drown the useful signal.
 func collectEntityVars(dir string, roleTypes map[string]bool) ([]entitySite, error) {
+	if !noDefn {
+		if client, err := defndb.New(dir); err == nil {
+			if vars, err := collectEntityVarsDefn(client, roleTypes); err == nil {
+				return vars, nil
+			}
+		}
+	}
+	return collectEntityVarsAST(dir, roleTypes)
+}
+
+func collectEntityVarsDefn(client *defndb.Client, roleTypes map[string]bool) ([]entitySite, error) {
+	fields, err := client.EntityFields()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []entitySite
+	for _, f := range fields {
+		if seen[f.DefName] {
+			continue
+		}
+		typeParts := strings.Split(f.TypeName, ".")
+		typeName := typeParts[len(typeParts)-1]
+		if !roleTypes[typeName] {
+			continue
+		}
+		seen[f.DefName] = true
+		out = append(out, entitySite{
+			name:     f.DefName,
+			roleType: typeName,
+			file:     filepath.Base(f.SourceFile),
+			line:     f.Line,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
+	return out, nil
+}
+
+func collectEntityVarsAST(dir string, roleTypes map[string]bool) ([]entitySite, error) {
 	fset := token.NewFileSet()
 	var out []entitySite
 
@@ -1035,7 +1074,9 @@ func main() {
 	llmModel := fs.String("llm-model", "haiku", "LLM model for contradiction check")
 	llmMaxCalls := fs.Int("llm-max-calls", 0, "max LLM calls per run (0 = unlimited)")
 	llmMaxTokens := fs.Int("llm-max-tokens", 1024, "max tokens per LLM call")
+	noDefnFlag := fs.Bool("no-defn", false, "force AST-only mode (skip defn queries)")
 	fs.Parse(os.Args[1:])
+	noDefn = *noDefnFlag
 
 	dir := "."
 	if fs.NArg() > 0 {
