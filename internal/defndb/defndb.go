@@ -7,10 +7,8 @@ package defndb
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	defnapi "github.com/justinstimatze/defn/db"
 )
@@ -53,16 +51,18 @@ type RoleType struct {
 
 // RoleTypes returns all types embedding *Entity via the embed ref kind.
 func (c *Client) RoleTypes() ([]RoleType, error) {
-	rows, err := c.query(`SELECT d.name, d.source_file FROM definitions d WHERE d.kind='type' AND d.id IN (SELECT r.from_def FROM refs r WHERE r.kind='embed' AND r.to_def=(SELECT id FROM definitions WHERE name='Entity' AND kind='type'))`)
+	// Use Refs API to find embed relationships, then resolve type names.
+	refs, err := c.db.Refs(defnapi.RefFilter{ToName: "Entity", Kind: "embed"})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]RoleType, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, RoleType{
-			Name:       str(row["name"]),
-			SourceFile: str(row["source_file"]),
-		})
+	out := make([]RoleType, 0, len(refs))
+	for _, r := range refs {
+		def, err := c.db.DefinitionByID(r.FromDef)
+		if err != nil || def.Kind != "type" {
+			continue
+		}
+		out = append(out, RoleType{Name: def.Name, SourceFile: def.SourceFile})
 	}
 	return out, nil
 }
@@ -90,38 +90,77 @@ type LiteralField struct {
 	Line       int
 }
 
+func convertLiteralFields(fields []defnapi.LiteralField, defs map[int64]*defnapi.Definition) []LiteralField {
+	out := make([]LiteralField, len(fields))
+	for i, f := range fields {
+		defName := f.DefName
+		// If DefName wasn't populated by the API, try the defs map.
+		if defName == "" {
+			if d, ok := defs[f.DefID]; ok {
+				defName = d.Name
+			}
+		}
+		sf := ""
+		if d, ok := defs[f.DefID]; ok {
+			sf = d.SourceFile
+		}
+		out[i] = LiteralField{
+			DefName:    defName,
+			TypeName:   f.TypeName,
+			FieldName:  f.FieldName,
+			FieldValue: f.FieldValue,
+			SourceFile: sf,
+			Line:       f.Line,
+		}
+	}
+	return out
+}
+
 // ClaimFields returns Subject/Object/Prov fields from claim composite literals.
 func (c *Client) ClaimFields() ([]LiteralField, error) {
-	return c.literalFieldsSQL(`lf.field_name IN ('Subject','Object','Prov')`)
+	return c.literalFields(defnapi.LiteralFieldFilter{
+		FieldNames: []string{"Subject", "Object", "Prov"},
+	})
 }
 
 // EntityFields returns Name/Brief/ID/Origin/Quote fields from entity literals.
 func (c *Client) EntityFields() ([]LiteralField, error) {
-	return c.literalFieldsSQL(`lf.field_name IN ('Name','Brief','ID','Origin','Quote')`)
+	return c.literalFields(defnapi.LiteralFieldFilter{
+		FieldNames: []string{"Name", "Brief", "ID", "Origin", "Quote"},
+	})
 }
 
 // LiteralFieldsForType returns all literal fields for the given type name pattern.
 func (c *Client) LiteralFieldsForType(typePattern string) ([]LiteralField, error) {
-	return c.literalFieldsSQL(fmt.Sprintf(`lf.type_name LIKE '%%%s%%'`, typePattern))
+	return c.literalFields(defnapi.LiteralFieldFilter{
+		TypeName: "%" + typePattern + "%",
+	})
 }
 
-func (c *Client) literalFieldsSQL(where string) ([]LiteralField, error) {
-	rows, err := c.query(fmt.Sprintf(`SELECT d.name AS def_name, lf.type_name, lf.field_name, lf.field_value, d.source_file, lf.line FROM literal_fields lf JOIN definitions d ON lf.def_id=d.id WHERE %s AND d.kind='var'`, where))
+func (c *Client) literalFields(filter defnapi.LiteralFieldFilter) ([]LiteralField, error) {
+	fields, err := c.db.LiteralFields(filter)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]LiteralField, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, LiteralField{
-			DefName:    str(row["def_name"]),
-			TypeName:   str(row["type_name"]),
-			FieldName:  str(row["field_name"]),
-			FieldValue: str(row["field_value"]),
-			SourceFile: str(row["source_file"]),
-			Line:       intVal(row["line"]),
-		})
+	// Build def lookup for SourceFile (DefName comes from the API now).
+	defIDs := make(map[int64]bool, len(fields))
+	for _, f := range fields {
+		defIDs[f.DefID] = true
 	}
-	return out, nil
+	defs := make(map[int64]*defnapi.Definition, len(defIDs))
+	for id := range defIDs {
+		if d, err := c.db.DefinitionByID(id); err == nil {
+			defs[id] = d
+		}
+	}
+	// Filter to var definitions only (matches previous behavior).
+	var filtered []defnapi.LiteralField
+	for _, f := range fields {
+		if d, ok := defs[f.DefID]; ok && d.Kind == "var" {
+			filtered = append(filtered, f)
+		}
+	}
+	return convertLiteralFields(filtered, defs), nil
 }
 
 // Pragma represents a parsed pragma comment (e.g., //winze:contested).
@@ -142,6 +181,7 @@ func (c *Client) Pragmas(prefix string) ([]Pragma, error) {
 	out := make([]Pragma, len(pragmas))
 	for i, p := range pragmas {
 		out[i] = Pragma{
+			DefName:    p.DefName,
 			SourceFile: p.SourceFile,
 			Line:       p.Line,
 			Key:        p.Key,
@@ -193,55 +233,36 @@ func (c *Client) EntityVarsWithRoles() ([]VarRoleInfo, error) {
 	if len(roles) == 0 {
 		return nil, nil
 	}
-	roleNames := make([]string, len(roles))
-	for i, r := range roles {
-		roleNames[i] = r.Name
+	roleNames := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		roleNames[r.Name] = true
 	}
-	quoted := make([]string, len(roleNames))
-	for i, n := range roleNames {
-		quoted[i] = "'" + n + "'"
-	}
-	rows, err := c.query(fmt.Sprintf(`SELECT d1.name AS var_name, d2.name AS role_type, d1.source_file FROM refs r JOIN definitions d1 ON r.from_def=d1.id JOIN definitions d2 ON r.to_def=d2.id WHERE d1.kind='var' AND r.kind='constructor' AND d2.name IN (%s)`, strings.Join(quoted, ",")))
+	// Find constructor refs to any role type.
+	refs, err := c.db.Refs(defnapi.RefFilter{Kind: "constructor"})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]VarRoleInfo, 0, len(rows))
-	for _, row := range rows {
+	var out []VarRoleInfo
+	seen := make(map[int64]bool)
+	for _, r := range refs {
+		if seen[r.FromDef] {
+			continue
+		}
+		toDef, err := c.db.DefinitionByID(r.ToDef)
+		if err != nil || !roleNames[toDef.Name] {
+			continue
+		}
+		fromDef, err := c.db.DefinitionByID(r.FromDef)
+		if err != nil || fromDef.Kind != "var" {
+			continue
+		}
+		seen[r.FromDef] = true
 		out = append(out, VarRoleInfo{
-			VarName:    str(row["var_name"]),
-			RoleType:   str(row["role_type"]),
-			SourceFile: str(row["source_file"]),
+			VarName:    fromDef.Name,
+			RoleType:   toDef.Name,
+			SourceFile: fromDef.SourceFile,
 		})
 	}
 	return out, nil
 }
 
-// query delegates to defn's Go API.
-func (c *Client) query(sql string) ([]map[string]any, error) {
-	return c.db.Query(sql)
-}
-
-func str(v any) string {
-	if v == nil {
-		return ""
-	}
-	s := fmt.Sprintf("%v", v)
-	if s == "<nil>" {
-		return ""
-	}
-	return strings.TrimSpace(s)
-}
-
-func intVal(v any) int {
-	switch n := v.(type) {
-	case float64:
-		return int(n)
-	case int:
-		return n
-	case int64:
-		return int(n)
-	case uint64:
-		return int(n)
-	}
-	return 0
-}

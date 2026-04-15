@@ -2,7 +2,6 @@ package defndb_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -19,9 +18,6 @@ func rootDir(t *testing.T) string {
 
 func skipIfNoDefn(t *testing.T) *defndb.Client {
 	t.Helper()
-	if _, err := exec.LookPath("defn"); err != nil {
-		t.Skip("defn binary not available")
-	}
 	dir := rootDir(t)
 	// Check .defn exists before creating client (avoids timeout on missing db)
 	if _, err := os.Stat(filepath.Join(dir, ".defn")); err != nil {
