@@ -329,6 +329,7 @@ func collectTripEntities(dir string) []tripEntity {
 
 	// Try defndb first for entity + claim collection.
 	if client, err := defndb.New(dir); err == nil {
+		defer client.Close()
 		if ents, cls, err := collectTripDataDefn(client); err == nil {
 			entities = ents
 			claims = cls

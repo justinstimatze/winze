@@ -38,6 +38,7 @@ type roleType struct {
 func collectRoleTypes(dir string) ([]roleType, error) {
 	if !noDefn {
 		if client, err := defndb.New(dir); err == nil {
+			defer client.Close()
 			if roles, err := collectRoleTypesDefn(client); err == nil {
 				return roles, nil
 			}
@@ -593,6 +594,7 @@ type entitySite struct {
 func collectEntityVars(dir string, roleTypes map[string]bool) ([]entitySite, error) {
 	if !noDefn {
 		if client, err := defndb.New(dir); err == nil {
+			defer client.Close()
 			if vars, err := collectEntityVarsDefn(client, roleTypes); err == nil {
 				return vars, nil
 			}

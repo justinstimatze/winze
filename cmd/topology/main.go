@@ -1004,6 +1004,7 @@ func splitCamelCase(s string) []string {
 func collectEntityMetas(dir string) map[string]entityMeta {
 	// Try defndb first.
 	if client, err := defndb.New(dir); err == nil {
+		defer client.Close()
 		if metas, err := collectEntityMetasDefn(client); err == nil {
 			return metas
 		}
@@ -1168,6 +1169,7 @@ func basicLitString(e ast.Expr) string {
 
 func collectEntities(dir string) ([]entityInfo, error) {
 	if client, err := defndb.New(dir); err == nil {
+		defer client.Close()
 		if ents, err := collectEntitiesDefn(client); err == nil {
 			return ents, nil
 		}
@@ -1251,6 +1253,7 @@ func collectEntitiesAST(dir string) ([]entityInfo, error) {
 
 func collectRoleTypes(dir string) (map[string]bool, error) {
 	if client, err := defndb.New(dir); err == nil {
+		defer client.Close()
 		if roles, err := client.RoleTypeSet(); err == nil {
 			return roles, nil
 		}
@@ -1268,6 +1271,7 @@ func collectRoleTypesAST(dir string) (map[string]bool, error) {
 
 func collectClaims(dir string) ([]claimInfo, error) {
 	if client, err := defndb.New(dir); err == nil {
+		defer client.Close()
 		if claims, err := collectClaimsDefn(client); err == nil {
 			return claims, nil
 		}

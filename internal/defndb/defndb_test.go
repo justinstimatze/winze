@@ -31,6 +31,7 @@ func skipIfNoDefn(t *testing.T) *defndb.Client {
 	if err != nil {
 		t.Skip("defn database not available:", err)
 	}
+	t.Cleanup(func() { client.Close() })
 	// Verify the client can actually query (catches corrupt db, timeouts)
 	if _, err := client.RoleTypeSet(); err != nil {
 		t.Skip("defn query failed:", err)

@@ -416,6 +416,7 @@ func runStats(kb *kbIndex, jsonOut bool) {
 func buildIndex(dir string) (*kbIndex, error) {
 	// Try defndb first for faster indexed access.
 	if client, err := defndb.New(dir); err == nil {
+		defer client.Close()
 		if kb, err := buildIndexDefn(client, dir); err == nil {
 			return kb, nil
 		}
@@ -598,6 +599,7 @@ func buildIndexAST(dir string) (*kbIndex, error) {
 
 func collectRoleTypes(dir string) (map[string]bool, error) {
 	if client, err := defndb.New(dir); err == nil {
+		defer client.Close()
 		if roles, err := client.RoleTypeSet(); err == nil {
 			return roles, nil
 		}

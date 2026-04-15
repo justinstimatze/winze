@@ -371,6 +371,7 @@ func analyzeProvenanceSplits(dir string) []DreamFinding {
 func analyzeBriefQuality(dir string) []DreamFinding {
 	// Try defndb first.
 	if client, err := defndb.New(dir); err == nil {
+		defer client.Close()
 		if findings, err := analyzeBriefQualityDefn(client); err == nil {
 			return findings
 		}
