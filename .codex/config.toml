@@ -1,0 +1,6 @@
+[mcp_servers.defn]
+command = "/home/gas6amus/go/bin/defn"
+args = ["serve"]
+
+[mcp_servers.defn.env]
+DEFN_DB = "/home/gas6amus/Documents/town/winze/.defn"

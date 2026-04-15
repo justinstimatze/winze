@@ -335,3 +335,27 @@ creates nothing. **Default to nudge for routine agent-to-agent communication.**
 Only use mail when the message MUST survive the recipient's session death
 (handoffs, structured protocol messages, escalations). See `mail-protocol.md`.
 
+<!-- defn:begin -->
+## Code Navigation and Editing
+
+This project is indexed in defn. Use the `code` MCP tool for **Go code**:
+
+```
+code(op: "read", name: "handleEdit")           -- full source by name
+code(op: "read", name: "server.go:272")        -- or by file:line
+code(op: "impact", name: "Render")             -- blast radius + test coverage
+code(op: "edit", name: "Foo", new_body: "...") -- edit, auto-emit + build
+code(op: "search", pattern: "%Auth%")          -- name pattern (% wildcard)
+code(op: "search", pattern: "authentication")  -- body text search
+code(op: "test", name: "Render")               -- run affected tests only
+code(op: "sync")                               -- re-ingest after file edits
+```
+
+All ops: read, search, impact, explain, untested, edit, create, delete, rename, move, test, apply, diff, history, find, sync, query, overview, patch.
+
+**Both editing paths work.** `code(op:"edit")` updates the database, emits files, and rebuilds references automatically. File tools (Read, Edit) work too — call `code(op:"sync")` after editing Go files.
+
+Prefer defn for Go code (fewer steps, auto-build verification). Use Read/Edit/Grep for non-Go files.
+
+**Rule of thumb:** Always run impact before modifying an existing definition. Skip it for brand-new definitions.
+<!-- defn:end -->
