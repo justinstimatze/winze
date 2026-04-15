@@ -417,12 +417,23 @@ type tripRawClaim = struct {
 }
 
 func collectTripDataDefn(client *defndb.Client) ([]tripRawEntity, []tripRawClaim, error) {
-	roleTypes, err := client.RoleTypeSet()
+	// Get var-to-role-type mapping
+	varRoles, err := client.EntityVarsWithRoles()
 	if err != nil {
 		return nil, nil, err
 	}
+	varRoleMap := map[string]string{}
+	varFileMap := map[string]string{}
+	for _, vr := range varRoles {
+		base := filepath.Base(vr.SourceFile)
+		if isInfraFile(base) {
+			continue
+		}
+		varRoleMap[vr.VarName] = vr.RoleType
+		varFileMap[vr.VarName] = base
+	}
 
-	// Entity fields
+	// Entity fields (for Brief)
 	eFields, err := client.EntityFields()
 	if err != nil {
 		return nil, nil, err
@@ -432,22 +443,23 @@ func collectTripDataDefn(client *defndb.Client) ([]tripRawEntity, []tripRawClaim
 	}
 	em := map[string]*eBuild{}
 	for _, f := range eFields {
-		typeParts := strings.Split(f.TypeName, ".")
-		tn := typeParts[len(typeParts)-1]
-		if !roleTypes[tn] {
-			continue
-		}
-		base := filepath.Base(f.SourceFile)
-		if isInfraFile(base) {
+		rt, ok := varRoleMap[f.DefName]
+		if !ok {
 			continue
 		}
 		eb, ok := em[f.DefName]
 		if !ok {
-			eb = &eBuild{name: f.DefName, roleType: tn, file: base}
+			eb = &eBuild{name: f.DefName, roleType: rt, file: varFileMap[f.DefName]}
 			em[f.DefName] = eb
 		}
 		if f.FieldName == "Brief" {
 			eb.brief = strings.Trim(f.FieldValue, "\"")
+		}
+	}
+	// Also add entities that have no Name/Brief fields
+	for varName, rt := range varRoleMap {
+		if _, ok := em[varName]; !ok {
+			em[varName] = &eBuild{name: varName, roleType: rt, file: varFileMap[varName]}
 		}
 	}
 	entities := make([]tripRawEntity, 0, len(em))

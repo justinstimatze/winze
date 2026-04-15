@@ -379,10 +379,18 @@ func analyzeBriefQuality(dir string) []DreamFinding {
 }
 
 func analyzeBriefQualityDefn(client *defndb.Client) ([]DreamFinding, error) {
-	roleTypes, err := client.RoleTypeSet()
+	// Get var-to-role-type mapping
+	varRoles, err := client.EntityVarsWithRoles()
 	if err != nil {
 		return nil, err
 	}
+	varRoleMap := map[string]string{}
+	varFileMap := map[string]string{}
+	for _, vr := range varRoles {
+		varRoleMap[vr.VarName] = vr.RoleType
+		varFileMap[vr.VarName] = filepath.Base(vr.SourceFile)
+	}
+
 	fields, err := client.EntityFields()
 	if err != nil {
 		return nil, err
@@ -390,22 +398,25 @@ func analyzeBriefQualityDefn(client *defndb.Client) ([]DreamFinding, error) {
 
 	type entityBrief struct {
 		varName, file, brief string
-		typeName             string
 	}
 	m := map[string]*entityBrief{}
 	for _, f := range fields {
-		typeParts := strings.Split(f.TypeName, ".")
-		tn := typeParts[len(typeParts)-1]
-		if !roleTypes[tn] {
+		if _, ok := varRoleMap[f.DefName]; !ok {
 			continue
 		}
 		eb, ok := m[f.DefName]
 		if !ok {
-			eb = &entityBrief{varName: f.DefName, file: filepath.Base(f.SourceFile), typeName: tn}
+			eb = &entityBrief{varName: f.DefName, file: varFileMap[f.DefName]}
 			m[f.DefName] = eb
 		}
 		if f.FieldName == "Brief" {
 			eb.brief = strings.Trim(f.FieldValue, "\"")
+		}
+	}
+	// Include entities that have no Brief field at all
+	for varName := range varRoleMap {
+		if _, ok := m[varName]; !ok {
+			m[varName] = &entityBrief{varName: varName, file: varFileMap[varName]}
 		}
 	}
 
