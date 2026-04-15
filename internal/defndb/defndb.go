@@ -207,6 +207,69 @@ func (c *Client) VarsByType(typePattern string) ([]SearchResult, error) {
 	return out, nil
 }
 
+// VarRoleTypes maps var names to their constructor-referenced role type.
+// For a var like `Apophenia = Concept{&Entity{...}}`, this returns
+// {"Apophenia": "Concept"} by looking at constructor refs to known role types.
+func (c *Client) VarRoleTypes(roleTypeNames []string) (map[string]string, error) {
+	if len(roleTypeNames) == 0 {
+		return map[string]string{}, nil
+	}
+	quoted := make([]string, len(roleTypeNames))
+	for i, n := range roleTypeNames {
+		quoted[i] = "'" + n + "'"
+	}
+	sql := fmt.Sprintf(`SELECT d1.name AS var_name, d2.name AS role_type, d1.source_file FROM refs r JOIN definitions d1 ON r.from_def=d1.id JOIN definitions d2 ON r.to_def=d2.id WHERE d1.kind='var' AND r.kind='constructor' AND d2.name IN (%s)`, strings.Join(quoted, ","))
+	rows, err := c.query(sql)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]string, len(rows))
+	for _, row := range rows {
+		m[str(row["var_name"])] = str(row["role_type"])
+	}
+	return m, nil
+}
+
+// VarRoleInfo is a var with its role type and source file.
+type VarRoleInfo struct {
+	VarName    string
+	RoleType   string
+	SourceFile string
+}
+
+// EntityVarsWithRoles returns entity vars with their role types resolved via constructor refs.
+func (c *Client) EntityVarsWithRoles() ([]VarRoleInfo, error) {
+	roles, err := c.RoleTypes()
+	if err != nil {
+		return nil, err
+	}
+	if len(roles) == 0 {
+		return nil, nil
+	}
+	roleNames := make([]string, len(roles))
+	for i, r := range roles {
+		roleNames[i] = r.Name
+	}
+	quoted := make([]string, len(roleNames))
+	for i, n := range roleNames {
+		quoted[i] = "'" + n + "'"
+	}
+	sql := fmt.Sprintf(`SELECT d1.name AS var_name, d2.name AS role_type, d1.source_file FROM refs r JOIN definitions d1 ON r.from_def=d1.id JOIN definitions d2 ON r.to_def=d2.id WHERE d1.kind='var' AND r.kind='constructor' AND d2.name IN (%s)`, strings.Join(quoted, ","))
+	rows, err := c.query(sql)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]VarRoleInfo, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, VarRoleInfo{
+			VarName:    str(row["var_name"]),
+			RoleType:   str(row["role_type"]),
+			SourceFile: str(row["source_file"]),
+		})
+	}
+	return out, nil
+}
+
 // query shells out to defn and parses the JSON response.
 func (c *Client) query(sql string) ([]map[string]any, error) {
 	c.mu.Lock()

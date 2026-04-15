@@ -324,19 +324,8 @@ func collectEntityVarNames(dir string) map[string]bool {
 
 // collectTripEntities parses KB entities and assigns cluster IDs via BFS.
 func collectTripEntities(dir string) []tripEntity {
-	type rawEntity struct {
-		name     string
-		roleType string
-		brief    string
-		file     string
-	}
-	type claim struct {
-		subject string
-		object  string
-	}
-
-	var entities []rawEntity
-	var claims []claim
+	var entities []tripRawEntity
+	var claims []tripRawClaim
 
 	// Try defndb first for entity + claim collection.
 	if client, err := defndb.New(dir); err == nil {
@@ -356,26 +345,6 @@ func collectTripEntities(dir string) []tripEntity {
 	}
 
 	// Build adjacency and BFS for clusters (always in-memory).
-	adj := map[string]map[string]bool{}
-	addEdge := func(a, b string) {
-		if adj[a] == nil {
-			adj[a] = map[string]bool{}
-		}
-		if adj[b] == nil {
-			adj[b] = map[string]bool{}
-		}
-		adj[a][b] = true
-		adj[b][a] = true
-	}
-	for _, c := range claims {
-		addEdge(c.subject, c.object)
-	}
-
-	// Build adjacency and BFS for clusters.
-	// NOTE: This BFS duplicates logic in topology/main.go. The topology tool
-	// exports cluster count but not per-entity cluster assignments, so trip
-	// must compute its own. If topology ever exports ClusterOf map[string]int,
-	// this BFS can be replaced with a cache lookup.
 	adj := map[string]map[string]bool{}
 	addEdge := func(a, b string) {
 		if adj[a] == nil {
@@ -432,6 +401,170 @@ func collectTripEntities(dir string) []tripEntity {
 		})
 	}
 	return result
+}
+
+// tripRawEntity and tripRawClaim are used by both defn and AST data collection.
+type tripRawEntity = struct {
+	name     string
+	roleType string
+	brief    string
+	file     string
+}
+
+type tripRawClaim = struct {
+	subject string
+	object  string
+}
+
+func collectTripDataDefn(client *defndb.Client) ([]tripRawEntity, []tripRawClaim, error) {
+	roleTypes, err := client.RoleTypeSet()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Entity fields
+	eFields, err := client.EntityFields()
+	if err != nil {
+		return nil, nil, err
+	}
+	type eBuild struct {
+		name, roleType, brief, file string
+	}
+	em := map[string]*eBuild{}
+	for _, f := range eFields {
+		typeParts := strings.Split(f.TypeName, ".")
+		tn := typeParts[len(typeParts)-1]
+		if !roleTypes[tn] {
+			continue
+		}
+		base := filepath.Base(f.SourceFile)
+		if isInfraFile(base) {
+			continue
+		}
+		eb, ok := em[f.DefName]
+		if !ok {
+			eb = &eBuild{name: f.DefName, roleType: tn, file: base}
+			em[f.DefName] = eb
+		}
+		if f.FieldName == "Brief" {
+			eb.brief = strings.Trim(f.FieldValue, "\"")
+		}
+	}
+	entities := make([]tripRawEntity, 0, len(em))
+	for _, eb := range em {
+		entities = append(entities, tripRawEntity{name: eb.name, roleType: eb.roleType, brief: eb.brief, file: eb.file})
+	}
+
+	// Claim fields
+	cFields, err := client.ClaimFields()
+	if err != nil {
+		return nil, nil, err
+	}
+	type cBuild struct {
+		subject, object string
+	}
+	cm := map[string]*cBuild{}
+	for _, f := range cFields {
+		c, ok := cm[f.DefName]
+		if !ok {
+			c = &cBuild{}
+			cm[f.DefName] = c
+		}
+		val := strings.Trim(f.FieldValue, "\"")
+		switch f.FieldName {
+		case "Subject":
+			c.subject = val
+		case "Object":
+			c.object = val
+		}
+	}
+	var claims []tripRawClaim
+	for _, c := range cm {
+		if c.subject != "" && c.object != "" {
+			claims = append(claims, tripRawClaim{subject: c.subject, object: c.object})
+		}
+	}
+
+	return entities, claims, nil
+}
+
+func collectTripDataAST(dir string) ([]tripRawEntity, []tripRawClaim, error) {
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
+		return strings.HasSuffix(fi.Name(), ".go") && !strings.HasSuffix(fi.Name(), "_test.go")
+	}, parser.ParseComments)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	roleTypes := collectDreamRoleTypes(pkgs)
+
+	var entities []tripRawEntity
+	for _, pkg := range pkgs {
+		for fname, f := range pkg.Files {
+			base := filepath.Base(fname)
+			if isInfraFile(base) {
+				continue
+			}
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Values) == 0 {
+						continue
+					}
+					cl, ok := vs.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					typeName := compositeTypeName(cl)
+					if !roleTypes[typeName] {
+						continue
+					}
+					brief := extractEntityBrief(cl)
+					entities = append(entities, tripRawEntity{
+						name: vs.Names[0].Name, roleType: typeName,
+						brief: brief, file: base,
+					})
+				}
+			}
+		}
+	}
+
+	var claims []tripRawClaim
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok || len(vs.Values) == 0 {
+						continue
+					}
+					cl, ok := vs.Values[0].(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					typeName := compositeTypeName(cl)
+					if roleTypes[typeName] || typeName == "Provenance" {
+						continue
+					}
+					subj, obj := extractClaimEndpoints(cl)
+					if subj != "" && obj != "" {
+						claims = append(claims, tripRawClaim{subject: subj, object: obj})
+					}
+				}
+			}
+		}
+	}
+
+	return entities, claims, nil
 }
 
 // extractClaimEndpoints extracts Subject and Object identifiers from a claim literal.
