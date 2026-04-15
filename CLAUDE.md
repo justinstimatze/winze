@@ -360,3 +360,4 @@ Prefer defn for Go code (fewer steps, auto-build verification). Use Read/Edit/Gr
 **Rule of thumb:** Always run impact before modifying an existing definition. Skip it for brand-new definitions.
 <!-- defn:end -->
 
+

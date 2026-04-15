@@ -1153,7 +1153,46 @@ func basicLitString(e ast.Expr) string {
 // --- AST extraction (same patterns as cmd/lint) ---
 
 func collectEntities(dir string) ([]entityInfo, error) {
-	roleTypes, err := collectRoleTypes(dir)
+	if client, err := defndb.New(dir); err == nil {
+		if ents, err := collectEntitiesDefn(client); err == nil {
+			return ents, nil
+		}
+	}
+	return collectEntitiesAST(dir)
+}
+
+func collectEntitiesDefn(client *defndb.Client) ([]entityInfo, error) {
+	roleTypes, err := client.RoleTypeSet()
+	if err != nil {
+		return nil, err
+	}
+	fields, err := client.EntityFields()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []entityInfo
+	for _, f := range fields {
+		if seen[f.DefName] {
+			continue
+		}
+		typeParts := strings.Split(f.TypeName, ".")
+		typeName := typeParts[len(typeParts)-1]
+		if !roleTypes[typeName] {
+			continue
+		}
+		seen[f.DefName] = true
+		out = append(out, entityInfo{
+			name:     f.DefName,
+			roleType: typeName,
+			file:     filepath.Base(f.SourceFile),
+		})
+	}
+	return out, nil
+}
+
+func collectEntitiesAST(dir string) ([]entityInfo, error) {
+	roleTypes, err := collectRoleTypesAST(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -1211,66 +1250,79 @@ func collectEntities(dir string) ([]entityInfo, error) {
 }
 
 func collectRoleTypes(dir string) (map[string]bool, error) {
-	fset := token.NewFileSet()
-	roles := map[string]bool{}
+	if client, err := defndb.New(dir); err == nil {
+		if roles, err := client.RoleTypeSet(); err == nil {
+			return roles, nil
+		}
+	}
+	return collectRoleTypesAST(dir)
+}
 
-	entries, err := os.ReadDir(dir)
+func collectRoleTypesAST(dir string) (map[string]bool, error) {
+	pkgs, _, err := astutil.ParseCorpus(dir)
 	if err != nil {
 		return nil, err
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			continue
-		}
-		for _, decl := range f.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok != token.TYPE {
-				continue
-			}
-			for _, spec := range gen.Specs {
-				ts, ok := spec.(*ast.TypeSpec)
-				if !ok {
-					continue
-				}
-				st, ok := ts.Type.(*ast.StructType)
-				if !ok || st.Fields == nil {
-					continue
-				}
-				if embedsEntityPointer(st) {
-					roles[ts.Name.Name] = true
-				}
-			}
-		}
-	}
-	return roles, nil
-}
-
-func embedsEntityPointer(st *ast.StructType) bool {
-	for _, field := range st.Fields.List {
-		if len(field.Names) != 0 {
-			continue
-		}
-		star, ok := field.Type.(*ast.StarExpr)
-		if !ok {
-			continue
-		}
-		ident, ok := star.X.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		if ident.Name == "Entity" {
-			return true
-		}
-	}
-	return false
+	return astutil.CollectRoleTypes(pkgs), nil
 }
 
 func collectClaims(dir string) ([]claimInfo, error) {
+	if client, err := defndb.New(dir); err == nil {
+		if claims, err := collectClaimsDefn(client); err == nil {
+			return claims, nil
+		}
+	}
+	return collectClaimsAST(dir)
+}
+
+func collectClaimsDefn(client *defndb.Client) ([]claimInfo, error) {
+	fields, err := client.ClaimFields()
+	if err != nil {
+		return nil, err
+	}
+	type partial struct {
+		name, predType, subject, object, file, provRef string
+		hasSubject, hasObject                          bool
+	}
+	m := map[string]*partial{}
+	for _, f := range fields {
+		typeParts := strings.Split(f.TypeName, ".")
+		typeName := typeParts[len(typeParts)-1]
+		p, ok := m[f.DefName]
+		if !ok {
+			p = &partial{name: f.DefName, predType: typeName, file: filepath.Base(f.SourceFile)}
+			m[f.DefName] = p
+		}
+		val := strings.Trim(f.FieldValue, "\"")
+		switch f.FieldName {
+		case "Subject":
+			p.subject = val
+			p.hasSubject = true
+		case "Object":
+			p.object = val
+			p.hasObject = true
+		case "Prov":
+			p.provRef = val
+		}
+	}
+	var out []claimInfo
+	for _, p := range m {
+		if !p.hasSubject || !p.hasObject {
+			continue
+		}
+		out = append(out, claimInfo{
+			name:          p.name,
+			predicateType: p.predType,
+			subject:       p.subject,
+			object:        p.object,
+			file:          p.file,
+			provRef:       p.provRef,
+		})
+	}
+	return out, nil
+}
+
+func collectClaimsAST(dir string) ([]claimInfo, error) {
 	fset := token.NewFileSet()
 	var out []claimInfo
 

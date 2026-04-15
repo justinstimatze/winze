@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/justinstimatze/winze"
+	"github.com/justinstimatze/winze/internal/defndb"
 )
 
 type roleType struct {
@@ -35,6 +36,33 @@ type roleType struct {
 }
 
 func collectRoleTypes(dir string) ([]roleType, error) {
+	if !noDefn {
+		if client, err := defndb.New(dir); err == nil {
+			if roles, err := collectRoleTypesDefn(client); err == nil {
+				return roles, nil
+			}
+		}
+	}
+	return collectRoleTypesAST(dir)
+}
+
+func collectRoleTypesDefn(client *defndb.Client) ([]roleType, error) {
+	defnRoles, err := client.RoleTypes()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]roleType, 0, len(defnRoles))
+	for _, r := range defnRoles {
+		out = append(out, roleType{
+			name: r.Name,
+			file: filepath.Base(r.SourceFile),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
+	return out, nil
+}
+
+func collectRoleTypesAST(dir string) ([]roleType, error) {
 	fset := token.NewFileSet()
 	var out []roleType
 
@@ -102,6 +130,9 @@ func embedsEntityPointer(st *ast.StructType) bool {
 	}
 	return false
 }
+
+// noDefn is set by the --no-defn flag to force AST-only mode.
+var noDefn bool
 
 // namingOracleRule reports role types whose names do not appear in
 // winze.ExternalTerms. Exits nonzero when any role is ungrounded.
