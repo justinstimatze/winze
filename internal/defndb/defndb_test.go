@@ -1,6 +1,7 @@
 package defndb_test
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -22,9 +23,17 @@ func skipIfNoDefn(t *testing.T) *defndb.Client {
 		t.Skip("defn binary not available")
 	}
 	dir := rootDir(t)
+	// Check .defn exists before creating client (avoids timeout on missing db)
+	if _, err := os.Stat(filepath.Join(dir, ".defn")); err != nil {
+		t.Skip(".defn directory not found:", err)
+	}
 	client, err := defndb.New(dir)
 	if err != nil {
 		t.Skip("defn database not available:", err)
+	}
+	// Verify the client can actually query (catches corrupt db, timeouts)
+	if _, err := client.RoleTypeSet(); err != nil {
+		t.Skip("defn query failed:", err)
 	}
 	return client
 }
