@@ -30,6 +30,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/justinstimatze/winze/internal/astutil"
+	"github.com/justinstimatze/winze/internal/defndb"
 )
 
 // --- trip types ---
@@ -323,95 +324,51 @@ func collectEntityVarNames(dir string) map[string]bool {
 
 // collectTripEntities parses KB entities and assigns cluster IDs via BFS.
 func collectTripEntities(dir string) []tripEntity {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
-		return strings.HasSuffix(fi.Name(), ".go") && !strings.HasSuffix(fi.Name(), "_test.go")
-	}, parser.ParseComments)
-	if err != nil {
-		return nil
-	}
-
-	roleTypes := collectDreamRoleTypes(pkgs) // reuse from dream.go
-
-	// Collect entities
 	type rawEntity struct {
 		name     string
 		roleType string
 		brief    string
 		file     string
 	}
-	var entities []rawEntity
-
-	for _, pkg := range pkgs {
-		for fname, f := range pkg.Files {
-			base := filepath.Base(fname)
-			if isInfraFile(base) {
-				continue
-			}
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
-					continue
-				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeName := compositeTypeName(cl)
-					if !roleTypes[typeName] {
-						continue
-					}
-					brief := extractEntityBrief(cl)
-					entities = append(entities, rawEntity{
-						name:     vs.Names[0].Name,
-						roleType: typeName,
-						brief:    brief,
-						file:     base,
-					})
-				}
-			}
-		}
-	}
-
-	// Collect claims for adjacency
 	type claim struct {
 		subject string
 		object  string
 	}
+
+	var entities []rawEntity
 	var claims []claim
 
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
-					continue
-				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeName := compositeTypeName(cl)
-					if roleTypes[typeName] || typeName == "Provenance" {
-						continue // entities and provenance, not claims
-					}
-					subj, obj := extractClaimEndpoints(cl)
-					if subj != "" && obj != "" {
-						claims = append(claims, claim{subject: subj, object: obj})
-					}
-				}
-			}
+	// Try defndb first for entity + claim collection.
+	if client, err := defndb.New(dir); err == nil {
+		if ents, cls, err := collectTripDataDefn(client); err == nil {
+			entities = ents
+			claims = cls
 		}
+	}
+
+	// AST fallback if defndb didn't produce results.
+	if entities == nil {
+		var err error
+		entities, claims, err = collectTripDataAST(dir)
+		if err != nil {
+			return nil
+		}
+	}
+
+	// Build adjacency and BFS for clusters (always in-memory).
+	adj := map[string]map[string]bool{}
+	addEdge := func(a, b string) {
+		if adj[a] == nil {
+			adj[a] = map[string]bool{}
+		}
+		if adj[b] == nil {
+			adj[b] = map[string]bool{}
+		}
+		adj[a][b] = true
+		adj[b][a] = true
+	}
+	for _, c := range claims {
+		addEdge(c.subject, c.object)
 	}
 
 	// Build adjacency and BFS for clusters.

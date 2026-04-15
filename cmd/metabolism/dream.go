@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/justinstimatze/winze/internal/astutil"
+	"github.com/justinstimatze/winze/internal/defndb"
 )
 
 // --- dream cycle types ---
@@ -368,6 +369,83 @@ func analyzeProvenanceSplits(dir string) []DreamFinding {
 
 // analyzeBriefQuality checks entity Brief fields for quality issues.
 func analyzeBriefQuality(dir string) []DreamFinding {
+	// Try defndb first.
+	if client, err := defndb.New(dir); err == nil {
+		if findings, err := analyzeBriefQualityDefn(client); err == nil {
+			return findings
+		}
+	}
+	return analyzeBriefQualityAST(dir)
+}
+
+func analyzeBriefQualityDefn(client *defndb.Client) ([]DreamFinding, error) {
+	roleTypes, err := client.RoleTypeSet()
+	if err != nil {
+		return nil, err
+	}
+	fields, err := client.EntityFields()
+	if err != nil {
+		return nil, err
+	}
+
+	type entityBrief struct {
+		varName, file, brief string
+		typeName             string
+	}
+	m := map[string]*entityBrief{}
+	for _, f := range fields {
+		typeParts := strings.Split(f.TypeName, ".")
+		tn := typeParts[len(typeParts)-1]
+		if !roleTypes[tn] {
+			continue
+		}
+		eb, ok := m[f.DefName]
+		if !ok {
+			eb = &entityBrief{varName: f.DefName, file: filepath.Base(f.SourceFile), typeName: tn}
+			m[f.DefName] = eb
+		}
+		if f.FieldName == "Brief" {
+			eb.brief = strings.Trim(f.FieldValue, "\"")
+		}
+	}
+
+	var findings []DreamFinding
+	for _, eb := range m {
+		base := eb.file
+		if isInfraFile(base) {
+			continue
+		}
+		if eb.brief == "" {
+			findings = append(findings, DreamFinding{
+				Category: "brief_quality", Severity: "warning",
+				File: base, Entity: eb.varName,
+				Description: "missing Brief field",
+			})
+		} else if len(eb.brief) < 20 {
+			findings = append(findings, DreamFinding{
+				Category: "brief_quality", Severity: "info",
+				File: base, Entity: eb.varName,
+				Description: fmt.Sprintf("Brief is very short (%d chars) — may lack distinguishing detail", len(eb.brief)),
+			})
+		} else if len(eb.brief) > 300 {
+			findings = append(findings, DreamFinding{
+				Category: "brief_quality", Severity: "info",
+				File: base, Entity: eb.varName,
+				Description: fmt.Sprintf("Brief is very long (%d chars) — consider tightening", len(eb.brief)),
+			})
+		}
+	}
+
+	sort.Slice(findings, func(i, j int) bool {
+		if findings[i].Severity != findings[j].Severity {
+			return findings[i].Severity < findings[j].Severity
+		}
+		return findings[i].File < findings[j].File
+	})
+	return findings, nil
+}
+
+func analyzeBriefQualityAST(dir string) []DreamFinding {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
 	if err != nil {
@@ -407,26 +485,20 @@ func analyzeBriefQuality(dir string) []DreamFinding {
 
 					if brief == "" {
 						findings = append(findings, DreamFinding{
-							Category:    "brief_quality",
-							Severity:    "warning",
-							File:        base,
-							Entity:      varName,
+							Category: "brief_quality", Severity: "warning",
+							File: base, Entity: varName,
 							Description: "missing Brief field",
 						})
 					} else if len(brief) < 20 {
 						findings = append(findings, DreamFinding{
-							Category:    "brief_quality",
-							Severity:    "info",
-							File:        base,
-							Entity:      varName,
+							Category: "brief_quality", Severity: "info",
+							File: base, Entity: varName,
 							Description: fmt.Sprintf("Brief is very short (%d chars) — may lack distinguishing detail", len(brief)),
 						})
 					} else if len(brief) > 300 {
 						findings = append(findings, DreamFinding{
-							Category:    "brief_quality",
-							Severity:    "info",
-							File:        base,
-							Entity:      varName,
+							Category: "brief_quality", Severity: "info",
+							File: base, Entity: varName,
 							Description: fmt.Sprintf("Brief is very long (%d chars) — consider tightening", len(brief)),
 						})
 					}
