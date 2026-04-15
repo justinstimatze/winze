@@ -1012,12 +1012,26 @@ func collectEntityMetas(dir string) map[string]entityMeta {
 }
 
 func collectEntityMetasDefn(client *defndb.Client) (map[string]entityMeta, error) {
+	// EntityFields returns Name/Brief fields from Entity literals.
+	// We need to know which vars are entities (have constructor ref to a role type).
+	varRoles, err := client.EntityVarsWithRoles()
+	if err != nil {
+		return nil, err
+	}
+	entityVars := map[string]bool{}
+	for _, vr := range varRoles {
+		entityVars[vr.VarName] = true
+	}
+
 	fields, err := client.EntityFields()
 	if err != nil {
 		return nil, err
 	}
 	metas := map[string]entityMeta{}
 	for _, f := range fields {
+		if !entityVars[f.DefName] {
+			continue
+		}
 		meta := metas[f.DefName]
 		val := strings.Trim(f.FieldValue, "\"")
 		switch f.FieldName {
