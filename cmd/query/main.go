@@ -31,6 +31,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/justinstimatze/winze/internal/astutil"
+	"github.com/justinstimatze/winze/internal/defndb"
 )
 
 // --- data types ---
@@ -413,7 +414,117 @@ func runStats(kb *kbIndex, jsonOut bool) {
 // --- index building ---
 
 func buildIndex(dir string) (*kbIndex, error) {
-	roleTypes, err := collectRoleTypes(dir)
+	// Try defndb first for faster indexed access.
+	if client, err := defndb.New(dir); err == nil {
+		if kb, err := buildIndexDefn(client, dir); err == nil {
+			return kb, nil
+		}
+	}
+	return buildIndexAST(dir)
+}
+
+func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
+	roleTypes, err := client.RoleTypeSet()
+	if err != nil {
+		return nil, err
+	}
+
+	kb := &kbIndex{RoleTypes: roleTypes}
+
+	// Entity fields (Name, Brief, ID)
+	eFields, err := client.EntityFields()
+	if err != nil {
+		return nil, err
+	}
+	entityMap := map[string]*entityRecord{}
+	for _, f := range eFields {
+		base := filepath.Base(f.SourceFile)
+		rec, ok := entityMap[f.DefName]
+		if !ok {
+			// Determine role type from type_name suffix
+			typeParts := strings.Split(f.TypeName, ".")
+			typeName := typeParts[len(typeParts)-1]
+			if !roleTypes[typeName] {
+				continue
+			}
+			rec = &entityRecord{VarName: f.DefName, RoleType: typeName, File: base}
+			entityMap[f.DefName] = rec
+		}
+		val := strings.Trim(f.FieldValue, "\"")
+		switch f.FieldName {
+		case "Name":
+			rec.Name = val
+		case "Brief":
+			rec.Brief = val
+		case "ID":
+			rec.ID = val
+		}
+	}
+	for _, rec := range entityMap {
+		kb.Entities = append(kb.Entities, *rec)
+	}
+
+	// Claim fields (Subject, Object, Prov)
+	cFields, err := client.ClaimFields()
+	if err != nil {
+		return nil, err
+	}
+	claimMap := map[string]*claimRecord{}
+	for _, f := range cFields {
+		base := filepath.Base(f.SourceFile)
+		typeParts := strings.Split(f.TypeName, ".")
+		typeName := typeParts[len(typeParts)-1]
+		rec, ok := claimMap[f.DefName]
+		if !ok {
+			rec = &claimRecord{VarName: f.DefName, Predicate: typeName, File: base}
+			claimMap[f.DefName] = rec
+		}
+		val := strings.Trim(f.FieldValue, "\"")
+		switch f.FieldName {
+		case "Subject":
+			rec.Subject = val
+		case "Object":
+			rec.Object = val
+		case "Prov":
+			rec.ProvRef = val
+		}
+	}
+	for _, rec := range claimMap {
+		if rec.Subject != "" {
+			kb.Claims = append(kb.Claims, *rec)
+		}
+	}
+
+	// Provenance fields (Origin, Quote)
+	provFields, err := client.LiteralFieldsForType("Provenance")
+	if err != nil {
+		return nil, err
+	}
+	provMap := map[string]*provRecord{}
+	for _, f := range provFields {
+		base := filepath.Base(f.SourceFile)
+		rec, ok := provMap[f.DefName]
+		if !ok {
+			rec = &provRecord{VarName: f.DefName, File: base}
+			provMap[f.DefName] = rec
+		}
+		val := strings.Trim(f.FieldValue, "\"")
+		switch f.FieldName {
+		case "Origin":
+			rec.Origin = val
+		case "Quote":
+			rec.Quote = val
+		}
+	}
+	for _, rec := range provMap {
+		kb.Provenance = append(kb.Provenance, *rec)
+	}
+
+	return kb, nil
+}
+
+func buildIndexAST(dir string) (*kbIndex, error) {
+	roleTypes, err := collectRoleTypesAST(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +576,6 @@ func buildIndex(dir string) (*kbIndex, error) {
 					case typeName == "Provenance":
 						kb.Provenance = append(kb.Provenance, extractProv(nameIdent.Name, e.Name(), cl))
 					default:
-						// Try as claim (has Subject + Object)
 						if c, ok := extractClaim(nameIdent.Name, typeName, e.Name(), cl); ok {
 							kb.Claims = append(kb.Claims, c)
 						}
@@ -478,59 +588,20 @@ func buildIndex(dir string) (*kbIndex, error) {
 }
 
 func collectRoleTypes(dir string) (map[string]bool, error) {
-	fset := token.NewFileSet()
-	roleTypes := map[string]bool{}
+	if client, err := defndb.New(dir); err == nil {
+		if roles, err := client.RoleTypeSet(); err == nil {
+			return roles, nil
+		}
+	}
+	return collectRoleTypesAST(dir)
+}
 
-	entries, err := os.ReadDir(dir)
+func collectRoleTypesAST(dir string) (map[string]bool, error) {
+	pkgs, _, err := astutil.ParseCorpus(dir)
 	if err != nil {
 		return nil, err
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.SkipObjectResolution)
-		if err != nil {
-			continue
-		}
-		for _, decl := range f.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok != token.TYPE {
-				continue
-			}
-			for _, spec := range gen.Specs {
-				ts, ok := spec.(*ast.TypeSpec)
-				if !ok {
-					continue
-				}
-				st, ok := ts.Type.(*ast.StructType)
-				if !ok {
-					continue
-				}
-				if embedsEntityPointer(st) {
-					roleTypes[ts.Name.Name] = true
-				}
-			}
-		}
-	}
-	return roleTypes, nil
-}
-
-func embedsEntityPointer(st *ast.StructType) bool {
-	for _, field := range st.Fields.List {
-		if len(field.Names) > 0 {
-			continue // named field, not embedded
-		}
-		se, ok := field.Type.(*ast.StarExpr)
-		if !ok {
-			continue
-		}
-		id, ok := se.X.(*ast.Ident)
-		if ok && id.Name == "Entity" {
-			return true
-		}
-	}
-	return false
+	return astutil.CollectRoleTypes(pkgs), nil
 }
 
 // --- extraction helpers ---

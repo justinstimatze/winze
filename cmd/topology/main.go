@@ -30,6 +30,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/justinstimatze/winze/internal/astutil"
+	"github.com/justinstimatze/winze/internal/defndb"
 )
 
 func main() {
@@ -999,6 +1002,38 @@ func splitCamelCase(s string) []string {
 // collectEntityMetas walks .go files and extracts Name+Brief from entity
 // composite literals that embed *Entity.
 func collectEntityMetas(dir string) map[string]entityMeta {
+	// Try defndb first.
+	if client, err := defndb.New(dir); err == nil {
+		if metas, err := collectEntityMetasDefn(client); err == nil {
+			return metas
+		}
+	}
+	return collectEntityMetasAST(dir)
+}
+
+func collectEntityMetasDefn(client *defndb.Client) (map[string]entityMeta, error) {
+	fields, err := client.EntityFields()
+	if err != nil {
+		return nil, err
+	}
+	metas := map[string]entityMeta{}
+	for _, f := range fields {
+		meta := metas[f.DefName]
+		val := strings.Trim(f.FieldValue, "\"")
+		switch f.FieldName {
+		case "Name":
+			meta.name = val
+		case "Brief":
+			meta.brief = val
+		}
+		if meta.name != "" || meta.brief != "" {
+			metas[f.DefName] = meta
+		}
+	}
+	return metas, nil
+}
+
+func collectEntityMetasAST(dir string) map[string]entityMeta {
 	fset := token.NewFileSet()
 	metas := map[string]entityMeta{}
 
