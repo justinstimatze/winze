@@ -53,7 +53,7 @@ type RoleType struct {
 
 // RoleTypes returns all types embedding *Entity via the embed ref kind.
 func (c *Client) RoleTypes() ([]RoleType, error) {
-	rows, err := c.db.Query(`SELECT d.name, d.source_file FROM definitions d WHERE d.kind='type' AND d.id IN (SELECT r.from_def FROM refs r WHERE r.kind='embed' AND r.to_def=(SELECT id FROM definitions WHERE name='Entity' AND kind='type'))`)
+	rows, err := c.query(`SELECT d.name, d.source_file FROM definitions d WHERE d.kind='type' AND d.id IN (SELECT r.from_def FROM refs r WHERE r.kind='embed' AND r.to_def=(SELECT id FROM definitions WHERE name='Entity' AND kind='type'))`)
 	if err != nil {
 		return nil, err
 	}
@@ -92,64 +92,36 @@ type LiteralField struct {
 
 // ClaimFields returns Subject/Object/Prov fields from claim composite literals.
 func (c *Client) ClaimFields() ([]LiteralField, error) {
-	fields, err := c.db.LiteralFields(defnapi.LiteralFieldFilter{})
-	if err != nil {
-		return nil, err
-	}
-	var out []LiteralField
-	for _, f := range fields {
-		switch f.FieldName {
-		case "Subject", "Object", "Prov":
-			out = append(out, toLiteralField(f))
-		}
-	}
-	return out, nil
+	return c.literalFieldsSQL(`lf.field_name IN ('Subject','Object','Prov')`)
 }
 
 // EntityFields returns Name/Brief/ID/Origin/Quote fields from entity literals.
 func (c *Client) EntityFields() ([]LiteralField, error) {
-	fields, err := c.db.LiteralFields(defnapi.LiteralFieldFilter{})
-	if err != nil {
-		return nil, err
-	}
-	var out []LiteralField
-	for _, f := range fields {
-		switch f.FieldName {
-		case "Name", "Brief", "ID", "Origin", "Quote":
-			out = append(out, toLiteralField(f))
-		}
-	}
-	return out, nil
+	return c.literalFieldsSQL(`lf.field_name IN ('Name','Brief','ID','Origin','Quote')`)
 }
 
 // LiteralFieldsForType returns all literal fields for the given type name pattern.
 func (c *Client) LiteralFieldsForType(typePattern string) ([]LiteralField, error) {
-	fields, err := c.db.LiteralFields(defnapi.LiteralFieldFilter{
-		TypeName: "%" + typePattern + "%",
-	})
+	return c.literalFieldsSQL(fmt.Sprintf(`lf.type_name LIKE '%%%s%%'`, typePattern))
+}
+
+func (c *Client) literalFieldsSQL(where string) ([]LiteralField, error) {
+	rows, err := c.query(fmt.Sprintf(`SELECT d.name AS def_name, lf.type_name, lf.field_name, lf.field_value, d.source_file, lf.line FROM literal_fields lf JOIN definitions d ON lf.def_id=d.id WHERE %s AND d.kind='var'`, where))
 	if err != nil {
 		return nil, err
 	}
-	out := make([]LiteralField, len(fields))
-	for i, f := range fields {
-		out[i] = toLiteralField(f)
+	out := make([]LiteralField, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, LiteralField{
+			DefName:    str(row["def_name"]),
+			TypeName:   str(row["type_name"]),
+			FieldName:  str(row["field_name"]),
+			FieldValue: str(row["field_value"]),
+			SourceFile: str(row["source_file"]),
+			Line:       intVal(row["line"]),
+		})
 	}
 	return out, nil
-}
-
-func toLiteralField(f defnapi.LiteralField) LiteralField {
-	// Look up the definition name for this field's def_id
-	defName := ""
-	sourceFile := ""
-	// We need the definition name — use a query
-	return LiteralField{
-		DefName:    defName,
-		TypeName:   f.TypeName,
-		FieldName:  f.FieldName,
-		FieldValue: f.FieldValue,
-		SourceFile: sourceFile,
-		Line:       f.Line,
-	}
 }
 
 // Pragma represents a parsed pragma comment (e.g., //winze:contested).
@@ -229,7 +201,7 @@ func (c *Client) EntityVarsWithRoles() ([]VarRoleInfo, error) {
 	for i, n := range roleNames {
 		quoted[i] = "'" + n + "'"
 	}
-	rows, err := c.db.Query(fmt.Sprintf(`SELECT d1.name AS var_name, d2.name AS role_type, d1.source_file FROM refs r JOIN definitions d1 ON r.from_def=d1.id JOIN definitions d2 ON r.to_def=d2.id WHERE d1.kind='var' AND r.kind='constructor' AND d2.name IN (%s)`, strings.Join(quoted, ",")))
+	rows, err := c.query(fmt.Sprintf(`SELECT d1.name AS var_name, d2.name AS role_type, d1.source_file FROM refs r JOIN definitions d1 ON r.from_def=d1.id JOIN definitions d2 ON r.to_def=d2.id WHERE d1.kind='var' AND r.kind='constructor' AND d2.name IN (%s)`, strings.Join(quoted, ",")))
 	if err != nil {
 		return nil, err
 	}
@@ -244,6 +216,11 @@ func (c *Client) EntityVarsWithRoles() ([]VarRoleInfo, error) {
 	return out, nil
 }
 
+// query delegates to defn's Go API.
+func (c *Client) query(sql string) ([]map[string]any, error) {
+	return c.db.Query(sql)
+}
+
 func str(v any) string {
 	if v == nil {
 		return ""
@@ -253,4 +230,18 @@ func str(v any) string {
 		return ""
 	}
 	return strings.TrimSpace(s)
+}
+
+func intVal(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case uint64:
+		return int(n)
+	}
+	return 0
 }
