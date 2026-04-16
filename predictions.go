@@ -1162,7 +1162,7 @@ var EvidenceSearchHypothesisLakeChekoIsCrater = Event{&Entity{
 	ID:    "evidence-search-hypothesis-lake-cheko-is-crater",
 	Name:  "Evidence search for Hypothesis Lake Cheko Is Crater",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across arxiv, zim, rss for external sources on Hypothesis Lake Cheko Is Crater. Found: Bologna; My Bologna; Hypothesis (+7 more).",
+	Brief: "Metabolism sensor query across zim, rss, arxiv for external sources on Hypothesis Lake Cheko Is Crater. Found: Bologna; My Bologna; Hypothesis (+7 more).",
 }}
 
 var TopologyPredictsHypothesisLakeChekoIsCraterSearch = Predicts{

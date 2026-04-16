@@ -373,7 +373,7 @@ func extractPKMContent(notes []pkmNote, existing map[string]string) ([]pkmEntity
 	// First pass: create entities for each note (the note itself is a concept)
 	for _, note := range notes {
 		noteID := slugify(note.title)
-		noteVar := "Pkm" + goIdentifier(note.title)
+		noteVar := goIdentifier(note.title)
 
 		// Check if this entity already exists in the KB
 		if existingVar, ok := existingByID[noteID]; ok {
@@ -410,7 +410,7 @@ func extractPKMContent(notes []pkmNote, existing map[string]string) ([]pkmEntity
 		}
 
 		authorID := slugify(note.author)
-		authorVar := "Pkm" + goIdentifier(note.author)
+		authorVar := goIdentifier(note.author)
 
 		// Check existing KB
 		if existingVar, ok := existingByID[authorID]; ok {
@@ -444,7 +444,7 @@ func extractPKMContent(notes []pkmNote, existing map[string]string) ([]pkmEntity
 		}
 
 		// Authored claim
-		claimVar := authorVar + "Authored" + stripPrefix(noteVar, "Pkm")
+		claimVar := authorVar + "Authored" + noteVar
 		claims = append(claims, pkmClaim{
 			varName:    claimVar,
 			predicate:  "Authored",
@@ -458,10 +458,22 @@ func extractPKMContent(notes []pkmNote, existing map[string]string) ([]pkmEntity
 	// Third pass: create prediction hypotheses
 	predCount := 0
 	for _, note := range notes {
-		for _, pred := range note.predictions {
+		for pi, pred := range note.predictions {
 			predCount++
-			predID := fmt.Sprintf("pkm-prediction-%d", predCount)
-			predVar := fmt.Sprintf("PkmPrediction%d", predCount)
+			// Derive prediction name from note title + index within that note
+			predSuffix := ""
+			if len(note.predictions) > 1 {
+				predSuffix = fmt.Sprintf("%d", pi+1)
+			}
+			predVar := goIdentifier(note.title) + "Prediction" + predSuffix
+			predID := slugify(note.title) + "-prediction"
+			if predSuffix != "" {
+				predID += "-" + predSuffix
+			}
+			predName := note.title + " prediction"
+			if predSuffix != "" {
+				predName += " " + predSuffix
+			}
 
 			// Truncate prediction text for brief
 			predBrief := pred
@@ -473,7 +485,7 @@ func extractPKMContent(notes []pkmNote, existing map[string]string) ([]pkmEntity
 				varName:    predVar,
 				roleType:   "Hypothesis",
 				id:         predID,
-				name:       fmt.Sprintf("PKM Prediction %d", predCount),
+				name:       predName,
 				kind:       "hypothesis",
 				brief:      predBrief,
 				sourceNote: note.relPath,
@@ -495,7 +507,7 @@ func extractPKMContent(notes []pkmNote, existing map[string]string) ([]pkmEntity
 			// If the note has an author, the author proposes the prediction
 			if note.author != "" {
 				authorID := slugify(note.author)
-				authorVar := "Pkm" + goIdentifier(note.author)
+				authorVar := goIdentifier(note.author)
 				if existingVar, ok := existingByID[authorID]; ok {
 					authorVar = existingVar
 				}
@@ -512,7 +524,7 @@ func extractPKMContent(notes []pkmNote, existing map[string]string) ([]pkmEntity
 
 			// TheoryOf: prediction is about the note's concept
 			if noteVar != "" {
-				claimVar := predVar + "TheoryOf" + stripPrefix(noteVar, "Pkm")
+				claimVar := predVar + "TheoryOf" + noteVar
 				claims = append(claims, pkmClaim{
 					varName:    claimVar,
 					predicate:  "TheoryOf",
@@ -536,7 +548,7 @@ func extractPKMContent(notes []pkmNote, existing map[string]string) ([]pkmEntity
 
 	for dir, label := range dirLabels {
 		catID := "pkm-category-" + dir
-		catVar := "PkmCategory" + goIdentifier(dir)
+		catVar := "Category" + goIdentifier(dir)
 
 		if _, exists := entityByID[catID]; !exists {
 			ent := pkmEntity{
@@ -573,7 +585,7 @@ func extractPKMContent(notes []pkmNote, existing map[string]string) ([]pkmEntity
 			}
 		}
 
-		claimVar := stripPrefix(noteVar, "Pkm") + "BelongsTo" + stripPrefix(catVar, "Pkm")
+		claimVar := noteVar + "BelongsTo" + catVar
 		claims = append(claims, pkmClaim{
 			varName:    claimVar,
 			predicate:  "BelongsTo",
@@ -708,10 +720,6 @@ func noteDir(sourceNote string) string {
 
 func sanitizeDir(dir string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(dir, "/", "_"), ".", "root")
-}
-
-func stripPrefix(s, prefix string) string {
-	return strings.TrimPrefix(s, prefix)
 }
 
 func truncateBrief(title, content string) string {

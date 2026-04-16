@@ -229,3 +229,23 @@ var SelfAuditTheory = TheoryOf{
 	Object:  SelfAuditEpiphenomenalism,
 	Prov:    selfAuditEpiphenomenalismSource,
 }
+
+// --- BelongsTo claims: wire orphan concepts to their parent ---
+
+var IITBelongsToConsciousness = BelongsTo{
+	Subject: IntegratedInformationTheory,
+	Object:  Consciousness,
+	Prov:    iitIntractabilitySource,
+}
+
+var GWTBelongsToConsciousness = BelongsTo{
+	Subject: GlobalWorkspaceTheory,
+	Object:  Consciousness,
+	Prov:    gwtDissociatesIITSource,
+}
+
+var FEPBelongsToHumanCognition = BelongsTo{
+	Subject: FreeEnergyPrinciple,
+	Object:  HumanCognition,
+	Prov:    fepSubsumesPPSource,
+}
