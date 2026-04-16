@@ -148,7 +148,9 @@ go run ./cmd/metabolism --calibrate .                  # prediction accuracy ana
 go run ./cmd/metabolism --reify .                      # generate predictions.go from log
 go run ./cmd/metabolism --bias .                       # cognitive bias self-audit
 go run ./cmd/metabolism --trip .                       # speculative cross-cluster connections (needs ANTHROPIC_API_KEY)
-go run ./cmd/metabolism --trip --temperature 1.3 --prompt-type contradiction --pairs 10 .  # custom drug profile
+go run ./cmd/metabolism --trip --temperature 0.9 --prompt-type contradiction --pairs 10 .  # custom drug profile
+go run ./cmd/metabolism --trip --prompt-type confluence --pairs 5 .   # 3-entity narrative convergence (REBUS-weighted)
+go run ./cmd/metabolism --trip --prompt-type synthesis --temperature 1.0 --pairs 5 .  # 3-5 entity concept genesis (includes isolates)
 go run ./cmd/metabolism --pkm /path/to/vault .          # PKM ingest: markdown notes → typed Go corpus files
 go run ./cmd/metabolism --pkm /path/to/vault --dry-run . # show what would be generated
 go run ./cmd/metabolism --entity-cap 250 .             # refuse ingest/pipeline above entity cap (default 250)
@@ -180,8 +182,15 @@ opportunities (bridge entities, file balance, provenance splits, brief quality).
 quality gates (build + vet + lint) and automatic revert on failure.
 `--trip` runs a speculative cross-cluster connection cycle (REM-like): picks
 entity pairs from different topology clusters, LLM generates and scores
-speculative connections. Two orthogonal axes: `--temperature` (0.0-1.5,
-wildness) and `--prompt-type` (analogy, contradiction, genealogy, prediction).
+speculative connections. Two orthogonal axes: `--temperature` (0.0-1.0,
+wildness) and `--prompt-type` (analogy, contradiction, genealogy, prediction,
+confluence, synthesis). Pair-based types (analogy/contradiction/genealogy/prediction)
+pick 2 cross-cluster entities. Group-based types pick 3-5 entities with REBUS-like
+flattened priors (thin entities boosted, not penalized). Confluence picks 3 entities
+cross-cluster and generates ~150 word narratives about structural convergence.
+Synthesis picks 3-5 entities including isolates and generates ~200 word narratives
+that name a new concept the KB doesn't have yet. Group modes use Sonnet for
+narrative generation and Haiku for scoring (two-pass).
 Together they form a "drug profile." Score >= 3 = interesting, >= 4 = promote.
 `--bias` runs cognitive bias self-audit: the KB's own bias catalog (confirmation
 bias, anchoring, clustering illusion, availability heuristic, survivorship bias)

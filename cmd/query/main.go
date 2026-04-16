@@ -475,6 +475,13 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 			rec.ID = val
 		}
 	}
+	// Include entity vars that weren't found via EntityFields (e.g., vars
+	// with no Name/Brief/ID literals, like predictions.go Events).
+	for varName, rt := range varRoleMap {
+		if _, ok := entityMap[varName]; !ok {
+			entityMap[varName] = &entityRecord{VarName: varName, RoleType: rt, File: varFileMap[varName]}
+		}
+	}
 	for _, rec := range entityMap {
 		kb.Entities = append(kb.Entities, *rec)
 	}
