@@ -441,3 +441,53 @@ var (
 //   Zaehner: "R. C. Zaehner (1913–1974) rejected the perennialist position..."
 //   Stace:   "Walter Terence Stace criticised Zaehner..."
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Mystical or religious experience: R. C. Zaehner Disputes ConstructionistThesis
+// Zaehner disputes the perennialist common-core position that mystical experiences share universal features, positioning himself against the theoretical framework that the Constructionist Thesis opposes.
+// ---------------------------------------------------------------------------
+
+var rCZaehnerDisputesSource = Provenance{
+	Origin:     "Wikipedia (zim 2025-12) / Mystical_or_religious_experience",
+	IngestedAt: "2026-04-15",
+	IngestedBy: "winze metabolism cycle 1 (LLM-assisted ingest from ZIM)",
+	Quote:      "\"R. C. Zaehner (1913–1974) rejected the perennialist position, instead discerning three fundamental types of mysticism following Dasgupta, namely theistic, monistic, and panenhenic (\"all-in-one\") or natural mysticism.\"",
+}
+
+var RCZaehner = Person{&Entity{
+	ID:    "r-c-zaehner",
+	Name:  "R. C. Zaehner",
+	Kind:  "person",
+	Brief: "Religious studies scholar who rejected perennialism and proposed three fundamental types of mysticism.",
+}}
+
+var RCZaehnerDisputesConstructionistThesis = Disputes{
+	Subject: RCZaehner,
+	Object:  ConstructionistThesis,
+	Prov:    rCZaehnerDisputesSource,
+}
+
+// ---------------------------------------------------------------------------
+// Mystical or religious experience: Walter Terence Stace Disputes ConstructionistThesis
+// Stace disputes Zaehner's typology but maintains a universalist framework rather than accepting constructionism, showing ongoing debate about how mystical experiences are modeled across traditions.
+// ---------------------------------------------------------------------------
+
+var walterTerenceStaceDisputesSource = Provenance{
+	Origin:     "Wikipedia (zim 2025-12) / Mystical_or_religious_experience",
+	IngestedAt: "2026-04-15",
+	IngestedBy: "winze metabolism cycle 1 (LLM-assisted ingest from ZIM)",
+	Quote:      "\"Walter Terence Stace criticised Zaehner, instead postulating two types following Otto, namely extraverted (unity in diversity) and introverted ('pure consciousness') mysticism.\"",
+}
+
+var WalterTerenceStace = Person{&Entity{
+	ID:    "walter-terence-stace",
+	Name:  "Walter Terence Stace",
+	Kind:  "person",
+	Brief: "Philosopher who critiqued Zaehner's typology and proposed an alternative classification of mystical experiences.",
+}}
+
+var WalterTerenceStaceDisputesConstructionistThesis = Disputes{
+	Subject: WalterTerenceStace,
+	Object:  ConstructionistThesis,
+	Prov:    walterTerenceStaceDisputesSource,
+}

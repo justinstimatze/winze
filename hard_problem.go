@@ -540,3 +540,128 @@ var NigelJTThomasDisputesChalmersHardProblemThesis = Disputes{
 	Object:  ChalmersHardProblemThesis,
 	Prov:    nigelJTThomasDisputesSource,
 }
+
+// ---------------------------------------------------------------------------
+// Hard problem of consciousness: Christof Koch Accepts ChalmersHardProblemThesis
+// Koch's acceptance of the hard problem reflects his acknowledgment that subjective experience cannot be fully explained by physical neural mechanisms alone.
+// ---------------------------------------------------------------------------
+
+var christofKochAcceptsSource = Provenance{
+	Origin:     "Wikipedia (zim 2025-12) / Hard_problem_of_consciousness",
+	IngestedAt: "2026-04-15",
+	IngestedBy: "winze metabolism cycle 1 (LLM-assisted ingest from ZIM)",
+	Quote:      "\"It has been accepted by some philosophers of mind such as Joseph Levine, Colin McGinn, and Ned Block and cognitive neuroscientists such as Francisco Varela, Giulio Tononi, and Christof Koch.\"",
+}
+
+var ChristofKoch = Person{&Entity{
+	ID:    "christof-koch",
+	Name:  "Christof Koch",
+	Kind:  "person",
+	Brief: "Cognitive neuroscientist who accepts the hard problem of consciousness.",
+}}
+
+var ChristofKochAcceptsChalmersHardProblemThesis = Accepts{
+	Subject: ChristofKoch,
+	Object:  ChalmersHardProblemThesis,
+	Prov:    christofKochAcceptsSource,
+}
+
+// ---------------------------------------------------------------------------
+// David Chalmers: Douglas Hofstadter InfluencedBy DavidChalmers
+// This documents how a mind (Chalmers) built its model of philosophical reality through the influence of another thinker's work on consciousness and cognition.
+// ---------------------------------------------------------------------------
+
+var douglasHofstadterInfluencedBySource = Provenance{
+	Origin:     "Wikipedia (zim 2025-12) / David_Chalmers",
+	IngestedAt: "2026-04-15",
+	IngestedBy: "winze metabolism cycle 1 (LLM-assisted ingest from ZIM)",
+	Quote:      "When Chalmers was 13, he read Douglas Hofstadter's 1979 book Gödel, Escher, Bach, which awakened an interest in philosophy.",
+}
+
+var DouglasHofstadter = Person{&Entity{
+	ID:    "douglas-hofstadter",
+	Name:  "Douglas Hofstadter",
+	Kind:  "person",
+	Brief: "Cognitive scientist and author who influenced Chalmers's philosophical interests.",
+}}
+
+var DouglasHofstadterInfluencedByDavidChalmers = InfluencedBy{
+	Subject: DouglasHofstadter,
+	Object:  DavidChalmers,
+	Prov:    douglasHofstadterInfluencedBySource,
+}
+
+// ---------------------------------------------------------------------------
+// The Conscious Mind: David Lewis Accepts ChalmersHardProblemThesis
+// Shows recognition that the hard problem thesis successfully models consciousness in ways that challenge standard physical reduction theories.
+// ---------------------------------------------------------------------------
+
+var davidLewisAcceptsSource = Provenance{
+	Origin:     "Wikipedia (zim 2025-12) / The_Conscious_Mind",
+	IngestedAt: "2026-04-15",
+	IngestedBy: "winze metabolism cycle 1 (LLM-assisted ingest from ZIM)",
+	Quote:      "\"Lewis praises Chalmers for his understanding of the issue and for leaving his critics with 'few points to make' that Chalmers 'hasn't made already'. Lewis has characterised The Conscious Mind as 'exceptionally ambitious and exceptionally successful', considering it 'the best book in philosophy of mind for many years.'\"",
+}
+
+var DavidLewis = Person{&Entity{
+	ID:    "david-lewis",
+	Name:  "David Lewis",
+	Kind:  "person",
+	Brief: "Proponent of materialism who engaged with Chalmers' arguments in philosophy of mind.",
+}}
+
+var DavidLewisAcceptsChalmersHardProblemThesis = Accepts{
+	Subject: DavidLewis,
+	Object:  ChalmersHardProblemThesis,
+	Prov:    davidLewisAcceptsSource,
+}
+
+// ---------------------------------------------------------------------------
+// Philosophical zombie: Daniel Stoljar Accepts ChalmersHardProblemThesis
+// Stoljar accepts and elaborates upon the zombie-based argument against physicalism, a key defense of the hard problem thesis regarding consciousness.
+// ---------------------------------------------------------------------------
+
+var danielStoljarAcceptsSource = Provenance{
+	Origin:     "Wikipedia (zim 2025-12) / Philosophical_zombie",
+	IngestedAt: "2026-04-15",
+	IngestedBy: "winze metabolism cycle 1 (LLM-assisted ingest from ZIM)",
+	Quote:      "\"Philosopher Daniel Stoljar points out that zombies need not be utterly without subjective states, and that even a subtle psychological difference between two hypothetically physically identical people, such as how coffee tastes to them, is enough to refute physicalism.\"",
+}
+
+var DanielStoljar = Person{&Entity{
+	ID:    "daniel-stoljar",
+	Name:  "Daniel Stoljar",
+	Kind:  "person",
+	Brief: "Philosopher who argues for a refined version of the zombie argument.",
+}}
+
+var DanielStoljarAcceptsChalmersHardProblemThesis = Accepts{
+	Subject: DanielStoljar,
+	Object:  ChalmersHardProblemThesis,
+	Prov:    danielStoljarAcceptsSource,
+}
+
+// ---------------------------------------------------------------------------
+// Philosophical zombie: Amy Kind Accepts ChalmersHardProblemThesis
+// Kind accepts and provides an analogical framework for understanding how zombie arguments defend the hard problem thesis about consciousness.
+// ---------------------------------------------------------------------------
+
+var amyKindAcceptsSource = Provenance{
+	Origin:     "Wikipedia (zim 2025-12) / Philosophical_zombie",
+	IngestedAt: "2026-04-15",
+	IngestedBy: "winze metabolism cycle 1 (LLM-assisted ingest from ZIM)",
+	Quote:      "\"The philosophical zombie argument can also be seen through the counterfeit bill example brought forth by Amy Kind. Kind's example centers around a counterfeit 20-dollar bill made to be exactly like an authentic 20-dollar bill... the zombie argument can be put in this standard form from a dualist point of view.\"",
+}
+
+var AmyKind = Person{&Entity{
+	ID:    "amy-kind",
+	Name:  "Amy Kind",
+	Kind:  "person",
+	Brief: "Philosopher who provides the counterfeit bill analogy for the zombie argument.",
+}}
+
+var AmyKindAcceptsChalmersHardProblemThesis = Accepts{
+	Subject: AmyKind,
+	Object:  ChalmersHardProblemThesis,
+	Prov:    amyKindAcceptsSource,
+}
