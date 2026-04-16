@@ -2,27 +2,47 @@
 
 [![CI](https://github.com/justinstimatze/winze/actions/workflows/ci.yml/badge.svg)](https://github.com/justinstimatze/winze/actions/workflows/ci.yml)
 
-A knowledge base that sleeps, dreams, and trips — audits itself for cognitive biases, predicts where it's wrong, and gets less wrong over time.
+A knowledge base that sleeps, dreams, and trips.
 
-## Why
+Every agent memory system in 2026 solves the same problem: remembering what you said. None of them solve knowing where you're probably wrong. Winze is a typed epistemic substrate where `go build` is the consistency checker, contested theories are first-class structure, and an automated metabolism loop evolves the KB while you're away — seeking disconfirming evidence, generating speculative connections, and auditing its own cognitive biases.
 
-Your agents are getting better at writing code. They're not getting better at remembering. Context windows are a bottleneck, RAG is lossy, vector search doesn't know what a contradiction is, and a folder of markdown files doesn't get smarter over time. Meanwhile, every coding agent on earth already knows how to navigate, edit, lint, test, and review Go source files.
+Knowledge looks like code. Entities are typed constants, claims are variable declarations, predicates are generic types. Put the wrong entity type in a relationship slot and it doesn't compile. Standard tooling works unchanged: LSP, `go/ast`, CI, code review, `git blame`. Every improvement to Claude Code, OpenClaw, Cursor, or Devin directly benefits this knowledge base — no adapter required.
 
-Winze makes knowledge look like code. Entities are typed constants, predicates are generic types, claims are variable declarations. `go build` is the consistency checker — put the wrong entity type in a relationship slot and it doesn't compile. Standard tooling works unchanged: LSP, `go/ast`, CI, code review, `git blame`. Every improvement to Claude Code, OpenClaw, Cursor, or Devin directly benefits this knowledge base — no adapter required.
+## Where this is headed
 
-Winze is a crude, slow, expensive approximation of a system that maintains a model of reality, notices when that model is fragile, seeks disconfirming evidence, and updates its confidence. Built on Go source files and [Gas Town](https://github.com/gastownhall/gastown).
+The agent memory race is building filing cabinets. MemPalace stores conversations verbatim. Hermes writes reusable skills. Karpathy's LLM wiki compiles markdown from raw sources. They all solve retrieval. None of them solve *epistemic self-awareness* — knowing which beliefs are load-bearing and which might break.
 
-## What it does
+Winze is the layer underneath. When an agent is backed by winze, it can be confidently precise on well-supported topics and naturally cautious on thin ones, without being told which is which. The topology tells it. The metabolism thinks ahead:
 
-**Catches knowledge errors at compile time.** Put a Person where a Hypothesis belongs — `go build` fails pointing at the exact claim.
+- **Dream** (NREM): consolidation without new ingest — bridge entities, file balance, provenance gaps
+- **Trip** (REM): speculative cross-cluster connections, scored and promoted. The system surprising itself.
+- **Evolve**: topology-driven sensor queries (arXiv, RSS, Wikipedia), quality-gated ingest, calibration
+- **Bias audit**: the KB runs its own cognitive bias catalog against its own structure
 
-**Audits itself for cognitive biases.** Nine auditors, each mapping a bias the KB catalogs to a structural check on itself. Two currently triggered — we built them to find exactly this.
+The output isn't a status report. It's better answers the next time someone asks.
 
-**Predicts where it's wrong.** Topology analysis identifies structurally fragile hypotheses. The metabolism loop polls arXiv, RSS, and Wikipedia for evidence. 40 hypotheses tracked, 8 corroborated, 1 challenged autonomously.
+### Roadmap
 
-**Runs while you sleep.** Sense → evaluate → ingest → dream → trip → calibrate. One command, nightly cron, any agent runtime. Most phases need no API key. [Gas Town](https://github.com/gastownhall/gastown) workflow definitions ship in `.beads/formulas/` for autonomous agent fleets — curation patrols, health checks, depth-first ingest.
+**Current sprint:** Growing the graph around contested theories of consciousness and cognition (IIT, Global Workspace Theory, Free Energy Principle). The KB also contains meta-claims about its own limitations — predictions the system can resolve about itself.
 
-**Ingests your Obsidian vault.** Markdown notes → typed entities with provenance, navigable by agents, auditable by the compiler.
+**Next:** Winze as an MCP server. Any agent queries structured epistemic metadata — what's known, how confident, what's contested — without knowing the infrastructure. Z3-based lint rules for formal verification of ontological constraints.
+
+**Side project — blind field discovery:** Can the metabolism autonomously map a scientific field it doesn't know? Rediscover periodicity from raw NIST atomic data (calibration run), then map quantum computing from arXiv papers with Wikipedia blinders on.
+
+**Known problems:**
+- Calibration needs `gap_confirmed` vs `no_gap` distinction (searching Wikipedia for Wikipedia topics is tautological)
+- Triggered bias auditors don't yet gate the next metabolism phase
+- 88% Wikipedia provenance concentration
+
+### DARPA alignment
+
+Two active DARPA programs (April 2026) overlap with winze's approach:
+
+**MATHBAC** (Mathematics of Boosting Agentic Communication): "AI excels at navigating solution spaces but struggles to systematically explore hypothesis spaces." Winze's metabolism is systematic hypothesis space exploration. Gas Town's multi-agent orchestration maps to MATHBAC's agent collective topology.
+
+**CLARA** (Compositional Learning-And-Reasoning for AI): tight integration of formal reasoning with ML. Winze composes Go's type system (AR) with LLM metabolism (ML) through a quality-gated pipeline. Gap: Go catches structural errors but doesn't produce proof certificates. Z3 or Goose (Go → Coq) could close it.
+
+DARPA's CALO (2003-2008) tried to build "a cognitive assistant that lives with and learns from its users." It shipped as Siri. The tools that make winze possible didn't exist then.
 
 ## Quick start
 
@@ -93,19 +113,18 @@ go run ./cmd/metabolism --pkm /path/to/vault .  # markdown → typed Go
 go run ./cmd/metabolism --dream --bias .         # contradictions + blind spots
 ```
 
-## Bias audit
+## Prior art
 
-| Auditor | What it measures | Finding |
-|---------|-----------------|---------|
-| Confirmation bias | Corroboration rate among signal cycles | 58% (PASS) |
-| Anchoring | File age vs. claim density correlation | rho = -0.02 (PASS) |
-| Clustering illusion | File grouping vs. topology cluster overlap | 44% Jaccard (PASS) |
-| Availability heuristic | Provenance source concentration | **0.70 HHI — 83% Wikipedia (TRIGGERED)** |
-| Survivorship bias | Irrelevant-to-challenged ratio | **8:0 — zero challenges (TRIGGERED)** |
-| Framing effect | Evaluative language in Briefs | 3% (PASS) |
-| Dunning-Kruger | Low-complexity entities escaping detection | 74% vs 37% gap (PASS) |
-| Base rate neglect | Predicate distribution entropy | 4.3 bits (PASS) |
-| Premature closure | Cliches + DAG leaf detection | 31 structural (PASS) |
+| Project | Substrate | Consistency | Contestation? | Self-calibrating? |
+|---------|-----------|-------------|--------------|-------------------|
+| [MemPalace](https://github.com/milla-jovovich/mempalace) | ChromaDB + SQLite | None (verbatim storage) | No | No |
+| [Hermes Agent](https://github.com/nousresearch/hermes-agent) | Skill documents | Behavioral testing | No | No |
+| [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | Markdown | String-level lint | No | No |
+| [Monarch dismech](https://github.com/monarch-initiative/dismech) | YAML + LinkML | Schema validation + CI | No | No |
+| [Open Ontologies](https://github.com/fabio-rovai/open-ontologies) | RDF/OWL | OWL2-DL reasoning | No | No |
+| Prolog/Datalog | Logic programs | Inference engine | No | No |
+| [Lean Mathlib](https://github.com/leanprover-community/mathlib4) | Dependent types | Proof checker | No | No |
+| **winze** | Go source | `go build` + 7 lint rules + 9 bias auditors | **Yes (typed TheoryOf/Disputes)** | **Yes (topology → predict → calibrate)** |
 
 ## Metabolism
 
@@ -121,9 +140,21 @@ go run ./cmd/metabolism --dream --bias .         # contradictions + blind spots
 | Fix | `go run ./cmd/metabolism --dream --fix .` | Yes |
 | Full cycle | `go run ./cmd/metabolism --evolve .` | Partial |
 
-**Dream** (NREM): consolidation without new ingest — bridge entities, file balance, provenance gaps. **Trip** (REM): speculative cross-cluster connections scored across temperature and prompt type. **Fix**: Brief tightening with quality gates and auto-revert.
+LLM phases use the Anthropic API via `ANTHROPIC_API_KEY`. `.beads/formulas/` has [Gas Town](https://github.com/gastownhall/gastown) workflow definitions for autonomous agent fleets.
 
-LLM phases use the Anthropic API via `ANTHROPIC_API_KEY`. `CLAUDE.md` has agent instructions for Claude Code — adapt to your runtime's format. `.beads/formulas/` has [Gas Town](https://github.com/gastownhall/gastown) workflow definitions as readable TOML.
+## Bias audit
+
+| Auditor | What it measures | Finding |
+|---------|-----------------|---------|
+| Confirmation bias | Corroboration rate among signal cycles | 58% (PASS) |
+| Anchoring | File age vs. claim density correlation | rho = -0.02 (PASS) |
+| Clustering illusion | File grouping vs. topology cluster overlap | 44% Jaccard (PASS) |
+| Availability heuristic | Provenance source concentration | **0.70 HHI — 83% Wikipedia (TRIGGERED)** |
+| Survivorship bias | Irrelevant-to-challenged ratio | **8:0 — zero challenges (TRIGGERED)** |
+| Framing effect | Evaluative language in Briefs | 3% (PASS) |
+| Dunning-Kruger | Low-complexity entities escaping detection | 74% vs 37% gap (PASS) |
+| Base rate neglect | Predicate distribution entropy | 4.3 bits (PASS) |
+| Premature closure | Cliches + DAG leaf detection | 31 structural (PASS) |
 
 ## Schema
 
@@ -158,63 +189,11 @@ LLM phases use the Anthropic API via `ANTHROPIC_API_KEY`. `CLAUDE.md` has agent 
 
 ## Built with
 
-- **[defn](https://github.com/justinstimatze/defn)** — AI-native code database for Go. Winze uses it as an MCP server for structured queries across the KB: multi-hop entity lookups, cross-file claim analysis, provenance tracing.
-- **[adit](https://github.com/justinstimatze/adit-code)** — Structural analysis for AI-edited codebases. Scores corpus files for agent-writability during dream cycles and flags maintenance priorities.
-- **[slimemold](https://github.com/justinstimatze/slimemold)** — Reasoning topology observer. Monitors the epistemic support graph for load-bearing claims that have never been challenged.
-- **[plancheck](https://github.com/justinstimatze/plancheck)** — Predicts which files agents will miss. Used to validate implementation plans before execution.
-- **[Gas Town](https://github.com/gastownhall/gastown)** — Agent orchestrator. Runs autonomous curation fleets against the KB via workflow definitions in `.beads/formulas/`.
-
-## Vision & roadmap
-
-### Where this is headed
-
-The agent memory race of 2026 is building filing cabinets. MemPalace stores conversations verbatim. Hermes writes reusable skills. Karpathy's LLM wiki compiles markdown from raw sources. They all solve retrieval — remembering what you said. None of them solve *epistemic self-awareness* — knowing where you're probably wrong and doing something about it.
-
-Winze is the layer underneath. When an agent is backed by winze, it doesn't just remember — it knows which of its beliefs are load-bearing and which might break. It can be confidently precise on well-supported topics and naturally cautious on thin ones, without being told which is which. The topology tells it.
-
-The metabolism isn't a maintenance cron job. It's the system thinking ahead:
-- **Dream** consolidates: finds structural weaknesses, bridge entities, provenance gaps
-- **Trip** speculates: generates unexpected connections between distant clusters, scores them, promotes the good ones
-- **Evolve** deepens: topology-driven sensor queries, quality-gated ingest, calibration
-- **Bias audit** self-corrects: the KB runs its own cognitive bias catalog against its own structure
-
-The output of all this isn't a status report. It's better answers the next time someone asks.
-
-### Roadmap
-
-**Current sprint:** Grow the graph around contested theories of consciousness and cognition. IIT, Global Workspace Theory, and Free Energy Principle are being seeded via PKM ingest and deepened by the metabolism. The KB also contains meta-claims about its own limitations (reification risk, finite ontology incompleteness, self-audit epiphenomenalism) — predictions the system can resolve about itself.
-
-**Next:** Winze as an MCP server. Any agent queries the KB for structured epistemic metadata — what's known, how confident, what's contested — without knowing the infrastructure exists. Z3-based lint rules for stronger formal verification of ontological constraints (cycle detection, temporal ordering, functional uniqueness).
-
-**Side project — blind field discovery:** Can the metabolism autonomously map a scientific field it doesn't know? Phase 1: rediscover periodicity from raw NIST atomic data (verifiable calibration run). Phase 2: map quantum computing from arXiv papers only, with Wikipedia blinders on. Compare output to Wikipedia's article structure after the experiment. The payoff is both a validation of the approach and a useful domain expert as a byproduct.
-
-**Known problems to fix:**
-- Calibration loop is near-tautological (searching Wikipedia for Wikipedia-sourced topics). Needs `gap_confirmed` vs `no_gap` distinction instead of just "articles found."
-- Triggered bias auditors (availability heuristic, survivorship bias) don't yet gate the next metabolism phase. Self-audit that doesn't change behavior is epiphenomenal.
-- 88% Wikipedia provenance concentration. The metabolism should prioritize arXiv and RSS backends when availability heuristic triggers.
-
-### DARPA alignment
-
-Two active DARPA programs (April 2026) have significant overlap with winze's approach:
-
-**MATHBAC** (Mathematics of Boosting Agentic Communication): "AI excels at navigating solution spaces but struggles to systematically explore hypothesis spaces." Winze's topology-driven metabolism is systematic hypothesis space exploration. The typed claim format maps to MATHBAC's "compact, generalizable nuggets." Gas Town's multi-agent orchestration (polecats, witness, mayor) maps to MATHBAC's agent collective topology.
-
-**CLARA** (Compositional Learning-And-Reasoning for AI): Tight integration of formal reasoning with ML, demonstrably trustworthy. Winze composes Go's type system (formal reasoning) with LLM-powered metabolism (ML) through a quality-gated pipeline. The gap: Go's type system catches structural errors but doesn't produce formal proof certificates. Z3 SMT solver bindings (go-z3) or Goose (Go → Coq translation, MIT PDOS) could close this gap.
-
-DARPA's CALO project (2003-2008) tried to build "a cognitive assistant that lives with and learns from its users." It shipped as Siri. The tools that make winze possible — LLMs, full encyclopedias on a laptop, embedding search — didn't exist then.
-
-## Prior art
-
-| Project | Substrate | Consistency | Contestation? | Self-calibrating? |
-|---------|-----------|-------------|--------------|-------------------|
-| [MemPalace](https://github.com/milla-jovovich/mempalace) | ChromaDB + SQLite | None (verbatim storage) | No | No |
-| [Hermes Agent](https://github.com/nousresearch/hermes-agent) | Skill documents | Behavioral testing | No | No |
-| [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | Markdown | String-level lint | No | No |
-| [Monarch dismech](https://github.com/monarch-initiative/dismech) | YAML + LinkML | Schema validation + CI | No | No |
-| [Open Ontologies](https://github.com/fabio-rovai/open-ontologies) | RDF/OWL | OWL2-DL reasoning | No | No |
-| Prolog/Datalog | Logic programs | Inference engine | No | No |
-| [Lean Mathlib](https://github.com/leanprover-community/mathlib4) | Dependent types | Proof checker | No | No |
-| **winze** | Go source | `go build` + 7 lint rules + 9 bias auditors | **Yes (typed TheoryOf/Disputes)** | **Yes (topology → predict → calibrate)** |
+- **[defn](https://github.com/justinstimatze/defn)** — AI-native code database for Go. Structured queries across the KB: multi-hop entity lookups, cross-file claim analysis, provenance tracing.
+- **[adit](https://github.com/justinstimatze/adit-code)** — Structural analysis for AI-edited codebases. Scores corpus files for agent-writability.
+- **[slimemold](https://github.com/justinstimatze/slimemold)** — Reasoning topology observer. Monitors the epistemic support graph for load-bearing unchallenged claims.
+- **[plancheck](https://github.com/justinstimatze/plancheck)** — Predicts which files agents will miss. Validates implementation plans before execution.
+- **[Gas Town](https://github.com/gastownhall/gastown)** — Agent orchestrator. Runs autonomous curation fleets via workflow definitions in `.beads/formulas/`.
 
 ## License
 
