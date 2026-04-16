@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.35.0
-	github.com/justinstimatze/defn v0.10.1
+	github.com/justinstimatze/defn v0.10.2
 	github.com/justinstimatze/gozim v0.1.0
 )
 
@@ -81,13 +81,13 @@ require (
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 // indirect
-	github.com/dolthub/dolt/go v0.40.5-0.20260415052817-250fcf57cd3d // indirect
+	github.com/dolthub/dolt/go v0.40.5-0.20260416005252-1f991da3d959 // indirect
 	github.com/dolthub/driver v1.84.2-0.20260415010027-81fe8bae47a0 // indirect
 	github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69 // indirect
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20260412212219-49724d547866 // indirect
-	github.com/dolthub/go-mysql-server v0.20.1-0.20260412215059-d7fc9477f4b7 // indirect
+	github.com/dolthub/go-mysql-server v0.20.1-0.20260415223525-cbe3a4007b97 // indirect
 	github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 // indirect
 	github.com/dolthub/ishell v0.0.0-20260414231531-5f031e3e9037 // indirect
 	github.com/dolthub/jsonpath v0.0.2-0.20240227200619-19675ab05c71 // indirect

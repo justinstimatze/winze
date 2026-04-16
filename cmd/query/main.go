@@ -25,6 +25,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 
@@ -72,6 +73,10 @@ type kbIndex struct {
 // --- main ---
 
 func main() {
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(512 << 20) // 512 MiB
+	}
+
 	theories := flag.String("theories", "", "show competing theories for a concept")
 	claims := flag.String("claims", "", "show all claims involving an entity")
 	provenance := flag.String("provenance", "", "show provenance trail for source or entity")

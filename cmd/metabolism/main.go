@@ -33,6 +33,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -174,6 +175,11 @@ func loadSensorConfig(dir string) sensorConfig {
 }
 
 func main() {
+	// Cap memory to avoid OOM during evolve cycles (Dolt caches default to ~544 MB).
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(512 << 20) // 512 MiB
+	}
+
 	limit := flag.Int("limit", 5, "max results per query")
 	dryRun := flag.Bool("dry-run", false, "show targets without querying")
 	calibrate := flag.Bool("calibrate", false, "analyze existing log instead of running a cycle")
@@ -570,7 +576,16 @@ func runTopology(dir string) ([]SensorTarget, TopologyReport, error) {
 		return topologyCache.targets, topologyCache.report, nil
 	}
 
-	cmd := exec.Command("go", "run", "./cmd/topology", "--json", dir)
+	// Build topology binary once to avoid go-run compilation overhead (~3 GB).
+	binPath := filepath.Join(os.TempDir(), "winze-topology")
+	buildCmd := exec.Command("go", "build", "-o", binPath, "./cmd/topology")
+	buildCmd.Dir = dir
+	buildCmd.Stderr = os.Stderr
+	if err := buildCmd.Run(); err != nil {
+		return nil, TopologyReport{}, fmt.Errorf("build topology: %w", err)
+	}
+
+	cmd := exec.Command(binPath, "--json", dir)
 	cmd.Dir = dir
 	cmd.Stderr = os.Stderr
 

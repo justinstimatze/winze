@@ -21,9 +21,23 @@ type Client struct {
 	db *defnapi.DB
 }
 
-// New creates a Client for the given project directory. Returns
-// ErrNotAvailable if the .defn/ directory does not exist or cannot be opened.
+// New creates a Client for the given project directory. Prefers connecting
+// to a running Dolt server (via DEFN_DSN or default port 3307) to avoid
+// embedding a full Dolt engine (~500 MB). Falls back to embedded if the
+// server is unavailable.
+// Returns ErrNotAvailable if neither path works.
 func New(dir string) (*Client, error) {
+	// Try server connection first (much lighter on memory).
+	if dsn := os.Getenv("DEFN_DSN"); dsn != "" {
+		if db, err := defnapi.Open(dsn); err == nil {
+			return &Client{db: db}, nil
+		}
+	}
+	// Try default Gas Town Dolt server.
+	if db, err := defnapi.Open("root@tcp(127.0.0.1:3307)/defn"); err == nil {
+		return &Client{db: db}, nil
+	}
+	// Fall back to embedded.
 	dbDir := filepath.Join(dir, ".defn")
 	if fi, err := os.Stat(dbDir); err != nil || !fi.IsDir() {
 		return nil, ErrNotAvailable
