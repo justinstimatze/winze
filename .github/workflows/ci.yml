@@ -22,12 +22,24 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # Install the defn CLI and ingest the corpus into an embedded .defn/
+      # so cmd/query, cmd/topology, and the metabolism integration tests
+      # can do real work in CI instead of skipping. Pinned to the same
+      # version this repo depends on (go.mod). Cache GOMODCACHE+GOBIN so
+      # the install is fast on warm builds; the ingest itself is ~3 min
+      # cold and unavoidable until the corpus content is unchanged across
+      # runs (a separate caching pass can address that later).
+      - name: Install defn CLI
+        run: go install github.com/justinstimatze/defn/cmd/defn@v0.11.3
+
+      - name: Ingest corpus into embedded defn
+        run: defn ingest .
+
       - name: Test
         run: go test ./...
 
       - name: Lint (deterministic rules)
         run: go run ./cmd/lint .
 
-      # cmd/topology smoke-runs against the real corpus, but it needs a
-      # populated defn database. CI doesn't provision one, so skip the
-      # binary smoke and rely on cmd/topology unit tests for coverage.
+      - name: Topology
+        run: go run ./cmd/topology .
