@@ -178,7 +178,32 @@ func checkOneContradiction(client anthropic.Client, pc promotedClaim, all []clai
 		nbLines = []string{"  (no existing claims touching either entity)"}
 	}
 
-	prompt := fmt.Sprintf(`You are auditing a newly-added claim against a knowledge base neighborhood for semantic contradiction.
+	// Collect distinct predicates appearing in the new claim + neighborhood
+	// and emit guidance for each. Tightening the oracle: the prior prompt
+	// was too permissive — it accepted "two distinct people Propose the same
+	// hypothesis" because it didn't know Proposes implies originating
+	// authorship. Predicate guidance closes that hole.
+	predSet := map[string]bool{pc.Predicate: true}
+	for _, cs := range neighborhood {
+		predSet[cs.Predicate] = true
+	}
+	var predNames []string
+	for p := range predSet {
+		predNames = append(predNames, p)
+	}
+	sort.Strings(predNames)
+	var guidanceLines []string
+	for _, p := range predNames {
+		if g := predicateGuidance(p); g != "" {
+			guidanceLines = append(guidanceLines, fmt.Sprintf("  %s: %s", p, g))
+		}
+	}
+	guidanceBlock := "  (no specific guidance)"
+	if len(guidanceLines) > 0 {
+		guidanceBlock = strings.Join(guidanceLines, "\n")
+	}
+
+	prompt := fmt.Sprintf(`You audit a newly-added claim against a knowledge base neighborhood for semantic contradiction. The KB is small and curated; let predicate semantics drive the verdict, not common-sense leniency.
 
 NEW CLAIM:
   %s(%s, %s)
@@ -186,25 +211,44 @@ NEW CLAIM:
 EXISTING CLAIMS IN NEIGHBORHOOD (%d):
 %s
 
-Does the NEW CLAIM contradict any EXISTING CLAIM? A contradiction means the two claims cannot both be true — opposing commitments, incompatible relationships, or logically inconsistent assertions. Surface-level overlap is not contradiction; semantic conflict is. If ambiguous, say contradicts=false and explain in reason.
+PREDICATE SEMANTICS (apply these strictly):
+%s
 
-Call check_contradiction with your verdict and a one-sentence reason.`,
+FLAG (contradicts=true) when:
+  - A predicate marked "exclusive to one originator" already has a different Subject for the same Object (e.g. existing Proposes(A, H) plus new Proposes(B, H), where A and B are not stated co-originators).
+  - A predicate marked "functional" already has a different Object for the same Subject (e.g. existing FormedAt(P, T1) plus new FormedAt(P, T2)).
+  - The new claim implies a cycle that the predicate disallows (e.g. LocatedIn(A, B) when LocatedIn(B, A) already holds, transitively or directly).
+  - The new claim asserts a relationship the existing neighborhood explicitly contradicts (e.g. existing Disputes(P, H) plus new Accepts(P, H)).
+
+DO NOT FLAG:
+  - Multiple TheoryOf claims for the same Concept (TheoryOf is //winze:contested — competing theories are normal).
+  - Two non-functional, non-exclusive predicates touching the same entities with no semantic conflict.
+  - Mere topical overlap.
+
+If the new claim is ambiguous and the predicate is not exclusive/functional, contradicts=false. If exclusive/functional and the conflict is plausible, contradicts=true; do not extend the benefit of the doubt.
+
+Call check_contradiction with your verdict, the conflicting existing-claim var name (or "none"), and a one-sentence reason citing the rule above.`,
 		pc.Predicate, pc.Subject, pc.Object,
 		len(neighborhood),
-		strings.Join(nbLines, "\n"))
+		strings.Join(nbLines, "\n"),
+		guidanceBlock)
 
 	schema := anthropic.ToolInputSchemaParam{
 		Properties: map[string]any{
 			"contradicts": map[string]any{
 				"type":        "boolean",
-				"description": "true if the new claim contradicts at least one existing claim; false otherwise",
+				"description": "true if the new claim contradicts at least one existing claim per the predicate-semantics rules in the prompt; false otherwise",
+			},
+			"conflicting_var": map[string]any{
+				"type":        "string",
+				"description": "the var name of the conflicting existing claim, or 'none' if contradicts=false",
 			},
 			"reason": map[string]any{
 				"type":        "string",
-				"description": "one-sentence explanation. If contradicts=true, name the conflicting existing claim var and the nature of the conflict.",
+				"description": "one-sentence explanation citing the rule from the prompt that fired (or that absented)",
 			},
 		},
-		Required: []string{"contradicts", "reason"},
+		Required: []string{"contradicts", "conflicting_var", "reason"},
 	}
 	tool := anthropic.ToolUnionParamOfTool(schema, "check_contradiction")
 
@@ -224,17 +268,45 @@ Call check_contradiction with your verdict and a one-sentence reason.`,
 	for _, block := range resp.Content {
 		if block.Type == "tool_use" && block.Name == "check_contradiction" {
 			var out struct {
-				Contradicts bool   `json:"contradicts"`
-				Reason      string `json:"reason"`
+				Contradicts    bool   `json:"contradicts"`
+				ConflictingVar string `json:"conflicting_var"`
+				Reason         string `json:"reason"`
 			}
 			if err := json.Unmarshal([]byte(block.Input), &out); err != nil {
 				return "", fmt.Sprintf("llm decode: %v", err)
 			}
 			if out.Contradicts {
-				return "refuted", fmt.Sprintf("LLM flagged contradiction: %s", out.Reason)
+				return "refuted", fmt.Sprintf("LLM flagged contradiction with %s: %s", out.ConflictingVar, out.Reason)
 			}
 			return "confirmed", fmt.Sprintf("LLM found no contradiction across %d neighborhood claim(s): %s", len(neighborhood), out.Reason)
 		}
 	}
 	return "", "llm returned no tool_use block"
+}
+
+// predicateGuidance returns the contradiction-relevant semantics of a
+// predicate as a one-line string the LLM can apply mechanically. Empty
+// means the prompt's generic rules suffice — keep additions minimal,
+// only encode what the LLM has been seen to get wrong.
+//
+// Source of truth is predicates.go (//winze:functional pragma is the
+// canonical functional list). The "exclusive to one originator" cluster
+// is a curated judgment call, not a pragma — a future predicate-metadata
+// pragma (//winze:exclusive) could replace this lookup.
+func predicateGuidance(predicate string) string {
+	switch predicate {
+	case "Proposes", "ProposesOrg":
+		return "exclusive to one originator. Two distinct Subjects Proposing the same Object is a conflict unless they are stated co-originators."
+	case "FormedAt", "EnergyEstimate", "ResolvedAs", "EnglishTranslationOf":
+		return "//winze:functional. Each Subject has at most one Object via this predicate; a second Object with the same Subject is a conflict."
+	case "TheoryOf":
+		return "//winze:contested. Multiple distinct Subjects (theories) for the same Object (concept) is the expected, not contradictory, shape."
+	case "LocatedIn":
+		return "spatial containment. A LocatedIn cycle (A in B and B in A, transitively or directly) is a conflict."
+	case "Accepts", "AcceptsOrg":
+		return "an Accepts(P, H) directly contradicts an existing Disputes(P, H) (and vice versa) for the same Subject and Object."
+	case "Disputes", "DisputesOrg":
+		return "a Disputes(P, H) directly contradicts an existing Accepts(P, H) (and vice versa) for the same Subject and Object."
+	}
+	return ""
 }

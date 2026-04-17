@@ -62,3 +62,40 @@ func TestFindLintEvidenceTruncates(t *testing.T) {
 		t.Errorf("expected trailing ellipsis on truncated line, got %q", got[len(got)-10:])
 	}
 }
+
+// TestPredicateGuidance pins the predicate-semantics map that the
+// contradiction prompt depends on. If a predicate's exclusivity story
+// changes (e.g. Proposes loses its originator semantics, or a new
+// functional predicate is added), this test fails — forcing the
+// prompt-builder to stay in sync with predicates.go.
+func TestPredicateGuidance(t *testing.T) {
+	cases := []struct {
+		predicate string
+		wantSub   string // empty = expect no guidance
+	}{
+		{"Proposes", "exclusive to one originator"},
+		{"ProposesOrg", "exclusive to one originator"},
+		{"FormedAt", "//winze:functional"},
+		{"EnergyEstimate", "//winze:functional"},
+		{"ResolvedAs", "//winze:functional"},
+		{"EnglishTranslationOf", "//winze:functional"},
+		{"TheoryOf", "//winze:contested"},
+		{"LocatedIn", "spatial containment"},
+		{"Accepts", "directly contradicts"},
+		{"Disputes", "directly contradicts"},
+		{"InfluencedBy", ""},  // no guidance — generic rules apply
+		{"WorksFor", ""},
+	}
+	for _, tc := range cases {
+		got := predicateGuidance(tc.predicate)
+		if tc.wantSub == "" {
+			if got != "" {
+				t.Errorf("predicateGuidance(%q) = %q, want empty", tc.predicate, got)
+			}
+			continue
+		}
+		if !strings.Contains(got, tc.wantSub) {
+			t.Errorf("predicateGuidance(%q) = %q, want to contain %q", tc.predicate, got, tc.wantSub)
+		}
+	}
+}
