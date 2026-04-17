@@ -270,7 +270,7 @@ func main() {
 	}()
 
 	if *cycle || *evolve {
-		runCycle(dir, *zimPath, *zimIndex, *llmBudget, *dryRun, *jsonOut)
+		runCycle(dir, *zimPath, *zimIndex, *llmBudget, *entityCap, *dryRun, *jsonOut)
 		return
 	}
 
@@ -1649,7 +1649,7 @@ func runCalibrateNarrative(dir string) {
 // Each phase runs independently. If one fails, the others still execute.
 // This is the single entry point for autonomous KB evolution.
 // The KB grows and self-corrects on every run.
-func runCycle(dir, zimPath, zimIndex string, llmBudget int, dryRun, jsonOut bool) {
+func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, jsonOut bool) {
 	fmt.Println("[cycle] starting full sleep cycle")
 	fmt.Println()
 
@@ -1663,8 +1663,8 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget int, dryRun, jsonOut bool
 
 		// Check entity cap
 		count, err := countEntities(dir)
-		if err == nil && count >= 250 {
-			fmt.Printf("[cycle] entity cap reached (%d/250) — skipping ingest, deepening only\n", count)
+		if err == nil && count >= entityCap {
+			fmt.Printf("[cycle] entity cap reached (%d/%d) — skipping ingest, deepening only\n", count, entityCap)
 		} else {
 			// Run one sensor cycle
 			targets, report, err := runTopology(dir)
@@ -1801,8 +1801,8 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget int, dryRun, jsonOut bool
 
 		// Check entity cap before ingesting
 		count, err := countEntities(dir)
-		if err == nil && count >= 250 {
-			fmt.Printf("[ingest] entity cap reached (%d/250) — skipping ingest\n", count)
+		if err == nil && count >= entityCap {
+			fmt.Printf("[ingest] entity cap reached (%d/%d) — skipping ingest\n", count, entityCap)
 		} else {
 			runPipeline(dir, zimPath, "", llmBudget)
 			invalidateTopologyCache() // KB may have changed
