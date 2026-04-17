@@ -55,13 +55,15 @@ var TopologyPredictsBaloneyDetectionKitSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var BaloneyDetectionKitSearchOutcome = &ResolutionOutcome{
+	Result:   "confirmed",
+	Evidence: "6 cycles, 3 with signal. Corroborated: found 10 unique sources including Pseudoscience; List of topics characterized as pseudoscience; The Skeptic Encyclopedia of Pseudoscience.",
+}
+
 var BaloneyDetectionKitSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchBaloneyDetectionKit,
-	Object: &ResolutionOutcome{
-		Result:   "confirmed",
-		Evidence: "6 cycles, 3 with signal. Corroborated: found 10 unique sources including Pseudoscience; List of topics characterized as pseudoscience; The Skeptic Encyclopedia of Pseudoscience.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  BaloneyDetectionKitSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -86,13 +88,15 @@ var TopologyPredictsChalmersHardProblemSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var ChalmersHardProblemSearchOutcome = &ResolutionOutcome{
+	Result:   "confirmed",
+	Evidence: "6 cycles, 2 with signal. Corroborated: found 5 unique sources including Hard problem of consciousness; David Chalmers; The Conscious Mind.",
+}
+
 var ChalmersHardProblemSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchChalmersHardProblem,
-	Object: &ResolutionOutcome{
-		Result:   "confirmed",
-		Evidence: "6 cycles, 2 with signal. Corroborated: found 5 unique sources including Hard problem of consciousness; David Chalmers; The Conscious Mind.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  ChalmersHardProblemSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +112,7 @@ var EvidenceSearchConstructionist = Event{&Entity{
 	ID:    "evidence-search-constructionist-thesis",
 	Name:  "Evidence search for Constructionist Thesis",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across arxiv, zim for external sources on Constructionist Thesis. Found: Mystical or religious experience; Mathematical beauty; Sarvepalli Radhakrishnan (+7 more).",
+	Brief: "Metabolism sensor query across zim, arxiv for external sources on Constructionist Thesis. Found: Mystical or religious experience; Mathematical beauty; Sarvepalli Radhakrishnan (+7 more).",
 }}
 
 var TopologyPredictsConstructionistSearch = Predicts{
@@ -117,13 +121,15 @@ var TopologyPredictsConstructionistSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var ConstructionistSearchOutcome = &ResolutionOutcome{
+	Result:   "confirmed",
+	Evidence: "6 cycles, 3 with signal. Corroborated: found 10 unique sources including Mystical or religious experience; Mathematical beauty; Sarvepalli Radhakrishnan.",
+}
+
 var ConstructionistSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchConstructionist,
-	Object: &ResolutionOutcome{
-		Result:   "confirmed",
-		Evidence: "6 cycles, 3 with signal. Corroborated: found 10 unique sources including Mystical or religious experience; Mathematical beauty; Sarvepalli Radhakrishnan.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  ConstructionistSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +145,7 @@ var EvidenceSearchBrownHumanUniversals = Event{&Entity{
 	ID:    "evidence-search-brown-human-universals-thesis",
 	Name:  "Evidence search for Brown Human Universals Thesis",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across arxiv, zim, rss for external sources on Brown Human Universals Thesis. Found: Maidstone Museum; Yuquot Whalers' Shrine; Emile Clement (+12 more).",
+	Brief: "Metabolism sensor query across zim, rss, arxiv for external sources on Brown Human Universals Thesis. Found: Maidstone Museum; Yuquot Whalers' Shrine; Emile Clement (+12 more).",
 }}
 
 var TopologyPredictsBrownHumanUniversalsSearch = Predicts{
@@ -148,13 +154,15 @@ var TopologyPredictsBrownHumanUniversalsSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var BrownHumanUniversalsSearchOutcome = &ResolutionOutcome{
+	Result:   "ambiguous",
+	Evidence: "38 cycles, 20 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
+}
+
 var BrownHumanUniversalsSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchBrownHumanUniversals,
-	Object: &ResolutionOutcome{
-		Result:   "ambiguous",
-		Evidence: "38 cycles, 20 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  BrownHumanUniversalsSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -179,13 +187,15 @@ var TopologyPredictsConradApopheniaClinicalSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var ConradApopheniaClinicalSearchOutcome = &ResolutionOutcome{
+	Result:   "ambiguous",
+	Evidence: "52 cycles, 28 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
+}
+
 var ConradApopheniaClinicalSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchConradApopheniaClinical,
-	Object: &ResolutionOutcome{
-		Result:   "ambiguous",
-		Evidence: "52 cycles, 28 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  ConradApopheniaClinicalSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +211,7 @@ var EvidenceSearchDimaraTaskBasedClassification = Event{&Entity{
 	ID:    "evidence-search-dimara-task-based-classification",
 	Name:  "Evidence search for Dimara Task Based Classification",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across rss, arxiv, zim for external sources on Dimara Task Based Classification. Found: Johannes Abraham Dimara; Task; The Task (+7 more).",
+	Brief: "Metabolism sensor query across arxiv, zim, rss for external sources on Dimara Task Based Classification. Found: Johannes Abraham Dimara; Task; The Task (+7 more).",
 }}
 
 var TopologyPredictsDimaraTaskBasedClassificationSearch = Predicts{
@@ -210,13 +220,15 @@ var TopologyPredictsDimaraTaskBasedClassificationSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var DimaraTaskBasedClassificationSearchOutcome = &ResolutionOutcome{
+	Result:   "ambiguous",
+	Evidence: "36 cycles, 18 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
+}
+
 var DimaraTaskBasedClassificationSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchDimaraTaskBasedClassification,
-	Object: &ResolutionOutcome{
-		Result:   "ambiguous",
-		Evidence: "36 cycles, 18 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  DimaraTaskBasedClassificationSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -241,13 +253,15 @@ var TopologyPredictsDragonInGarageSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var DragonInGarageSearchOutcome = &ResolutionOutcome{
+	Result:   "confirmed",
+	Evidence: "2 cycles, 2 with signal. Corroborated: found 5 unique sources including Dragon in the garage; Sagan; Garage.",
+}
+
 var DragonInGarageSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchDragonInGarage,
-	Object: &ResolutionOutcome{
-		Result:   "confirmed",
-		Evidence: "2 cycles, 2 with signal. Corroborated: found 5 unique sources including Dragon in the garage; Sagan; Garage.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  DragonInGarageSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -272,13 +286,15 @@ var TopologyPredictsGigerenzerRationalDeviationReframingSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var GigerenzerRationalDeviationReframingSearchOutcome = &ResolutionOutcome{
+	Result:   "confirmed",
+	Evidence: "1 cycles, 1 with signal. Corroborated: found 5 unique sources including Gerd Gigerenzer; Deviation; RationaL.",
+}
+
 var GigerenzerRationalDeviationReframingSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchGigerenzerRationalDeviationReframing,
-	Object: &ResolutionOutcome{
-		Result:   "confirmed",
-		Evidence: "1 cycles, 1 with signal. Corroborated: found 5 unique sources including Gerd Gigerenzer; Deviation; RationaL.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  GigerenzerRationalDeviationReframingSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -303,13 +319,15 @@ var TopologyPredictsGodelFirstIncompletenessTheoremSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var GodelFirstIncompletenessTheoremSearchOutcome = &ResolutionOutcome{
+	Result:   "confirmed",
+	Evidence: "1 cycles, 1 with signal. Corroborated: found 5 unique sources including Gödel's first incompleteness theorem; Proof sketch for Gödel's first incompleteness theorem; Gödel's theorem.",
+}
+
 var GodelFirstIncompletenessTheoremSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchGodelFirstIncompletenessTheorem,
-	Object: &ResolutionOutcome{
-		Result:   "confirmed",
-		Evidence: "1 cycles, 1 with signal. Corroborated: found 5 unique sources including Gödel's first incompleteness theorem; Proof sketch for Gödel's first incompleteness theorem; Gödel's theorem.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  GodelFirstIncompletenessTheoremSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -334,13 +352,15 @@ var TopologyPredictsGodelSecondIncompletenessTheoremSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var GodelSecondIncompletenessTheoremSearchOutcome = &ResolutionOutcome{
+	Result:   "confirmed",
+	Evidence: "1 cycles, 1 with signal. Corroborated: found 5 unique sources including Gödel's second incompleteness theorem; Gödel's theorem; Gödel's encoding.",
+}
+
 var GodelSecondIncompletenessTheoremSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchGodelSecondIncompletenessTheorem,
-	Object: &ResolutionOutcome{
-		Result:   "confirmed",
-		Evidence: "1 cycles, 1 with signal. Corroborated: found 5 unique sources including Gödel's second incompleteness theorem; Gödel's theorem; Gödel's encoding.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  GodelSecondIncompletenessTheoremSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -365,13 +385,15 @@ var TopologyPredictsBrouwerIntuitionismSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var BrouwerIntuitionismSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var BrouwerIntuitionismSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchBrouwerIntuitionism,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  BrouwerIntuitionismSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -396,13 +418,15 @@ var TopologyPredictsEmbodiedMindSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var EmbodiedMindSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var EmbodiedMindSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchEmbodiedMind,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  EmbodiedMindSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -427,13 +451,15 @@ var TopologyPredictsErrorManagementTheoryOfApopheniaSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var ErrorManagementTheoryOfApopheniaSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var ErrorManagementTheoryOfApopheniaSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchErrorManagementTheoryOfApophenia,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  ErrorManagementTheoryOfApopheniaSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -458,13 +484,15 @@ var TopologyPredictsFormanPCESearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var FormanPCESearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var FormanPCESearchResolution = ResolvedAs{
 	Subject: EvidenceSearchFormanPCE,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  FormanPCESearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -489,13 +517,15 @@ var TopologyPredictsHierarchicalPredictionMachineSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var HierarchicalPredictionMachineSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var HierarchicalPredictionMachineSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchHierarchicalPredictionMachine,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  HierarchicalPredictionMachineSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -520,13 +550,15 @@ var TopologyPredictsHilbertsProgramSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var HilbertsProgramSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var HilbertsProgramSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchHilbertsProgram,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  HilbertsProgramSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -551,13 +583,15 @@ var TopologyPredictsHypothesisCometEnckeFragmentSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var HypothesisCometEnckeFragmentSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var HypothesisCometEnckeFragmentSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchHypothesisCometEnckeFragment,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  HypothesisCometEnckeFragmentSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -582,13 +616,15 @@ var TopologyPredictsHypothesisGlancingIronAsteroidSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var HypothesisGlancingIronAsteroidSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var HypothesisGlancingIronAsteroidSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchHypothesisGlancingIronAsteroid,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  HypothesisGlancingIronAsteroidSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -613,13 +649,15 @@ var TopologyPredictsHypothesisNaturalGasReleaseSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var HypothesisNaturalGasReleaseSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var HypothesisNaturalGasReleaseSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchHypothesisNaturalGasRelease,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  HypothesisNaturalGasReleaseSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -644,13 +682,15 @@ var TopologyPredictsKahnemanDualProcessSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var KahnemanDualProcessSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var KahnemanDualProcessSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchKahnemanDualProcess,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  KahnemanDualProcessSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -675,13 +715,15 @@ var TopologyPredictsMattsonSPPSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var MattsonSPPSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var MattsonSPPSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchMattsonSPP,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  MattsonSPPSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -706,13 +748,15 @@ var TopologyPredictsMattsonSchizophreniaSPPDysregulationSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var MattsonSchizophreniaSPPDysregulationSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var MattsonSchizophreniaSPPDysregulationSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchMattsonSchizophreniaSPPDysregulation,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  MattsonSchizophreniaSPPDysregulationSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -737,13 +781,15 @@ var TopologyPredictsMurtiAdvaitaVsAdvayaTypologySearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var MurtiAdvaitaVsAdvayaTypologySearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var MurtiAdvaitaVsAdvayaTypologySearchResolution = ResolvedAs{
 	Subject: EvidenceSearchMurtiAdvaitaVsAdvayaTypology,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  MurtiAdvaitaVsAdvayaTypologySearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -768,13 +814,15 @@ var TopologyPredictsPinkerHumanNatureSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var PinkerHumanNatureSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var PinkerHumanNatureSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchPinkerHumanNature,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  PinkerHumanNatureSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -799,13 +847,15 @@ var TopologyPredictsSearleBiologicalNaturalismSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var SearleBiologicalNaturalismSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var SearleBiologicalNaturalismSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchSearleBiologicalNaturalism,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  SearleBiologicalNaturalismSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -830,13 +880,15 @@ var TopologyPredictsShermerPatternicitySearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var ShermerPatternicitySearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var ShermerPatternicitySearchResolution = ResolvedAs{
 	Subject: EvidenceSearchShermerPatternicity,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  ShermerPatternicitySearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -861,13 +913,15 @@ var TopologyPredictsTetlockCalibrationSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var TetlockCalibrationSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var TetlockCalibrationSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchTetlockCalibration,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  TetlockCalibrationSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -892,13 +946,15 @@ var TopologyPredictsUDHRArticle1Search = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var UDHRArticle1SearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var UDHRArticle1SearchResolution = ResolvedAs{
 	Subject: EvidenceSearchUDHRArticle1,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  UDHRArticle1SearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -923,13 +979,15 @@ var TopologyPredictsUDHRArticle18Search = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var UDHRArticle18SearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var UDHRArticle18SearchResolution = ResolvedAs{
 	Subject: EvidenceSearchUDHRArticle18,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  UDHRArticle18SearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -954,13 +1012,15 @@ var TopologyPredictsUDHRArticle3Search = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var UDHRArticle3SearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var UDHRArticle3SearchResolution = ResolvedAs{
 	Subject: EvidenceSearchUDHRArticle3,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  UDHRArticle3SearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -985,13 +1045,15 @@ var TopologyPredictsUDHRAsTheoryOfHumanRightsSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var UDHRAsTheoryOfHumanRightsSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var UDHRAsTheoryOfHumanRightsSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchUDHRAsTheoryOfHumanRights,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  UDHRAsTheoryOfHumanRightsSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -1016,13 +1078,15 @@ var TopologyPredictsVolkerThreeTypesTypologySearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var VolkerThreeTypesTypologySearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var VolkerThreeTypesTypologySearchResolution = ResolvedAs{
 	Subject: EvidenceSearchVolkerThreeTypesTypology,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  VolkerThreeTypesTypologySearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -1047,13 +1111,15 @@ var TopologyPredictsWattsConsciousnessAsDeadEndSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var WattsConsciousnessAsDeadEndSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var WattsConsciousnessAsDeadEndSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchWattsConsciousnessAsDeadEnd,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  WattsConsciousnessAsDeadEndSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -1078,13 +1144,15 @@ var TopologyPredictsWhiteShergillReducedTopDownSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var WhiteShergillReducedTopDownSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var WhiteShergillReducedTopDownSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchWhiteShergillReducedTopDown,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  WhiteShergillReducedTopDownSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -1109,13 +1177,15 @@ var TopologyPredictsAdvaitaAsMonismTranslationSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var AdvaitaAsMonismTranslationSearchOutcome = &ResolutionOutcome{
+	Result:   "refuted",
+	Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
+}
+
 var AdvaitaAsMonismTranslationSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchAdvaitaAsMonismTranslation,
-	Object: &ResolutionOutcome{
-		Result:   "refuted",
-		Evidence: "1 cycles, 0 with signal. Resolution: no signal — no relevant sources found in any backend.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  AdvaitaAsMonismTranslationSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -1131,7 +1201,7 @@ var EvidenceSearchHypothesisCometaryAirburst = Event{&Entity{
 	ID:    "evidence-search-hypothesis-cometary-airburst",
 	Name:  "Evidence search for Hypothesis Cometary Airburst",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across rss, arxiv, zim for external sources on Hypothesis Cometary Airburst. Found: Tunguska; Whipple; 2K22 Tunguska (+4 more).",
+	Brief: "Metabolism sensor query across zim, rss, arxiv for external sources on Hypothesis Cometary Airburst. Found: Tunguska; Whipple; 2K22 Tunguska (+4 more).",
 }}
 
 var TopologyPredictsHypothesisCometaryAirburstSearch = Predicts{
@@ -1140,13 +1210,15 @@ var TopologyPredictsHypothesisCometaryAirburstSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var HypothesisCometaryAirburstSearchOutcome = &ResolutionOutcome{
+	Result:   "ambiguous",
+	Evidence: "28 cycles, 13 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
+}
+
 var HypothesisCometaryAirburstSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchHypothesisCometaryAirburst,
-	Object: &ResolutionOutcome{
-		Result:   "ambiguous",
-		Evidence: "28 cycles, 13 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  HypothesisCometaryAirburstSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -1171,13 +1243,15 @@ var TopologyPredictsHypothesisLakeChekoIsCraterSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var HypothesisLakeChekoIsCraterSearchOutcome = &ResolutionOutcome{
+	Result:   "ambiguous",
+	Evidence: "28 cycles, 13 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
+}
+
 var HypothesisLakeChekoIsCraterSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchHypothesisLakeChekoIsCrater,
-	Object: &ResolutionOutcome{
-		Result:   "ambiguous",
-		Evidence: "28 cycles, 13 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  HypothesisLakeChekoIsCraterSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -1193,7 +1267,7 @@ var EvidenceSearchHypothesisStonyAsteroidAirburst = Event{&Entity{
 	ID:    "evidence-search-hypothesis-stony-asteroid-airburst",
 	Name:  "Evidence search for Hypothesis Stony Asteroid Airburst",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across rss, zim for external sources on Hypothesis Stony Asteroid Airburst. Found: Sekanina; 1913 Sekanina; Ivan Sekanina (+2 more).",
+	Brief: "Metabolism sensor query across zim, rss for external sources on Hypothesis Stony Asteroid Airburst. Found: Sekanina; 1913 Sekanina; Ivan Sekanina (+2 more).",
 }}
 
 var TopologyPredictsHypothesisStonyAsteroidAirburstSearch = Predicts{
@@ -1202,13 +1276,15 @@ var TopologyPredictsHypothesisStonyAsteroidAirburstSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var HypothesisStonyAsteroidAirburstSearchOutcome = &ResolutionOutcome{
+	Result:   "ambiguous",
+	Evidence: "20 cycles, 10 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
+}
+
 var HypothesisStonyAsteroidAirburstSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchHypothesisStonyAsteroidAirburst,
-	Object: &ResolutionOutcome{
-		Result:   "ambiguous",
-		Evidence: "20 cycles, 10 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  HypothesisStonyAsteroidAirburstSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -1224,7 +1300,7 @@ var EvidenceSearchLoyFiveFlavorsTypology = Event{&Entity{
 	ID:    "evidence-search-loy-five-flavors-typology",
 	Name:  "Evidence search for Loy Five Flavors Typology",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across rss, zim for external sources on Loy Five Flavors Typology. Found: Loy; St Loy's Cove; Angie Loy (+2 more).",
+	Brief: "Metabolism sensor query across zim, rss for external sources on Loy Five Flavors Typology. Found: Loy; St Loy's Cove; Angie Loy (+2 more).",
 }}
 
 var TopologyPredictsLoyFiveFlavorsTypologySearch = Predicts{
@@ -1233,13 +1309,15 @@ var TopologyPredictsLoyFiveFlavorsTypologySearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var LoyFiveFlavorsTypologySearchOutcome = &ResolutionOutcome{
+	Result:   "ambiguous",
+	Evidence: "10 cycles, 5 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
+}
+
 var LoyFiveFlavorsTypologySearchResolution = ResolvedAs{
 	Subject: EvidenceSearchLoyFiveFlavorsTypology,
-	Object: &ResolutionOutcome{
-		Result:   "ambiguous",
-		Evidence: "10 cycles, 5 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  LoyFiveFlavorsTypologySearchOutcome,
+	Prov:    metabolismPredictionSource,
 }
 
 // ---------------------------------------------------------------------------
@@ -1255,7 +1333,7 @@ var EvidenceSearchPerennialistCommonCore = Event{&Entity{
 	ID:    "evidence-search-perennialist-common-core-thesis",
 	Name:  "Evidence search for Perennialist Common Core Thesis",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across zim, rss for external sources on Perennialist Common Core Thesis. Found: Loy; Common Core; Angie Loy (+2 more).",
+	Brief: "Metabolism sensor query across rss, zim for external sources on Perennialist Common Core Thesis. Found: Loy; Common Core; Angie Loy (+2 more).",
 }}
 
 var TopologyPredictsPerennialistCommonCoreSearch = Predicts{
@@ -1264,11 +1342,13 @@ var TopologyPredictsPerennialistCommonCoreSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
+var PerennialistCommonCoreSearchOutcome = &ResolutionOutcome{
+	Result:   "ambiguous",
+	Evidence: "10 cycles, 5 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
+}
+
 var PerennialistCommonCoreSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchPerennialistCommonCore,
-	Object: &ResolutionOutcome{
-		Result:   "ambiguous",
-		Evidence: "10 cycles, 5 with signal. Resolution: irrelevant — papers found but not relevant to the hypothesis. Sensor query may need refinement.",
-	},
-	Prov: metabolismPredictionSource,
+	Object:  PerennialistCommonCoreSearchOutcome,
+	Prov:    metabolismPredictionSource,
 }

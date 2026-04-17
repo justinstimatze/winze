@@ -229,18 +229,23 @@ func runReify(dir string) {
 		fmt.Fprintf(&b, "\tProv:    metabolismPredictionSource,\n")
 		fmt.Fprintf(&b, "}\n")
 
-		// ResolvedAs claim (only if resolved)
+		// ResolvedAs claim (only if resolved). Named outcome var (not inline
+		// struct literal) so each outcome is a distinct object in the
+		// reference graph — topology no longer collapses identical literals
+		// into a single fake high-degree entity.
 		if r.bestRes != "" {
 			outcome := mapResolution(r.bestRes)
 			evidence := buildEvidenceString(r)
 
+			fmt.Fprintf(&b, "\nvar %sSearchOutcome = &ResolutionOutcome{\n", varBase)
+			fmt.Fprintf(&b, "\tResult:   %q,\n", outcome)
+			fmt.Fprintf(&b, "\tEvidence: %q,\n", evidence)
+			fmt.Fprintf(&b, "}\n")
+
 			fmt.Fprintf(&b, "\nvar %sSearchResolution = ResolvedAs{\n", varBase)
 			fmt.Fprintf(&b, "\tSubject: EvidenceSearch%s,\n", varBase)
-			fmt.Fprintf(&b, "\tObject: &ResolutionOutcome{\n")
-			fmt.Fprintf(&b, "\t\tResult:   %q,\n", outcome)
-			fmt.Fprintf(&b, "\t\tEvidence: %q,\n", evidence)
-			fmt.Fprintf(&b, "\t},\n")
-			fmt.Fprintf(&b, "\tProv: metabolismPredictionSource,\n")
+			fmt.Fprintf(&b, "\tObject:  %sSearchOutcome,\n", varBase)
+			fmt.Fprintf(&b, "\tProv:    metabolismPredictionSource,\n")
 			fmt.Fprintf(&b, "}\n")
 		}
 	}
