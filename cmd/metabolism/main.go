@@ -132,6 +132,18 @@ type Cycle struct {
 	ResolvedAt string `json:"resolved_at,omitempty"` // ISO 8601 date
 	Ingested       bool   `json:"ingested,omitempty"`        // true after pipeline extracted claims from this cycle's articles
 	LLMLintSkipped bool   `json:"llm_lint_skipped,omitempty"` // true when LLM contradiction check was unavailable during pipeline
+	// PredictionType categorizes the prediction this cycle represents.
+	// Empty (legacy) is treated as "structural_fragility" for calibrate
+	// bucketing. Non-tautological types resolve by KB-internal signal
+	// (e.g. "trip_lint_durability" resolves by running cmd/lint and
+	// observing whether the promoted claim var was flagged).
+	PredictionType string `json:"prediction_type,omitempty"`
+	// Evidence holds a short, machine-readable reason when Resolution is
+	// set by a non-sensor resolver (e.g. the lint line that refuted a
+	// trip_lint_durability prediction). Sensor resolutions continue to
+	// carry their evidence in Papers; this field is for resolvers that
+	// produce short textual evidence instead of paper summaries.
+	Evidence string `json:"evidence,omitempty"`
 	// PipelineClaims records per-claim accept/reject decisions during ingest.
 	// Added for pipeline observability.
 	PipelineClaims []PipelineClaim `json:"pipeline_claims,omitempty"`

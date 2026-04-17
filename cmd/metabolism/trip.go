@@ -396,6 +396,7 @@ func promoteConnections(dir string, connections []TripConnection) error {
 		cycleNum))
 
 	promoted := 0
+	var promotedVars []string
 	for _, c := range promotable {
 		// Validate both entities exist
 		if !entityVars[c.EntityA] || !entityVars[c.EntityB] {
@@ -448,6 +449,7 @@ func promoteConnections(dir string, connections []TripConnection) error {
 
 		sections = append(sections, b.String())
 		promoted++
+		promotedVars = append(promotedVars, claimVar)
 	}
 
 	if promoted == 0 {
@@ -468,6 +470,13 @@ func promoteConnections(dir string, connections []TripConnection) error {
 		return fmt.Errorf("build failed on trip-promoted claims")
 	}
 	fmt.Printf("[trip-promote] ✓ %d speculative connections promoted to corpus\n", promoted)
+
+	// Resolve each promoted var against cmd/lint and log as a
+	// trip_lint_durability prediction cycle. Non-fatal if resolution
+	// fails — the claims are already in the corpus.
+	if err := logTripLintDurability(dir, promotedVars); err != nil {
+		fmt.Fprintf(os.Stderr, "[trip-promote] lint-durability resolution: %v\n", err)
+	}
 	return nil
 }
 
