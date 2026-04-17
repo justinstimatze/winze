@@ -145,7 +145,7 @@ var EvidenceSearchBrownHumanUniversals = Event{&Entity{
 	ID:    "evidence-search-brown-human-universals-thesis",
 	Name:  "Evidence search for Brown Human Universals Thesis",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across rss, arxiv, zim for external sources on Brown Human Universals Thesis. Found: Maidstone Museum; Yuquot Whalers' Shrine; Emile Clement (+12 more).",
+	Brief: "Metabolism sensor query across arxiv, rss, zim for external sources on Brown Human Universals Thesis. Found: Maidstone Museum; Yuquot Whalers' Shrine; Emile Clement (+12 more).",
 }}
 
 var TopologyPredictsBrownHumanUniversalsSearch = Predicts{
@@ -178,7 +178,7 @@ var EvidenceSearchConradApopheniaClinical = Event{&Entity{
 	ID:    "evidence-search-conrad-apophenia-clinical-framing",
 	Name:  "Evidence search for Conrad Apophenia Clinical Framing",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across arxiv, zim, rss for external sources on Conrad Apophenia Clinical Framing. Found: Unlocking Cognitive Capabilities and Analyzing the Perception-Logic Trade-off; DataCrumb: A Physical Probe for Reflections on Background Web Tracking; Guiding Perception-Reasoning Closer to Human in Blind Image Quality Assessment (+12 more).",
+	Brief: "Metabolism sensor query across arxiv, rss, zim for external sources on Conrad Apophenia Clinical Framing. Found: Unlocking Cognitive Capabilities and Analyzing the Perception-Logic Trade-off; DataCrumb: A Physical Probe for Reflections on Background Web Tracking; Guiding Perception-Reasoning Closer to Human in Blind Image Quality Assessment (+12 more).",
 }}
 
 var TopologyPredictsConradApopheniaClinicalSearch = Predicts{
@@ -211,7 +211,7 @@ var EvidenceSearchDimaraTaskBasedClassification = Event{&Entity{
 	ID:    "evidence-search-dimara-task-based-classification",
 	Name:  "Evidence search for Dimara Task Based Classification",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across zim, rss, arxiv for external sources on Dimara Task Based Classification. Found: Johannes Abraham Dimara; Task; The Task (+7 more).",
+	Brief: "Metabolism sensor query across arxiv, rss, zim for external sources on Dimara Task Based Classification. Found: Johannes Abraham Dimara; Task; The Task (+7 more).",
 }}
 
 var TopologyPredictsDimaraTaskBasedClassificationSearch = Predicts{
@@ -1201,7 +1201,7 @@ var EvidenceSearchHypothesisCometaryAirburst = Event{&Entity{
 	ID:    "evidence-search-hypothesis-cometary-airburst",
 	Name:  "Evidence search for Hypothesis Cometary Airburst",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across arxiv, zim, rss for external sources on Hypothesis Cometary Airburst. Found: Tunguska; Whipple; 2K22 Tunguska (+4 more).",
+	Brief: "Metabolism sensor query across arxiv, rss, zim for external sources on Hypothesis Cometary Airburst. Found: Tunguska; Whipple; 2K22 Tunguska (+4 more).",
 }}
 
 var TopologyPredictsHypothesisCometaryAirburstSearch = Predicts{
@@ -1234,7 +1234,7 @@ var EvidenceSearchHypothesisLakeChekoIsCrater = Event{&Entity{
 	ID:    "evidence-search-hypothesis-lake-cheko-is-crater",
 	Name:  "Evidence search for Hypothesis Lake Cheko Is Crater",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across zim, rss, arxiv for external sources on Hypothesis Lake Cheko Is Crater. Found: Bologna; My Bologna; Hypothesis (+7 more).",
+	Brief: "Metabolism sensor query across arxiv, rss, zim for external sources on Hypothesis Lake Cheko Is Crater. Found: Bologna; My Bologna; Hypothesis (+7 more).",
 }}
 
 var TopologyPredictsHypothesisLakeChekoIsCraterSearch = Predicts{
@@ -1267,7 +1267,7 @@ var EvidenceSearchHypothesisStonyAsteroidAirburst = Event{&Entity{
 	ID:    "evidence-search-hypothesis-stony-asteroid-airburst",
 	Name:  "Evidence search for Hypothesis Stony Asteroid Airburst",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across zim, rss for external sources on Hypothesis Stony Asteroid Airburst. Found: Sekanina; 1913 Sekanina; Ivan Sekanina (+2 more).",
+	Brief: "Metabolism sensor query across rss, zim for external sources on Hypothesis Stony Asteroid Airburst. Found: Sekanina; 1913 Sekanina; Ivan Sekanina (+2 more).",
 }}
 
 var TopologyPredictsHypothesisStonyAsteroidAirburstSearch = Predicts{
@@ -1300,7 +1300,7 @@ var EvidenceSearchLoyFiveFlavorsTypology = Event{&Entity{
 	ID:    "evidence-search-loy-five-flavors-typology",
 	Name:  "Evidence search for Loy Five Flavors Typology",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across zim, rss for external sources on Loy Five Flavors Typology. Found: Loy; St Loy's Cove; Angie Loy (+2 more).",
+	Brief: "Metabolism sensor query across rss, zim for external sources on Loy Five Flavors Typology. Found: Loy; St Loy's Cove; Angie Loy (+2 more).",
 }}
 
 var TopologyPredictsLoyFiveFlavorsTypologySearch = Predicts{
@@ -1333,7 +1333,7 @@ var EvidenceSearchPerennialistCommonCore = Event{&Entity{
 	ID:    "evidence-search-perennialist-common-core-thesis",
 	Name:  "Evidence search for Perennialist Common Core Thesis",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across zim, rss for external sources on Perennialist Common Core Thesis. Found: Loy; Common Core; Angie Loy (+2 more).",
+	Brief: "Metabolism sensor query across rss, zim for external sources on Perennialist Common Core Thesis. Found: Loy; Common Core; Angie Loy (+2 more).",
 }}
 
 var TopologyPredictsPerennialistCommonCoreSearch = Predicts{

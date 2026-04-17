@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -285,11 +286,13 @@ func runReify(dir string) {
 		varBase = strings.TrimSuffix(varBase, "Framing")
 		entityID := camelToKebab(hypName)
 
-		// Backends used
+		// Backends used (sorted for deterministic emit — map range order
+		// would otherwise bounce predictions.go on every reify run).
 		var backends []string
 		for be := range r.backends {
 			backends = append(backends, be)
 		}
+		sort.Strings(backends)
 
 		// Paper summary for Brief
 		briefPapers := ""

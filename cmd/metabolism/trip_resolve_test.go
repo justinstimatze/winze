@@ -65,16 +65,21 @@ func TestFindLintEvidenceTruncates(t *testing.T) {
 
 // TestPredicateGuidance pins the predicate-semantics map that the
 // contradiction prompt depends on. If a predicate's exclusivity story
-// changes (e.g. Proposes loses its originator semantics, or a new
-// functional predicate is added), this test fails — forcing the
-// prompt-builder to stay in sync with predicates.go.
+// changes (e.g. a new //winze:functional predicate is added) this test
+// fails — forcing the prompt-builder to stay in sync with predicates.go.
+//
+// Proposes/ProposesOrg deliberately have no guidance: the corpus uses
+// them as multi-attribution (see tunguska.go) and predicates.go carries
+// no //winze:single-originator pragma. An earlier version of this test
+// pinned an "exclusive to one originator" rule; that rule did not match
+// corpus practice and was dropped.
 func TestPredicateGuidance(t *testing.T) {
 	cases := []struct {
 		predicate string
 		wantSub   string // empty = expect no guidance
 	}{
-		{"Proposes", "exclusive to one originator"},
-		{"ProposesOrg", "exclusive to one originator"},
+		{"Proposes", ""},
+		{"ProposesOrg", ""},
 		{"FormedAt", "//winze:functional"},
 		{"EnergyEstimate", "//winze:functional"},
 		{"ResolvedAs", "//winze:functional"},
@@ -83,7 +88,7 @@ func TestPredicateGuidance(t *testing.T) {
 		{"LocatedIn", "spatial containment"},
 		{"Accepts", "directly contradicts"},
 		{"Disputes", "directly contradicts"},
-		{"InfluencedBy", ""},  // no guidance — generic rules apply
+		{"InfluencedBy", ""}, // no guidance — generic rules apply
 		{"WorksFor", ""},
 	}
 	for _, tc := range cases {

@@ -215,17 +215,17 @@ PREDICATE SEMANTICS (apply these strictly):
 %s
 
 FLAG (contradicts=true) when:
-  - A predicate marked "exclusive to one originator" already has a different Subject for the same Object (e.g. existing Proposes(A, H) plus new Proposes(B, H), where A and B are not stated co-originators).
   - A predicate marked "functional" already has a different Object for the same Subject (e.g. existing FormedAt(P, T1) plus new FormedAt(P, T2)).
   - The new claim implies a cycle that the predicate disallows (e.g. LocatedIn(A, B) when LocatedIn(B, A) already holds, transitively or directly).
   - The new claim asserts a relationship the existing neighborhood explicitly contradicts (e.g. existing Disputes(P, H) plus new Accepts(P, H)).
 
 DO NOT FLAG:
   - Multiple TheoryOf claims for the same Concept (TheoryOf is //winze:contested — competing theories are normal).
-  - Two non-functional, non-exclusive predicates touching the same entities with no semantic conflict.
+  - Multiple Proposes/ProposesOrg claims for the same Hypothesis. The corpus uses Proposes as a multi-attribution predicate: independent originators, parallel discoveries, and competing formulations all coexist (see tunguska.go for canonical multi-Proposes patterns). Attribution accuracy is a source-grounding question outside this resolver's scope.
+  - Two non-functional predicates touching the same entities with no semantic conflict.
   - Mere topical overlap.
 
-If the new claim is ambiguous and the predicate is not exclusive/functional, contradicts=false. If exclusive/functional and the conflict is plausible, contradicts=true; do not extend the benefit of the doubt.
+If the new claim is ambiguous and the predicate is not functional, contradicts=false. If functional and the conflict is plausible, contradicts=true; do not extend the benefit of the doubt.
 
 Call check_contradiction with your verdict, the conflicting existing-claim var name (or "none"), and a one-sentence reason citing the rule above.`,
 		pc.Predicate, pc.Subject, pc.Object,
@@ -287,16 +287,22 @@ Call check_contradiction with your verdict, the conflicting existing-claim var n
 // predicateGuidance returns the contradiction-relevant semantics of a
 // predicate as a one-line string the LLM can apply mechanically. Empty
 // means the prompt's generic rules suffice — keep additions minimal,
-// only encode what the LLM has been seen to get wrong.
+// only encode what the corpus pragmas explicitly commit to.
 //
-// Source of truth is predicates.go (//winze:functional pragma is the
-// canonical functional list). The "exclusive to one originator" cluster
-// is a curated judgment call, not a pragma — a future predicate-metadata
-// pragma (//winze:exclusive) could replace this lookup.
+// Source of truth is predicates.go pragmas: //winze:functional (FormedAt
+// family) and //winze:contested (TheoryOf). Other entries here encode
+// surface semantics already implied by the predicate name (Accepts vs.
+// Disputes are antonyms; LocatedIn is a containment relation).
+//
+// Proposes is intentionally absent: the corpus uses it as a
+// multi-attribution predicate (see tunguska.go where four scientists
+// each Propose HypothesisStonyAsteroidAirburst), and predicates.go
+// carries no //winze:single-originator pragma. A prior version of this
+// function asserted Proposes was exclusive to one originator; that rule
+// did not match corpus practice and produced spurious refuteds against
+// fabricated trip-promoted claims.
 func predicateGuidance(predicate string) string {
 	switch predicate {
-	case "Proposes", "ProposesOrg":
-		return "exclusive to one originator. Two distinct Subjects Proposing the same Object is a conflict unless they are stated co-originators."
 	case "FormedAt", "EnergyEstimate", "ResolvedAs", "EnglishTranslationOf":
 		return "//winze:functional. Each Subject has at most one Object via this predicate; a second Object with the same Subject is a conflict."
 	case "TheoryOf":
