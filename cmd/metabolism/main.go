@@ -34,6 +34,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1145,30 +1146,68 @@ func containsWordBoundary(text, word string) bool {
 type hypothesisScore struct {
 	Name           string  `json:"name"`
 	VulnType       string  `json:"vuln_type"`
+	PredictionType string  `json:"prediction_type,omitempty"`
 	TotalCycles    int     `json:"total_cycles"`
 	WithSignal     int     `json:"with_signal"`
 	Corroborated   int     `json:"corroborated"`
 	Challenged     int     `json:"challenged"`
 	Irrelevant     int     `json:"irrelevant"`
 	NoSignal       int     `json:"no_signal"`
+	Confirmed      int     `json:"confirmed"` // KB-internal resolvers (e.g. trip_lint_durability)
+	Refuted        int     `json:"refuted"`   // KB-internal resolvers (e.g. trip_lint_durability)
 	Pending        int     `json:"pending"`
-	Verdict        string  `json:"verdict"`          // corroborated|challenged|irrelevant|no_signal|pending
+	Verdict        string  `json:"verdict"`          // corroborated|challenged|confirmed|irrelevant|no_signal|refuted|pending
 	CyclesToVerdict int    `json:"cycles_to_verdict"` // cycles until first useful resolution; 0 if pending
 	Precision      float64 `json:"precision"`         // useful cycles / signal cycles (0 if no signal)
+}
+
+// isHit maps a verdict to hit/miss/pending for aggregate hit-rate calculation.
+// corroborated/challenged/confirmed are hits; irrelevant/no_signal/refuted are
+// misses. This keeps sensor-based and KB-internal resolution axes on the
+// same scoreboard.
+func isHit(verdict string) bool {
+	return verdict == "corroborated" || verdict == "challenged" || verdict == "confirmed"
+}
+func isMiss(verdict string) bool {
+	return verdict == "irrelevant" || verdict == "no_signal" || verdict == "refuted"
+}
+
+// sensorVerdict reproduces the original sensor-resolution majority-vote logic
+// for backward compatibility. Factored out so the extended scoreHypotheses
+// can dispatch between sensor-based and KB-internal verdict rules.
+func sensorVerdict(s hypothesisScore) string {
+	resolved := s.Corroborated + s.Challenged + s.Irrelevant
+	switch {
+	case resolved == 0 && s.Pending > 0:
+		return "pending"
+	case resolved == 0:
+		return "no_signal"
+	case s.Challenged > s.Corroborated && s.Challenged >= s.Irrelevant:
+		return "challenged"
+	case s.Corroborated > s.Irrelevant:
+		return "corroborated"
+	case s.Irrelevant > 0:
+		return "irrelevant"
+	case s.Challenged > 0:
+		return "challenged"
+	default:
+		return "pending"
+	}
 }
 
 func scoreHypotheses(cycles []Cycle) []hypothesisScore {
 	// Group cycles by hypothesis, preserving order of first appearance.
 	type entry struct {
-		cycles []Cycle
-		vulnType string
+		cycles         []Cycle
+		vulnType       string
+		predictionType string
 	}
 	byHyp := map[string]*entry{}
 	var order []string
 	for _, c := range cycles {
 		e, ok := byHyp[c.Hypothesis]
 		if !ok {
-			e = &entry{vulnType: c.VulnType}
+			e = &entry{vulnType: c.VulnType, predictionType: c.PredictionType}
 			byHyp[c.Hypothesis] = e
 			order = append(order, c.Hypothesis)
 		}
@@ -1178,7 +1217,7 @@ func scoreHypotheses(cycles []Cycle) []hypothesisScore {
 	var scores []hypothesisScore
 	for _, name := range order {
 		e := byHyp[name]
-		s := hypothesisScore{Name: name, VulnType: e.vulnType}
+		s := hypothesisScore{Name: name, VulnType: e.vulnType, PredictionType: e.predictionType}
 		for _, c := range e.cycles {
 			s.TotalCycles++
 			if c.PapersFound > 0 {
@@ -1193,36 +1232,51 @@ func scoreHypotheses(cycles []Cycle) []hypothesisScore {
 				s.Irrelevant++
 			case "no_signal":
 				s.NoSignal++
+			case "confirmed":
+				s.Confirmed++
+			case "refuted":
+				s.Refuted++
 			default:
 				s.Pending++
 			}
 		}
 
-		// Verdict: majority of resolved signal cycles wins.
-		// This prevents asymmetric lock-in where one spurious corroboration
-		// dominates. Ties favor the more interesting outcome (challenged > corroborated).
-		resolved := s.Corroborated + s.Challenged + s.Irrelevant
+		// Verdict selection branches on resolution vocabulary. Sensor-based
+		// rows (corroborated/challenged/irrelevant/no_signal) use the
+		// existing majority logic; KB-internal rows (confirmed/refuted)
+		// use a simpler majority between the two.
+		kbInternal := s.Confirmed + s.Refuted
+		sensor := s.Corroborated + s.Challenged + s.Irrelevant + s.NoSignal
+
 		switch {
-		case resolved == 0 && s.Pending > 0:
-			s.Verdict = "pending"
-		case resolved == 0:
-			s.Verdict = "no_signal"
-		case s.Challenged > s.Corroborated && s.Challenged >= s.Irrelevant:
-			s.Verdict = "challenged"
-		case s.Corroborated > s.Irrelevant:
-			s.Verdict = "corroborated"
-		case s.Irrelevant > 0:
-			s.Verdict = "irrelevant"
-		case s.Challenged > 0:
-			s.Verdict = "challenged"
+		case kbInternal > 0 && sensor == 0:
+			// Pure KB-internal prediction (e.g. trip_lint_durability).
+			if s.Refuted > s.Confirmed {
+				s.Verdict = "refuted"
+			} else {
+				s.Verdict = "confirmed"
+			}
+		case kbInternal > 0 && sensor > 0:
+			// Mixed resolution paths on the same hypothesis name (rare).
+			// Prefer whichever side has more signal; on a tie, KB-internal
+			// wins because it's deterministic.
+			if sensor > kbInternal {
+				s.Verdict = sensorVerdict(s)
+			} else {
+				if s.Refuted > s.Confirmed {
+					s.Verdict = "refuted"
+				} else {
+					s.Verdict = "confirmed"
+				}
+			}
 		default:
-			s.Verdict = "pending"
+			s.Verdict = sensorVerdict(s)
 		}
 
-		// Cycles to verdict: count cycles until first corroborated or challenged.
-		if s.Verdict == "corroborated" || s.Verdict == "challenged" {
+		// Cycles to verdict: count cycles until first hit-shaped resolution.
+		if isHit(s.Verdict) {
 			for i, c := range e.cycles {
-				if c.Resolution == "corroborated" || c.Resolution == "challenged" {
+				if c.Resolution == "corroborated" || c.Resolution == "challenged" || c.Resolution == "confirmed" {
 					s.CyclesToVerdict = i + 1
 					break
 				}
@@ -1303,16 +1357,16 @@ func runCalibrate(dir string, jsonOut bool) {
 	var totalCyclesToVerdict int
 	var hitsWithCycles int
 	for _, s := range scores {
-		switch s.Verdict {
-		case "corroborated", "challenged":
+		switch {
+		case isHit(s.Verdict):
 			resolved++
 			hits++
 			totalCyclesToVerdict += s.CyclesToVerdict
 			hitsWithCycles++
-		case "irrelevant", "no_signal":
+		case isMiss(s.Verdict):
 			resolved++
 			misses++
-		case "pending":
+		case s.Verdict == "pending":
 			pending++
 		}
 	}
@@ -1332,10 +1386,35 @@ func runCalibrate(dir string, jsonOut bool) {
 		}
 		a := byVulnAcc[vt]
 		a.hypotheses++
-		switch s.Verdict {
-		case "corroborated", "challenged":
+		switch {
+		case isHit(s.Verdict):
 			a.hits++
-		case "irrelevant", "no_signal":
+		case isMiss(s.Verdict):
+			a.misses++
+		default:
+			a.pending++
+		}
+	}
+
+	// By prediction_type accuracy — the load-bearing bucketing. Keeps
+	// the tautological structural_fragility rows in their own bucket
+	// separate from KB-internal resolvers like trip_lint_durability,
+	// so their hit rates are not averaged together.
+	byPredTypeAcc := map[string]*vulnAccuracy{}
+	for _, s := range scores {
+		pt := s.PredictionType
+		if pt == "" {
+			pt = "structural_fragility"
+		}
+		if byPredTypeAcc[pt] == nil {
+			byPredTypeAcc[pt] = &vulnAccuracy{}
+		}
+		a := byPredTypeAcc[pt]
+		a.hypotheses++
+		switch {
+		case isHit(s.Verdict):
+			a.hits++
+		case isMiss(s.Verdict):
 			a.misses++
 		default:
 			a.pending++
@@ -1442,9 +1521,9 @@ func runCalibrate(dir string, jsonOut bool) {
 
 	// Signal quality breakdown (per cycle)
 	fmt.Printf("\n  signal quality (resolved cycles):\n")
-	totalResolved := resolutions["corroborated"] + resolutions["challenged"] + resolutions["irrelevant"] + resolutions["no_signal"]
-	useful := resolutions["corroborated"] + resolutions["challenged"]
-	fmt.Printf("    useful:    %.0f%% (%d/%d) — corroborated or challenged\n",
+	totalResolved := resolutions["corroborated"] + resolutions["challenged"] + resolutions["irrelevant"] + resolutions["no_signal"] + resolutions["confirmed"] + resolutions["refuted"]
+	useful := resolutions["corroborated"] + resolutions["challenged"] + resolutions["confirmed"]
+	fmt.Printf("    useful:    %.0f%% (%d/%d) — corroborated, challenged, or confirmed\n",
 		pct(useful, totalResolved), useful, totalResolved)
 	if resolutions["irrelevant"] > 0 {
 		fmt.Printf("    noise:     %.0f%% (%d/%d) — papers found but irrelevant\n",
@@ -1454,8 +1533,45 @@ func runCalibrate(dir string, jsonOut bool) {
 		fmt.Printf("    silence:   %.0f%% (%d/%d) — no papers found\n",
 			pct(resolutions["no_signal"], totalResolved), resolutions["no_signal"], totalResolved)
 	}
+	if resolutions["refuted"] > 0 {
+		fmt.Printf("    refuted:   %.0f%% (%d/%d) — KB-internal check rejected the claim\n",
+			pct(resolutions["refuted"], totalResolved), resolutions["refuted"], totalResolved)
+	}
 	if unresolved > 0 {
 		fmt.Printf("    unresolved: %d cycles\n", unresolved)
+	}
+
+	// By prediction type — primary bucketing. Separates tautological
+	// sensor-based predictions from KB-internal resolvers so their hit
+	// rates are not averaged together.
+	hasNonDefault := false
+	for k := range byPredTypeAcc {
+		if k != "structural_fragility" {
+			hasNonDefault = true
+			break
+		}
+	}
+	if hasNonDefault {
+		fmt.Printf("\n  by prediction type:\n")
+		var types []string
+		hasDefault := false
+		for k := range byPredTypeAcc {
+			if k == "structural_fragility" {
+				hasDefault = true
+				continue
+			}
+			types = append(types, k)
+		}
+		sort.Strings(types)
+		if hasDefault {
+			types = append([]string{"structural_fragility"}, types...)
+		}
+		for _, pt := range types {
+			a := byPredTypeAcc[pt]
+			hitRate := pct(a.hits, a.hits+a.misses)
+			fmt.Printf("    %-25s %.0f%% hit rate (%d/%d hypotheses, %d pending)\n",
+				pt, hitRate, a.hits, a.hits+a.misses, a.pending)
+		}
 	}
 
 	// By vulnerability type
@@ -1501,10 +1617,14 @@ func runCalibrate(dir string, jsonOut bool) {
 			verdictMarker = "+"
 		case "challenged":
 			verdictMarker = "!"
+		case "confirmed":
+			verdictMarker = "✓"
 		case "irrelevant":
 			verdictMarker = "-"
 		case "no_signal":
 			verdictMarker = "."
+		case "refuted":
+			verdictMarker = "✗"
 		case "pending":
 			verdictMarker = "?"
 		}
@@ -1519,7 +1639,7 @@ func runCalibrate(dir string, jsonOut bool) {
 		fmt.Printf("  %s %-42s %-14s %d/%d signal%s%s\n",
 			verdictMarker, s.Name, s.Verdict, s.WithSignal, s.TotalCycles, precisionStr, efficiency)
 	}
-	fmt.Println("\n  legend: + corroborated  ! challenged  - irrelevant  . no_signal  ? pending")
+	fmt.Println("\n  legend: + corroborated  ! challenged  ✓ confirmed  - irrelevant  . no_signal  ✗ refuted  ? pending")
 }
 
 func pct(n, d int) float64 {
