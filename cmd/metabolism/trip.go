@@ -324,6 +324,12 @@ func printTripReport(report TripReport, jsonOut bool) {
 // predicateSlots encodes the Subject/Object role-type constraints for each
 // predicate that trip promotion knows how to emit. Keep in sync with predicates.go.
 // A predicate not listed here cannot be promoted — add it deliberately.
+//
+// IMPORTANT: when adding an attribution predicate (Proposes-family,
+// Authored-family, Accepts-family, EarlyFormulationOf, ResolvedAs), also
+// add it to tripBannedPredicates. The trip cycle has no source-grounding
+// step, so attribution claims it generates would be fabrications. See
+// feedback memory feedback_trip_promotion_fabrication.md.
 var predicateSlots = map[string]struct {
 	Subject string
 	Object  string
@@ -358,6 +364,50 @@ func compatiblePredicates(roleA, roleB string) []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// tripBannedPredicates lists predicates the trip cycle MUST NOT promote.
+// These predicates assert intellectual commitment by a specific Person
+// (Proposes, Disputes, Accepts) — fabricating any of these is a
+// mirror-source-commitments violation: the corpus would assert "X said Y"
+// without X having said Y.
+//
+// The trip cycle generates speculative cross-cluster connections from an
+// LLM, with no source-grounding step. Permissive predicates (TheoryOf,
+// CommentaryOn, InfluencedBy, BelongsTo, DerivedFrom) are still allowed
+// — they make looser relational claims where the speculative provenance
+// tag carries less weight. Attribution claims need real sources; trip
+// can't supply them. Filed in feedback memory as
+// feedback_trip_promotion_fabrication.md.
+//
+// Currently lists only the 3 attribution predicates that exist in
+// predicateSlots (the trip cycle's emit menu). Org-suffix variants
+// (ProposesOrg, DisputesOrg, AcceptsOrg), Authored, AuthoredOrg,
+// EarlyFormulationOf, and ResolvedAs are also attribution-laden and
+// must be added here if predicateSlots is ever extended to include
+// them — see the comment on predicateSlots.
+//
+// Reverted commit 4e350dc (session 8) is the case study: 8 fabricated
+// "X Proposes Y" claims promoted in one cycle with the bias active.
+var tripBannedPredicates = map[string]bool{
+	"Proposes": true,
+	"Disputes": true,
+	"Accepts":  true,
+}
+
+// tripCompatiblePredicates is compatiblePredicates with attribution
+// predicates filtered out. Used everywhere the trip cycle hands a
+// predicate menu to the LLM — keeps the generator from picking
+// predicates we'll later refuse to promote.
+func tripCompatiblePredicates(roleA, roleB string) []string {
+	all := compatiblePredicates(roleA, roleB)
+	out := make([]string, 0, len(all))
+	for _, p := range all {
+		if !tripBannedPredicates[p] {
+			out = append(out, p)
+		}
+	}
 	return out
 }
 
@@ -401,6 +451,24 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 	var attempts []tripPromotionAttempt
 	for _, c := range promotable {
 		attemptName := fmt.Sprintf("%s_%s_%s", c.EntityA, c.Predicate, c.EntityB)
+
+		// Defensive guard: reject attribution predicates regardless of how
+		// they got past the prompt filter (LLM ignored the menu, model
+		// changed, prompt regressed). The trip cycle has no source-grounding
+		// step, so promoting attribution claims = mirror-source-commitments
+		// violation. See tripBannedPredicates.
+		if tripBannedPredicates[c.Predicate] {
+			evidence := fmt.Sprintf("%s %s %s: predicate %q is attribution-laden; trip cannot supply source grounding",
+				c.EntityA, c.Predicate, c.EntityB, c.Predicate)
+			fmt.Printf("[trip-promote] skip %s\n", evidence)
+			attempts = append(attempts, tripPromotionAttempt{
+				Name:     attemptName,
+				Accepted: false,
+				Reason:   "attribution_predicate_banned",
+				Evidence: evidence,
+			})
+			continue
+		}
 
 		// Validate both entities exist
 		if !entityVars[c.EntityA] || !entityVars[c.EntityB] {
@@ -1127,7 +1195,8 @@ func generateConnection(client anthropic.Client, pair tripPair, promptType strin
 	}
 
 	// Build a per-pair predicate enum. If empty, allow NONE only.
-	compat := compatiblePredicates(pair.A.roleType, pair.B.roleType)
+	// Attribution predicates are filtered out — see tripBannedPredicates.
+	compat := tripCompatiblePredicates(pair.A.roleType, pair.B.roleType)
 	predEnum := append([]string{"NONE"}, compat...)
 
 	schema := anthropic.ToolInputSchemaParam{
@@ -1217,8 +1286,10 @@ func buildTripPrompt(pair tripPair, promptType string) string {
 		briefB = "(no description available)"
 	}
 
-	// Filter predicate table to only those compatible with this pair's roles.
-	compat := compatiblePredicates(pair.A.roleType, pair.B.roleType)
+	// Filter predicate table to only those compatible with this pair's
+	// roles, minus attribution predicates (tripBannedPredicates) which the
+	// promoter would refuse anyway. Showing them would just waste tokens.
+	compat := tripCompatiblePredicates(pair.A.roleType, pair.B.roleType)
 	var predicateList string
 	if len(compat) == 0 {
 		predicateList = "  (no compatible predicates for this role pair — use NONE)"

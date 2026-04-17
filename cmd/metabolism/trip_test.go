@@ -128,6 +128,52 @@ func TestCompatiblePredicates(t *testing.T) {
 	}
 }
 
+// TestTripCompatiblePredicates pins the contract between the trip cycle and
+// tripBannedPredicates: the LLM prompt must never offer attribution
+// predicates (Proposes, Disputes, etc.). If a future predicate is added
+// that would let the trip cycle fabricate attribution, this test catches
+// the omission when the predicate gets banned.
+func TestTripCompatiblePredicates(t *testing.T) {
+	cases := []struct {
+		roleA string
+		roleB string
+		want  []string
+	}{
+		// Person ↔ Hypothesis used to surface Proposes/Disputes/Accepts.
+		// All three are attribution-laden and now filtered.
+		{"Person", "Hypothesis", []string{}},
+		{"Hypothesis", "Person", []string{}},
+		// Permissive cases unaffected.
+		{"Person", "Person", []string{"InfluencedBy"}},
+		{"Hypothesis", "Concept", []string{"TheoryOf"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.roleA+"-"+tc.roleB, func(t *testing.T) {
+			got := tripCompatiblePredicates(tc.roleA, tc.roleB)
+			if len(got) != len(tc.want) {
+				t.Errorf("tripCompatiblePredicates(%q, %q) = %v, want %v", tc.roleA, tc.roleB, got, tc.want)
+				return
+			}
+			for i, p := range tc.want {
+				if got[i] != p {
+					t.Errorf("tripCompatiblePredicates(%q, %q)[%d] = %q, want %q",
+						tc.roleA, tc.roleB, i, got[i], p)
+				}
+			}
+		})
+	}
+
+	// Independent check: every entry in tripBannedPredicates must be a
+	// real predicate (defined in predicateSlots). Catches typos in the
+	// banned list — silently dead entries would let attribution slip
+	// through.
+	for p := range tripBannedPredicates {
+		if _, ok := predicateSlots[p]; !ok {
+			t.Errorf("tripBannedPredicates entry %q has no predicateSlots entry — dead ban", p)
+		}
+	}
+}
+
 func TestDrugProfile(t *testing.T) {
 	cases := []struct {
 		temp       float64
