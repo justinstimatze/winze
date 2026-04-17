@@ -23,7 +23,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -322,9 +321,50 @@ func printTripReport(report TripReport, jsonOut bool) {
 	fmt.Println("  legend: ! score 4-5 (promote)  * score 3 (review)  · score 1-2 (drop)")
 }
 
+// predicateSlots encodes the Subject/Object role-type constraints for each
+// predicate that trip promotion knows how to emit. Keep in sync with predicates.go.
+// A predicate not listed here cannot be promoted — add it deliberately.
+var predicateSlots = map[string]struct {
+	Subject string
+	Object  string
+}{
+	"InfluencedBy": {"Person", "Person"},
+	"DerivedFrom":  {"Concept", "Concept"},
+	"BelongsTo":    {"Concept", "Concept"},
+	"Disputes":     {"Person", "Hypothesis"},
+	"Proposes":     {"Person", "Hypothesis"},
+	"Accepts":      {"Person", "Hypothesis"},
+	"TheoryOf":     {"Hypothesis", "Concept"},
+	"CommentaryOn": {"Concept", "Concept"},
+}
+
+// validatePredicate returns true iff predicate's type constraints match subjRole→objRole.
+func validatePredicate(pred, subjRole, objRole string) bool {
+	slots, ok := predicateSlots[pred]
+	if !ok {
+		return false
+	}
+	return slots.Subject == subjRole && slots.Object == objRole
+}
+
+// compatiblePredicates returns predicates where some ordering of (roleA, roleB)
+// satisfies the predicate's slot constraints. Used to filter the LLM prompt.
+func compatiblePredicates(roleA, roleB string) []string {
+	var out []string
+	for pred, slots := range predicateSlots {
+		if (slots.Subject == roleA && slots.Object == roleB) ||
+			(slots.Subject == roleB && slots.Object == roleA) {
+			out = append(out, pred)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // promoteConnections converts high-scoring trip connections into corpus claims.
-// Only promotes connections with Score >= 4, a valid predicate, and both entities
-// existing in the KB. Writes to a new metabolism_cycleN.go file with quality gates.
+// Only promotes connections with Score >= 4, a valid predicate, both entities
+// existing in the KB, and type-compatible Subject/Object slots.
+// Writes to a new metabolism_cycleN.go file with quality gates.
 func promoteConnections(dir string, connections []TripConnection) error {
 	// Filter for promotable connections
 	var promotable []TripConnection
@@ -338,8 +378,9 @@ func promoteConnections(dir string, connections []TripConnection) error {
 		return nil
 	}
 
-	// Collect existing entity var names to validate
+	// Collect entity vars + role types for validation
 	entityVars := collectEntityVarNames(dir)
+	entityRoles := collectEntityRoles(dir)
 
 	cycleNum := nextCycleNumber(dir)
 	outPath := filepath.Join(dir, fmt.Sprintf("metabolism_cycle%d.go", cycleNum))
@@ -366,6 +407,21 @@ func promoteConnections(dir string, connections []TripConnection) error {
 		subj, obj := c.EntityA, c.EntityB
 		if strings.Contains(strings.ToUpper(c.Subject), "B") {
 			subj, obj = c.EntityB, c.EntityA
+		}
+
+		// Validate predicate type constraints. If the LLM picked the wrong
+		// direction, try the swap. If neither orientation satisfies the
+		// predicate's slot types, skip the claim — don't write it to disk.
+		subjRole, objRole := entityRoles[subj], entityRoles[obj]
+		if !validatePredicate(c.Predicate, subjRole, objRole) {
+			if validatePredicate(c.Predicate, objRole, subjRole) {
+				subj, obj = obj, subj
+				subjRole, objRole = objRole, subjRole
+			} else {
+				fmt.Printf("[trip-promote] skip %s(%s) %s %s(%s): type mismatch\n",
+					c.EntityA, entityRoles[c.EntityA], c.Predicate, c.EntityB, entityRoles[c.EntityB])
+				continue
+			}
 		}
 
 		provVar := fmt.Sprintf("tripCycle%d%s%sSource", cycleNum, subj, obj)
@@ -413,6 +469,16 @@ func promoteConnections(dir string, connections []TripConnection) error {
 	}
 	fmt.Printf("[trip-promote] ✓ %d speculative connections promoted to corpus\n", promoted)
 	return nil
+}
+
+// collectEntityRoles returns name → role type for every KB entity. Used by
+// trip promotion to validate predicate Subject/Object type constraints.
+func collectEntityRoles(dir string) map[string]string {
+	out := map[string]string{}
+	for _, e := range collectTripEntities(dir) {
+		out[e.name] = e.roleType
+	}
+	return out
 }
 
 // collectEntityVarNames returns a set of all entity variable names in the KB.
@@ -902,48 +968,37 @@ Score 1-5:
   4 = novel and defensible — changes how you think about the entities
   5 = genuinely surprising — this should be in the KB
 
-Respond in exactly two lines:
-SCORE: <number>
-RATIONALE: <one sentence>`, promptType, strings.Join(entityNames, ", "), narrative)
+Call score_narrative with your score and one-sentence rationale.`, promptType, strings.Join(entityNames, ", "), narrative)
 
-	resp, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
-		Model:       anthropic.ModelClaudeHaiku4_5,
-		MaxTokens:   128,
-		Temperature: anthropic.Float(0.0),
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+	schema := anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"score": map[string]any{
+				"type":        "integer",
+				"minimum":     1,
+				"maximum":     5,
+				"description": "1=trivial, 2=weak, 3=interesting, 4=novel+defensible, 5=genuinely surprising.",
+			},
+			"rationale": map[string]any{
+				"type":        "string",
+				"description": "One sentence explaining the score.",
+			},
 		},
-	})
+		Required: []string{"score", "rationale"},
+	}
+	tool := anthropic.ToolUnionParamOfTool(schema, "score_narrative")
+
+	raw, err := callToolUse(client, prompt, tool, anthropic.ModelClaudeHaiku4_5, 0.0, 128)
 	if err != nil {
 		return 1, "scoring failed"
 	}
-
-	var text string
-	for _, block := range resp.Content {
-		if block.Type == "text" {
-			text = block.Text
-			break
-		}
+	var out struct {
+		Score     int    `json:"score"`
+		Rationale string `json:"rationale"`
 	}
-
-	score := 1
-	rationale := ""
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if v, ok := strings.CutPrefix(line, "SCORE:"); ok {
-			if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-				if n < 1 {
-					n = 1
-				} else if n > 5 {
-					n = 5
-				}
-				score = n
-			}
-		} else if v, ok := strings.CutPrefix(line, "RATIONALE:"); ok {
-			rationale = strings.TrimSpace(v)
-		}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return 1, "decode failed"
 	}
-	return score, rationale
+	return out.Score, out.Rationale
 }
 
 // extractNewConcept pulls the NEW CONCEPT line from a synthesis narrative.
@@ -973,7 +1028,36 @@ func extractFirstSentence(s string) string {
 	return s
 }
 
+// callToolUse invokes the API with a single forced tool and returns the Input
+// JSON. The model cannot free-form — it must emit tool_use with schema-valid
+// input, eliminating parse failures and invalid enums by construction.
+func callToolUse(client anthropic.Client, prompt string, tool anthropic.ToolUnionParam, model anthropic.Model, temp float64, maxTokens int64) (json.RawMessage, error) {
+	resp, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
+		Model:       model,
+		MaxTokens:   maxTokens,
+		Temperature: anthropic.Float(temp),
+		Tools:       []anthropic.ToolUnionParam{tool},
+		ToolChoice:  anthropic.ToolChoiceParamOfTool(tool.OfTool.Name),
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("API error: %w", err)
+	}
+	for _, block := range resp.Content {
+		if block.Type == "tool_use" {
+			tu := block.AsToolUse()
+			return tu.Input, nil
+		}
+	}
+	return nil, fmt.Errorf("no tool_use block in response")
+}
+
 // generateConnection calls the LLM to generate and judge a speculative connection.
+// Uses tool_use with a dynamically-scoped predicate enum: only predicates whose
+// Subject/Object slots could accept this entity pair are offered. Invalid
+// predicates are impossible by schema.
 func generateConnection(client anthropic.Client, pair tripPair, promptType string, temperature float64) (TripConnection, error) {
 	prompt := buildTripPrompt(pair, promptType)
 
@@ -981,34 +1065,73 @@ func generateConnection(client anthropic.Client, pair tripPair, promptType strin
 	if apiTemp > 1.0 {
 		apiTemp = 1.0
 	}
-	resp, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
-		Model:       anthropic.ModelClaudeHaiku4_5,
-		MaxTokens:   512,
-		Temperature: anthropic.Float(apiTemp),
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+
+	// Build a per-pair predicate enum. If empty, allow NONE only.
+	compat := compatiblePredicates(pair.A.roleType, pair.B.roleType)
+	predEnum := append([]string{"NONE"}, compat...)
+
+	schema := anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"connection": map[string]any{
+				"type":        "string",
+				"description": "One sentence describing the speculative connection.",
+			},
+			"predicate": map[string]any{
+				"type":        "string",
+				"enum":        predEnum,
+				"description": "Which KB predicate fits. NONE if no compatible predicate.",
+			},
+			"subject": map[string]any{
+				"type":        "string",
+				"enum":        []string{"A", "B"},
+				"description": "Which entity is the predicate Subject.",
+			},
+			"score": map[string]any{
+				"type":        "integer",
+				"minimum":     1,
+				"maximum":     5,
+				"description": "1=trivial, 2=weak, 3=interesting, 4=novel+defensible, 5=genuinely surprising.",
+			},
+			"rationale": map[string]any{
+				"type":        "string",
+				"description": "One sentence explaining the score.",
+			},
 		},
-	})
+		Required: []string{"connection", "predicate", "subject", "score", "rationale"},
+	}
+	tool := anthropic.ToolUnionParamOfTool(schema, "propose_connection")
+
+	raw, err := callToolUse(client, prompt, tool, anthropic.ModelClaudeHaiku4_5, apiTemp, 512)
 	if err != nil {
-		return TripConnection{}, fmt.Errorf("API error: %w", err)
+		return TripConnection{}, err
 	}
 
-	var responseText string
-	for _, block := range resp.Content {
-		if block.Type == "text" {
-			responseText = block.Text
-			break
-		}
+	var out struct {
+		Connection string `json:"connection"`
+		Predicate  string `json:"predicate"`
+		Subject    string `json:"subject"`
+		Score      int    `json:"score"`
+		Rationale  string `json:"rationale"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return TripConnection{}, fmt.Errorf("decode tool input: %w", err)
 	}
 
-	conn := parseTripResponse(responseText)
-	conn.EntityA = pair.A.name
-	conn.EntityB = pair.B.name
-	conn.ClusterA = pair.A.cluster
-	conn.ClusterB = pair.B.cluster
-	conn.PromptType = promptType
-	conn.Temperature = temperature
-
+	conn := TripConnection{
+		EntityA:     pair.A.name,
+		EntityB:     pair.B.name,
+		ClusterA:    pair.A.cluster,
+		ClusterB:    pair.B.cluster,
+		PromptType:  promptType,
+		Temperature: temperature,
+		Connection:  out.Connection,
+		Rationale:   out.Rationale,
+		Subject:     out.Subject,
+		Score:       out.Score,
+	}
+	if out.Predicate != "NONE" {
+		conn.Predicate = out.Predicate
+	}
 	return conn, nil
 }
 
@@ -1034,6 +1157,20 @@ func buildTripPrompt(pair tripPair, promptType string) string {
 		briefB = "(no description available)"
 	}
 
+	// Filter predicate table to only those compatible with this pair's roles.
+	compat := compatiblePredicates(pair.A.roleType, pair.B.roleType)
+	var predicateList string
+	if len(compat) == 0 {
+		predicateList = "  (no compatible predicates for this role pair — use NONE)"
+	} else {
+		var b strings.Builder
+		for _, p := range compat {
+			s := predicateSlots[p]
+			b.WriteString(fmt.Sprintf("  %s: %s→%s\n", p, s.Subject, s.Object))
+		}
+		predicateList = b.String()
+	}
+
 	return fmt.Sprintf(`You are generating speculative cross-domain connections for a knowledge base about the epistemology of minds — how minds build, validate, and fail at modeling reality.
 
 These two entities are in DIFFERENT clusters (no existing connection). Your job: find a non-obvious but defensible connection.
@@ -1047,65 +1184,14 @@ Entity B: %s (%s)
 Connection type: %s
 %s
 
-Predicate compatibility (Subject→Object):
-  InfluencedBy: Person→Person
-  DerivedFrom: Concept→Concept
-  BelongsTo: Concept→Concept
-  Disputes: Person→Hypothesis
-  Proposes: Person→Hypothesis
-  Accepts: Person→Hypothesis
-  TheoryOf: Hypothesis→Concept
-  CommentaryOn: Concept→Concept
-
-Entity A is a %s. Entity B is a %s. Only suggest a predicate where A's role matches Subject and B's role matches Object (or vice versa). If no predicate's type constraints fit, use NONE.
-
-Respond in this exact format:
-CONNECTION: <one sentence describing the speculative connection>
-PREDICATE: <which KB predicate type fits, or NONE>
-SUBJECT: <which entity is the Subject — A or B>
-SCORE: <1-5 interestingness: 1=trivial, 2=weak, 3=interesting, 4=novel+defensible, 5=genuinely surprising>
-RATIONALE: <one sentence explaining why this score>
-
-If no meaningful connection exists, give SCORE: 1 and say so.`,
+Compatible predicates for this entity pair (Subject→Object):
+%s
+Entity A is a %s. Entity B is a %s. Use only a predicate from the list above (or NONE). SUBJECT must match the predicate's Subject role. If no meaningful connection exists, set predicate=NONE and score=1.`,
 		pair.A.name, pair.A.roleType, briefA,
 		pair.B.name, pair.B.roleType, briefB,
 		promptType, promptInstruction,
+		predicateList,
 		pair.A.roleType, pair.B.roleType)
-}
-
-func parseTripResponse(response string) TripConnection {
-	var conn TripConnection
-	for _, line := range strings.Split(response, "\n") {
-		line = strings.TrimSpace(line)
-		if v, ok := strings.CutPrefix(line, "CONNECTION:"); ok {
-			conn.Connection = strings.TrimSpace(v)
-		} else if v, ok := strings.CutPrefix(line, "PREDICATE:"); ok {
-			pred := strings.TrimSpace(v)
-			if pred != "NONE" && pred != "" {
-				conn.Predicate = pred
-			}
-		} else if v, ok := strings.CutPrefix(line, "SUBJECT:"); ok {
-			conn.Subject = strings.TrimSpace(v)
-		} else if v, ok := strings.CutPrefix(line, "SCORE:"); ok {
-			v = strings.TrimSpace(v)
-			if n, err := strconv.Atoi(v); err == nil {
-				if n < 1 {
-					n = 1
-				} else if n > 5 {
-					n = 5
-				}
-				conn.Score = n
-			} else {
-				fmt.Fprintf(os.Stderr, "trip: score parse error %q: %v (defaulting to 1)\n", v, err)
-			}
-		} else if v, ok := strings.CutPrefix(line, "RATIONALE:"); ok {
-			conn.Rationale = strings.TrimSpace(v)
-		}
-	}
-	if conn.Score == 0 {
-		conn.Score = 1 // default to lowest if parsing failed
-	}
-	return conn
 }
 
 // drugProfile characterizes the temperature × prompt combination.

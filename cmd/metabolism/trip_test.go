@@ -1,7 +1,6 @@
 package main
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -71,70 +70,59 @@ func TestPickCrossClusterPairs(t *testing.T) {
 	})
 }
 
-func TestParseTripResponse(t *testing.T) {
+func TestValidatePredicate(t *testing.T) {
 	cases := []struct {
-		name     string
-		response string
-		wantConn string
-		wantPred string
-		wantSc   int
-		wantRat  string
+		pred     string
+		subjRole string
+		objRole  string
+		want     bool
 	}{
-		{
-			name: "well formed",
-			response: `CONNECTION: Both deal with limits of knowledge
-PREDICATE: TheoryOf
-SCORE: 4
-RATIONALE: Structural parallel between incompleteness and hard problem`,
-			wantConn: "Both deal with limits of knowledge",
-			wantPred: "TheoryOf",
-			wantSc:   4,
-			wantRat:  "Structural parallel",
-		},
-		{
-			name: "missing score defaults to 1",
-			response: `CONNECTION: Weak link
-PREDICATE: NONE
-RATIONALE: Not convincing`,
-			wantConn: "Weak link",
-			wantPred: "",
-			wantSc:   1,
-			wantRat:  "Not convincing",
-		},
-		{
-			name:     "empty response",
-			response: "",
-			wantConn: "",
-			wantSc:   1,
-		},
-		{
-			name: "NONE predicate treated as empty",
-			response: `CONNECTION: Something
-PREDICATE: NONE
-SCORE: 3`,
-			wantPred: "",
-			wantSc:   3,
-		},
-		{
-			name: "score out of range clamped",
-			response: `SCORE: 9`,
-			wantSc: 5, // 9 > 5, clamped to max 5
-		},
+		{"TheoryOf", "Hypothesis", "Concept", true},
+		{"TheoryOf", "Concept", "Hypothesis", false}, // reversed
+		{"Proposes", "Person", "Hypothesis", true},
+		{"Proposes", "Hypothesis", "Person", false},
+		{"InfluencedBy", "Person", "Person", true},
+		{"InfluencedBy", "Person", "Concept", false},
+		{"BelongsTo", "Concept", "Concept", true},
+		{"BelongsTo", "Hypothesis", "Concept", false},
+		{"BogusPredicate", "Person", "Person", false}, // unknown
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := parseTripResponse(tc.response)
-			if tc.wantConn != "" && got.Connection != tc.wantConn {
-				t.Errorf("Connection = %q, want %q", got.Connection, tc.wantConn)
+		t.Run(tc.pred+"/"+tc.subjRole+"->"+tc.objRole, func(t *testing.T) {
+			got := validatePredicate(tc.pred, tc.subjRole, tc.objRole)
+			if got != tc.want {
+				t.Errorf("validatePredicate(%q, %q, %q) = %v, want %v",
+					tc.pred, tc.subjRole, tc.objRole, got, tc.want)
 			}
-			if got.Predicate != tc.wantPred {
-				t.Errorf("Predicate = %q, want %q", got.Predicate, tc.wantPred)
+		})
+	}
+}
+
+func TestCompatiblePredicates(t *testing.T) {
+	cases := []struct {
+		roleA string
+		roleB string
+		want  []string
+	}{
+		{"Person", "Person", []string{"InfluencedBy"}},
+		{"Person", "Hypothesis", []string{"Accepts", "Disputes", "Proposes"}},
+		{"Hypothesis", "Person", []string{"Accepts", "Disputes", "Proposes"}}, // symmetric
+		{"Hypothesis", "Concept", []string{"TheoryOf"}},
+		{"Concept", "Concept", []string{"BelongsTo", "CommentaryOn", "DerivedFrom"}},
+		{"Place", "Person", []string{}}, // no compatible predicate
+	}
+	for _, tc := range cases {
+		t.Run(tc.roleA+"-"+tc.roleB, func(t *testing.T) {
+			got := compatiblePredicates(tc.roleA, tc.roleB)
+			if len(got) != len(tc.want) {
+				t.Errorf("compatiblePredicates(%q, %q) = %v, want %v", tc.roleA, tc.roleB, got, tc.want)
+				return
 			}
-			if got.Score != tc.wantSc {
-				t.Errorf("Score = %d, want %d", got.Score, tc.wantSc)
-			}
-			if tc.wantRat != "" && !strings.Contains(got.Rationale, tc.wantRat) {
-				t.Errorf("Rationale = %q, want to contain %q", got.Rationale, tc.wantRat)
+			for i, p := range tc.want {
+				if got[i] != p {
+					t.Errorf("compatiblePredicates(%q, %q)[%d] = %q, want %q",
+						tc.roleA, tc.roleB, i, got[i], p)
+				}
 			}
 		})
 	}

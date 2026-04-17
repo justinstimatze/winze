@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -246,13 +247,7 @@ WHAT TO FLAG as contradictions:
 - Temporal impossibilities (e.g., a person born after an event they supposedly led)
 - Logical impossibilities across claims
 
-For each contradiction, respond with exactly:
-CONTRADICTION: [claim_var_name_1] vs [claim_var_name_2]: one sentence explanation
-
-If no contradictions are found, respond with exactly:
-NO_CONTRADICTIONS
-
-Do not explain your reasoning. Do not add commentary. Only output CONTRADICTION lines or NO_CONTRADICTIONS.
+Call report_contradictions with the list of contradictions found. If none, pass an empty array.
 
 === CLAIMS TO CHECK ===
 `)
@@ -260,39 +255,13 @@ Do not explain your reasoning. Do not add commentary. Only output CONTRADICTION 
 	return b.String()
 }
 
-func parseFindings(response string) []llmFinding {
-	var out []llmFinding
-	scanner := bufio.NewScanner(strings.NewReader(response))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "CONTRADICTION:") {
-			continue
-		}
-		rest := strings.TrimPrefix(line, "CONTRADICTION:")
-		rest = strings.TrimSpace(rest)
-		parts := strings.SplitN(rest, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		claims := strings.TrimSpace(parts[0])
-		explanation := strings.TrimSpace(parts[1])
-		vsParts := strings.SplitN(claims, " vs ", 2)
-		if len(vsParts) != 2 {
-			continue
-		}
-		out = append(out, llmFinding{
-			claimA:      strings.Trim(strings.TrimSpace(vsParts[0]), "[]"),
-			claimB:      strings.Trim(strings.TrimSpace(vsParts[1]), "[]"),
-			explanation: explanation,
-		})
-	}
-	return out
-}
-
-func callLLM(prompt string, budget llmBudget) (string, error) {
+// callLLMForContradictions invokes the API with a forced report_contradictions
+// tool and returns the structured findings. Schema enforces var-name pairs +
+// explanation per finding — no fragile text parsing.
+func callLLMForContradictions(prompt string, budget llmBudget) ([]llmFinding, error) {
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if key == "" {
-		return "", fmt.Errorf("ANTHROPIC_API_KEY not set (create .env or export it)")
+		return nil, fmt.Errorf("ANTHROPIC_API_KEY not set (create .env or export it)")
 	}
 
 	model := anthropic.ModelClaudeHaiku4_5
@@ -300,24 +269,75 @@ func callLLM(prompt string, budget llmBudget) (string, error) {
 		model = anthropic.ModelClaudeSonnet4_6
 	}
 
+	schema := anthropic.ToolInputSchemaParam{
+		Properties: map[string]any{
+			"contradictions": map[string]any{
+				"type":        "array",
+				"description": "List of contradictions found. Empty if none.",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"claim_a": map[string]any{
+							"type":        "string",
+							"description": "Variable name of the first claim (e.g. SmithDisputesJonesHypothesis).",
+						},
+						"claim_b": map[string]any{
+							"type":        "string",
+							"description": "Variable name of the second claim.",
+						},
+						"explanation": map[string]any{
+							"type":        "string",
+							"description": "One sentence explaining the contradiction.",
+						},
+					},
+					"required": []string{"claim_a", "claim_b", "explanation"},
+				},
+			},
+		},
+		Required: []string{"contradictions"},
+	}
+	tool := anthropic.ToolUnionParamOfTool(schema, "report_contradictions")
+
 	client := anthropic.NewClient(option.WithAPIKey(key))
 	resp, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
-		Model:     model,
-		MaxTokens: int64(budget.maxTokens),
+		Model:      model,
+		MaxTokens:  int64(budget.maxTokens),
+		Tools:      []anthropic.ToolUnionParam{tool},
+		ToolChoice: anthropic.ToolChoiceParamOfTool("report_contradictions"),
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("API error: %w", err)
+		return nil, fmt.Errorf("API error: %w", err)
 	}
 
 	for _, block := range resp.Content {
-		if block.Type == "text" {
-			return block.Text, nil
+		if block.Type != "tool_use" {
+			continue
 		}
+		tu := block.AsToolUse()
+		var out struct {
+			Contradictions []struct {
+				ClaimA      string `json:"claim_a"`
+				ClaimB      string `json:"claim_b"`
+				Explanation string `json:"explanation"`
+			} `json:"contradictions"`
+		}
+		if err := json.Unmarshal(tu.Input, &out); err != nil {
+			return nil, fmt.Errorf("decode tool input: %w", err)
+		}
+		findings := make([]llmFinding, 0, len(out.Contradictions))
+		for _, c := range out.Contradictions {
+			findings = append(findings, llmFinding{
+				claimA:      c.ClaimA,
+				claimB:      c.ClaimB,
+				explanation: c.Explanation,
+			})
+		}
+		return findings, nil
 	}
-	return "", fmt.Errorf("no text content in response")
+	return nil, fmt.Errorf("no tool_use block in response")
 }
 
 func loadDotEnv(dir string) {
@@ -404,14 +424,13 @@ func llmContradictionRule(dir string, budget llmBudget) int {
 		serialized := serializeNeighborhood(n, briefs)
 		prompt := buildPrompt(serialized, suppressed)
 
-		response, err := callLLM(prompt, budget)
+		findings, err := callLLMForContradictions(prompt, budget)
 		callCount++
 		if err != nil {
 			errCount++
 			continue
 		}
 
-		findings := parseFindings(response)
 		if len(findings) > 0 {
 			allFindings = append(allFindings, struct {
 				entity   entitySite
