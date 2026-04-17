@@ -516,6 +516,12 @@ func promoteConnections(dir string, connections []TripConnection) error {
 	if err := logTripLintDurability(dir, promotedVars); err != nil {
 		fmt.Fprintf(os.Stderr, "[trip-promote] lint-durability resolution: %v\n", err)
 	}
+	// Deterministic //winze:functional collision check. No LLM, no API
+	// cost; pure type-system property pinned to a pragma the corpus
+	// controls. Runs even when ANTHROPIC_API_KEY is absent.
+	if err := logTripFunctionalDurability(dir, promotedClaims); err != nil {
+		fmt.Fprintf(os.Stderr, "[trip-promote] functional-durability resolution: %v\n", err)
+	}
 	// Stricter semantic check via LLM contradiction on the promoted
 	// claim's neighborhood. Gated on ANTHROPIC_API_KEY inside the
 	// resolver; silently skipped otherwise.
