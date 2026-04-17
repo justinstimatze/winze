@@ -28,5 +28,6 @@ jobs:
       - name: Lint (deterministic rules)
         run: go run ./cmd/lint .
 
-      - name: Topology
-        run: go run ./cmd/topology .
+      # cmd/topology smoke-runs against the real corpus, but it needs a
+      # populated defn database. CI doesn't provision one, so skip the
+      # binary smoke and rely on cmd/topology unit tests for coverage.
