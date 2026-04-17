@@ -35,6 +35,91 @@ type hypothesisRecord struct {
 	evidence   string         // first non-empty Evidence from any cycle (for KB-internal resolvers)
 }
 
+// kbInternalConfig describes one KB-internal prediction-type bucket. Each
+// bucket emits its own meta-Hypothesis + per-claim Event/Predicts/ResolvedAs
+// trio. Adding a new resolver = adding one entry here.
+type kbInternalConfig struct {
+	predictionType string // matches Cycle.PredictionType
+	metaVar        string // Go var name for the meta-hypothesis
+	metaID         string // entity ID
+	metaName       string // human-readable name
+	metaBrief      string // entity Brief
+	sectionHeader  string // human-readable section header in the comment block
+	varPrefix      string // prefix for per-claim var names; combined with sanitize(hypName)
+	eventIDPrefix  string // entity ID prefix for the per-cycle Event
+	eventNameTmpl  string // %s = hypName
+	eventBriefTmpl string // %s = hypName
+	predictsSuffix string // appended to varBase for the Predicts var name
+}
+
+// kbInternalConfigs lists every KB-internal resolver. Order is the section
+// order in predictions.go. Adding a new resolver: append a config and ensure
+// the resolver writes Cycle{PredictionType: predictionType, Hypothesis: ...,
+// Evidence: ..., Resolution: confirmed|refuted}.
+var kbInternalConfigs = []kbInternalConfig{
+	{
+		predictionType: "trip_lint_durability",
+		metaVar:        "TripPromotionSurvivesLint",
+		metaID:         "trip-promotion-survives-lint",
+		metaName:       "Trip-promoted claims survive cmd/lint",
+		metaBrief:      "Speculative cross-cluster connections promoted by the trip cycle pass cmd/lint's deterministic rules (value-conflict, orphan-report, provenance-split, brief-check, naming-oracle, contested-concept). Self-resolving: no external sensor, no LLM oracle — the substrate's own rules are the oracle.",
+		sectionHeader:  "Meta-hypothesis: trip-promoted claims survive cmd/lint.",
+		varPrefix:      "TripLint",
+		eventIDPrefix:  "lint-durability-check",
+		eventNameTmpl:  "Lint durability check for %s",
+		eventBriefTmpl: "cmd/lint run observing whether %s was flagged by any deterministic rule.",
+		predictsSuffix: "Survival",
+	},
+	{
+		predictionType: "trip_functional_durability",
+		metaVar:        "TripPromotionRespectsFunctionalUniqueness",
+		metaID:         "trip-promotion-respects-functional-uniqueness",
+		metaName:       "Trip-promoted claims respect //winze:functional uniqueness",
+		metaBrief:      "Speculative cross-cluster connections promoted by the trip cycle do not violate functional-predicate uniqueness — for every (Subject, Predicate) where Predicate is //winze:functional, there is at most one Object. Deterministic resolver, no LLM, no API cost.",
+		sectionHeader:  "Meta-hypothesis: trip-promoted claims respect functional-predicate uniqueness.",
+		varPrefix:      "TripFunctional",
+		eventIDPrefix:  "functional-durability-check",
+		eventNameTmpl:  "Functional durability check for %s",
+		eventBriefTmpl: "//winze:functional pragma check observing whether %s creates a Subject-with-multiple-Objects collision.",
+		predictsSuffix: "FunctionalUniqueness",
+	},
+	{
+		predictionType: "trip_llm_durability",
+		metaVar:        "TripPromotionPassesContradictionCheck",
+		metaID:         "trip-promotion-passes-contradiction-check",
+		metaName:       "Trip-promoted claims pass LLM contradiction check",
+		metaBrief:      "Speculative cross-cluster connections promoted by the trip cycle do not contradict existing claims in the topology neighborhood, as judged by an LLM with predicate-semantics guidance. Oracle quality is bounded by prompt fidelity to predicates.go.",
+		sectionHeader:  "Meta-hypothesis: trip-promoted claims pass LLM contradiction check.",
+		varPrefix:      "TripLLM",
+		eventIDPrefix:  "llm-contradiction-check",
+		eventNameTmpl:  "LLM contradiction check for %s",
+		eventBriefTmpl: "LLM neighborhood contradiction check observing whether %s contradicts existing claims.",
+		predictsSuffix: "Consistency",
+	},
+	{
+		predictionType: "trip_promotion_attempt",
+		metaVar:        "TripPromotionPassesBuildGate",
+		metaID:         "trip-promotion-passes-build-gate",
+		metaName:       "Trip-promoted claims pass go build/vet/lint",
+		metaBrief:      "Speculative cross-cluster connections promoted by the trip cycle compose with the existing typed corpus — entity references resolve, predicate slot types match, and the file passes go build/vet/lint. The compiler is the oracle.",
+		sectionHeader:  "Meta-hypothesis: trip-promoted claims pass go build/vet/lint.",
+		varPrefix:      "TripBuild",
+		eventIDPrefix:  "build-validation",
+		eventNameTmpl:  "Build validation for %s",
+		eventBriefTmpl: "go build/vet/lint pipeline observing whether %s is structurally well-formed (entities exist, predicate slot types match).",
+		predictsSuffix: "Buildability",
+	},
+}
+
+func kbConfigFor(predictionType string) *kbInternalConfig {
+	for i := range kbInternalConfigs {
+		if kbInternalConfigs[i].predictionType == predictionType {
+			return &kbInternalConfigs[i]
+		}
+	}
+	return nil
+}
+
 func runReify(dir string) {
 	logPath := filepath.Join(dir, ".metabolism-log.json")
 	mlog := loadLog(logPath)
@@ -47,25 +132,30 @@ func runReify(dir string) {
 	// Split cycles by prediction type so each gets its own section with
 	// its own meta-hypothesis. Empty prediction_type (legacy) is treated
 	// as "structural_fragility" — the original sensor-based vocabulary.
+	// Sensor records get their own emit (uses backends/papers); each
+	// KB-internal type listed in kbInternalConfigs gets its own bucket
+	// and shares the generic emit loop.
 	sensorRecords := map[string]*hypothesisRecord{}
 	var sensorOrder []string
-	tripRecords := map[string]*hypothesisRecord{}
-	var tripOrder []string
+	kbRecords := map[string]map[string]*hypothesisRecord{}
+	kbOrder := map[string][]string{}
+	for _, cfg := range kbInternalConfigs {
+		kbRecords[cfg.predictionType] = map[string]*hypothesisRecord{}
+		kbOrder[cfg.predictionType] = nil
+	}
 
 	for _, c := range mlog.Cycles {
 		pt := c.PredictionType
 		if pt == "" {
 			pt = "structural_fragility"
 		}
-		var (
-			records map[string]*hypothesisRecord
-			order   *[]string
-		)
-		switch pt {
-		case "trip_lint_durability":
-			records, order = tripRecords, &tripOrder
-		default:
-			records, order = sensorRecords, &sensorOrder
+		var records map[string]*hypothesisRecord
+		isKB := false
+		if cfg := kbConfigFor(pt); cfg != nil {
+			records = kbRecords[pt]
+			isKB = true
+		} else {
+			records = sensorRecords
 		}
 
 		r, ok := records[c.Hypothesis]
@@ -77,7 +167,11 @@ func runReify(dir string) {
 				resCounts:  map[string]int{},
 			}
 			records[c.Hypothesis] = r
-			*order = append(*order, c.Hypothesis)
+			if isKB {
+				kbOrder[pt] = append(kbOrder[pt], c.Hypothesis)
+			} else {
+				sensorOrder = append(sensorOrder, c.Hypothesis)
+			}
 		}
 		r.cycles++
 		if c.Resolution != "" {
@@ -278,27 +372,32 @@ func runReify(dir string) {
 		}
 	}
 
-	// trip_lint_durability section — KB-internal resolver, one meta-
-	// hypothesis per prediction type, each promoted claim var gets an
-	// Event + Predicts + ResolvedAs.
-	tripResolved := 0
-	if len(tripOrder) > 0 {
+	// KB-internal sections — one meta-hypothesis per prediction type. Each
+	// promoted claim becomes an Event + Predicts (and ResolvedAs once
+	// resolved). Generic emit loop driven by kbInternalConfigs.
+	kbResolved := map[string]int{}
+	for _, cfg := range kbInternalConfigs {
+		ord := kbOrder[cfg.predictionType]
+		if len(ord) == 0 {
+			continue
+		}
+		recs := kbRecords[cfg.predictionType]
+
 		fmt.Fprintf(&b, "\n// ---------------------------------------------------------------------------\n")
-		fmt.Fprintf(&b, "// Meta-hypothesis: trip-promoted claims survive cmd/lint.\n")
-		fmt.Fprintf(&b, "// KB-internal resolver — no external sensor, no LLM oracle; the\n")
-		fmt.Fprintf(&b, "// substrate's own deterministic consistency rules are the oracle.\n")
+		fmt.Fprintf(&b, "// %s\n", cfg.sectionHeader)
+		fmt.Fprintf(&b, "// KB-internal resolver — the metabolism's own oracle, not an external sensor.\n")
 		fmt.Fprintf(&b, "// ---------------------------------------------------------------------------\n\n")
 
-		fmt.Fprintf(&b, "var TripPromotionSurvivesLint = Hypothesis{&Entity{\n")
-		fmt.Fprintf(&b, "\tID:    \"trip-promotion-survives-lint\",\n")
-		fmt.Fprintf(&b, "\tName:  \"Trip-promoted claims survive cmd/lint\",\n")
+		fmt.Fprintf(&b, "var %s = Hypothesis{&Entity{\n", cfg.metaVar)
+		fmt.Fprintf(&b, "\tID:    %q,\n", cfg.metaID)
+		fmt.Fprintf(&b, "\tName:  %q,\n", cfg.metaName)
 		fmt.Fprintf(&b, "\tKind:  \"hypothesis\",\n")
-		fmt.Fprintf(&b, "\tBrief: \"Speculative cross-cluster connections promoted by the trip cycle pass cmd/lint's deterministic rules (value-conflict, orphan-report, provenance-split, brief-check, naming-oracle, contested-concept). Self-resolving: no external sensor, no LLM oracle — the substrate's own rules are the oracle.\",\n")
+		fmt.Fprintf(&b, "\tBrief: %q,\n", cfg.metaBrief)
 		fmt.Fprintf(&b, "}}\n")
 
-		for _, hypName := range tripOrder {
-			r := tripRecords[hypName]
-			varBase := "TripLint" + sanitizeIdent(hypName)
+		for _, hypName := range ord {
+			r := recs[hypName]
+			varBase := cfg.varPrefix + sanitizeIdent(hypName)
 			entityID := camelToKebab(hypName)
 
 			resLabel := "pending"
@@ -307,7 +406,7 @@ func runReify(dir string) {
 			}
 
 			fmt.Fprintf(&b, "\n// ---------------------------------------------------------------------------\n")
-			fmt.Fprintf(&b, "// Lint durability check: %s\n", hypName)
+			fmt.Fprintf(&b, "// %s: %s\n", cfg.metaName, hypName)
 			fmt.Fprintf(&b, "// %d cycle(s), aggregate: %s\n", r.cycles, resLabel)
 			if r.evidence != "" {
 				fmt.Fprintf(&b, "// Evidence: %s\n", r.evidence)
@@ -315,20 +414,20 @@ func runReify(dir string) {
 			fmt.Fprintf(&b, "// ---------------------------------------------------------------------------\n\n")
 
 			fmt.Fprintf(&b, "var %sCheck = Event{&Entity{\n", varBase)
-			fmt.Fprintf(&b, "\tID:    \"lint-durability-check-%s\",\n", entityID)
-			fmt.Fprintf(&b, "\tName:  \"Lint durability check for %s\",\n", hypName)
+			fmt.Fprintf(&b, "\tID:    \"%s-%s\",\n", cfg.eventIDPrefix, entityID)
+			fmt.Fprintf(&b, "\tName:  %q,\n", fmt.Sprintf(cfg.eventNameTmpl, hypName))
 			fmt.Fprintf(&b, "\tKind:  \"event\",\n")
-			fmt.Fprintf(&b, "\tBrief: \"cmd/lint run observing whether %s was flagged by any deterministic rule.\",\n", hypName)
+			fmt.Fprintf(&b, "\tBrief: %q,\n", fmt.Sprintf(cfg.eventBriefTmpl, hypName))
 			fmt.Fprintf(&b, "}}\n\n")
 
-			fmt.Fprintf(&b, "var TripPromotionPredicts%sSurvival = Predicts{\n", varBase)
-			fmt.Fprintf(&b, "\tSubject: TripPromotionSurvivesLint,\n")
+			fmt.Fprintf(&b, "var %s%s = Predicts{\n", varBase, cfg.predictsSuffix)
+			fmt.Fprintf(&b, "\tSubject: %s,\n", cfg.metaVar)
 			fmt.Fprintf(&b, "\tObject:  %sCheck,\n", varBase)
 			fmt.Fprintf(&b, "\tProv:    metabolismPredictionSource,\n")
 			fmt.Fprintf(&b, "}\n")
 
 			if r.bestRes != "" {
-				tripResolved++
+				kbResolved[cfg.predictionType]++
 				evidence := r.evidence
 				if evidence == "" {
 					evidence = fmt.Sprintf("%d cycle(s), resolution: %s", r.cycles, r.bestRes)
@@ -355,9 +454,13 @@ func runReify(dir string) {
 	fmt.Printf("[reify] generated %s\n", filepath.Base(outPath))
 	fmt.Printf("[reify] structural_fragility: %d hypotheses → %d Events + %d Predicts + %d ResolvedAs\n",
 		uniqueHyps, uniqueHyps, uniqueHyps, resolved)
-	if len(tripOrder) > 0 {
-		fmt.Printf("[reify] trip_lint_durability: %d claims → %d Events + %d Predicts + %d ResolvedAs\n",
-			len(tripOrder), len(tripOrder), len(tripOrder), tripResolved)
+	for _, cfg := range kbInternalConfigs {
+		ord := kbOrder[cfg.predictionType]
+		if len(ord) == 0 {
+			continue
+		}
+		fmt.Printf("[reify] %s: %d claims → %d Events + %d Predicts + %d ResolvedAs\n",
+			cfg.predictionType, len(ord), len(ord), len(ord), kbResolved[cfg.predictionType])
 	}
 
 	// Verify it compiles

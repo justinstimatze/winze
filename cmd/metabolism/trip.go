@@ -362,19 +362,19 @@ func compatiblePredicates(roleA, roleB string) []string {
 }
 
 // promoteConnections converts high-scoring trip connections into corpus claims.
-// Only promotes connections with Score >= 4, a valid predicate, both entities
-// existing in the KB, and type-compatible Subject/Object slots.
+// Only promotes connections with Score >= minScore, a valid predicate, both
+// entities existing in the KB, and type-compatible Subject/Object slots.
 // Writes to a new metabolism_cycleN.go file with quality gates.
-func promoteConnections(dir string, connections []TripConnection) error {
+func promoteConnections(dir string, connections []TripConnection, minScore int) error {
 	// Filter for promotable connections
 	var promotable []TripConnection
 	for _, c := range connections {
-		if c.Score >= 4 && c.Predicate != "" && c.Predicate != "NONE" {
+		if c.Score >= minScore && c.Predicate != "" && c.Predicate != "NONE" {
 			promotable = append(promotable, c)
 		}
 	}
 	if len(promotable) == 0 {
-		fmt.Println("[trip-promote] no connections scored 4+ with valid predicate")
+		fmt.Printf("[trip-promote] no connections scored %d+ with valid predicate\n", minScore)
 		return nil
 	}
 

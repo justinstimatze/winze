@@ -228,6 +228,7 @@ func main() {
 	tripPrompt := flag.String("prompt-type", "analogy", "connection type for --trip: analogy, contradiction, genealogy, prediction")
 	tripPairs := flag.Int("pairs", 5, "number of cross-cluster entity pairs to evaluate in --trip")
 	tripPromote := flag.Bool("promote", false, "with --trip: also promote score-4+ connections to the corpus (off by default; --evolve always promotes)")
+	tripMinScore := flag.Int("min-score", 4, "with --trip --promote: minimum score to promote (default 4; lower for resolver stress-tests)")
 	pkm := flag.String("pkm", "", "path to PKM vault directory (markdown notes → typed Go corpus files)")
 	jsonOut := flag.Bool("json", false, "output as JSON")
 	backend := flag.String("backend", "arxiv", "sensor backend: arxiv, zim, rss, or all")
@@ -340,7 +341,7 @@ func main() {
 	if *trip {
 		report := runTrip(dir, *tripTemp, *tripPrompt, *tripPairs, *dryRun, *jsonOut)
 		if *tripPromote && !*dryRun && len(report.Connections) > 0 {
-			if err := promoteConnections(dir, report.Connections); err != nil {
+			if err := promoteConnections(dir, report.Connections, *tripMinScore); err != nil {
 				fmt.Fprintf(os.Stderr, "metabolism: trip promotion: %v\n", err)
 				os.Exit(1)
 			}
@@ -1979,7 +1980,7 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 			tripReport = runTrip(dir, 1.0, "analogy", 3, false, jsonOut) // temp=1.0, analogy, 3 pairs
 			// Promote high-scoring connections to corpus claims
 			if len(tripReport.Connections) > 0 {
-				if err := promoteConnections(dir, tripReport.Connections); err != nil {
+				if err := promoteConnections(dir, tripReport.Connections, 4); err != nil {
 					fmt.Fprintf(os.Stderr, "[cycle] trip promotion: %v\n", err)
 				}
 			}
