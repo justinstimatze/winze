@@ -769,17 +769,10 @@ func pickCrossClusterPairs(entities []tripEntity, n int) []tripPair {
 		return nil
 	}
 
-	// Generate candidate pairs from different clusters. Score combines
-	// brief presence (briefs * 10) and exclusive-predicate compatibility
-	// (+1). The brief weight dominates so we always prefer well-described
-	// pairs; the exclusive bonus is the tiebreaker that biases selection
-	// toward pairs whose role pair admits at least one exclusive predicate
-	// (Proposes, FormedAt, ResolvedAs, Accepts/Disputes, …). Without this
-	// nudge most cross-cluster pairs offer only permissive predicates and
-	// the durability resolvers have nothing to bite on.
+	// Generate candidate pairs from different clusters
 	type candidate struct {
 		pair  tripPair
-		score int
+		score int // both have briefs = 2, one has = 1, neither = 0
 	}
 	var candidates []candidate
 
@@ -787,19 +780,12 @@ func pickCrossClusterPairs(entities []tripEntity, n int) []tripPair {
 		for _, cidB := range clusterIDs[i+1:] {
 			for _, a := range byCluster[cidA] {
 				for _, b := range byCluster[cidB] {
-					briefCount := 0
+					s := 0
 					if a.brief != "" {
-						briefCount++
+						s++
 					}
 					if b.brief != "" {
-						briefCount++
-					}
-					s := briefCount * 10
-					for _, p := range compatiblePredicates(a.roleType, b.roleType) {
-						if exclusivePredicates[p] {
-							s++
-							break
-						}
+						s++
 					}
 					candidates = append(candidates, candidate{
 						pair:  tripPair{A: a, B: b},
@@ -1232,33 +1218,17 @@ func buildTripPrompt(pair tripPair, promptType string) string {
 	}
 
 	// Filter predicate table to only those compatible with this pair's roles.
-	// Mark exclusive predicates with ★ so the LLM has a reason to prefer
-	// them; without this nudge the generator almost always picks permissive
-	// predicates (CommentaryOn, InfluencedBy, TheoryOf) that the durability
-	// resolvers can never refute, so the substrate's negative-side signal
-	// stays artificially silent.
 	compat := compatiblePredicates(pair.A.roleType, pair.B.roleType)
 	var predicateList string
-	hasExclusive := false
 	if len(compat) == 0 {
 		predicateList = "  (no compatible predicates for this role pair — use NONE)"
 	} else {
 		var b strings.Builder
 		for _, p := range compat {
 			s := predicateSlots[p]
-			marker := " "
-			if exclusivePredicates[p] {
-				marker = "★"
-				hasExclusive = true
-			}
-			b.WriteString(fmt.Sprintf("  %s %s: %s→%s\n", marker, p, s.Subject, s.Object))
+			b.WriteString(fmt.Sprintf("  %s: %s→%s\n", p, s.Subject, s.Object))
 		}
 		predicateList = b.String()
-	}
-
-	exclusiveGuidance := ""
-	if hasExclusive {
-		exclusiveGuidance = "\n★ marks predicates with exclusivity semantics (functional uniqueness, single-originator, or mutual-contradiction with Accepts/Disputes). When a ★ predicate is type-compatible AND the connection genuinely instantiates that semantic shape, prefer it — those claims exercise the substrate's consistency oracles. Do NOT pick a ★ predicate just because it is marked; pick it only when the connection actually fits its meaning."
 	}
 
 	return fmt.Sprintf(`You are generating speculative cross-domain connections for a knowledge base about the epistemology of minds — how minds build, validate, and fail at modeling reality.
@@ -1275,35 +1245,13 @@ Connection type: %s
 %s
 
 Compatible predicates for this entity pair (Subject→Object):
-%s%s
+%s
 Entity A is a %s. Entity B is a %s. Use only a predicate from the list above (or NONE). SUBJECT must match the predicate's Subject role. If no meaningful connection exists, set predicate=NONE and score=1.`,
 		pair.A.name, pair.A.roleType, briefA,
 		pair.B.name, pair.B.roleType, briefB,
 		promptType, promptInstruction,
-		predicateList, exclusiveGuidance,
+		predicateList,
 		pair.A.roleType, pair.B.roleType)
-}
-
-// exclusivePredicates marks predicates whose semantics let a single new
-// claim collide with existing ones — functional uniqueness (Subject has
-// at most one Object), single-originator (Proposes), or mutually
-// contradictory pairs (Accepts/Disputes on the same Subject+Object).
-// Permissive predicates (CommentaryOn, InfluencedBy, TheoryOf) are
-// excluded — TheoryOf is //winze:contested, so multiple Subjects per
-// Object is the expected shape.
-//
-// Keep this in sync with predicateGuidance in trip_llm_resolve.go.
-var exclusivePredicates = map[string]bool{
-	"Proposes":             true,
-	"ProposesOrg":          true,
-	"Accepts":              true,
-	"AcceptsOrg":           true,
-	"Disputes":             true,
-	"DisputesOrg":          true,
-	"FormedAt":             true,
-	"EnergyEstimate":       true,
-	"ResolvedAs":           true,
-	"EnglishTranslationOf": true,
 }
 
 // drugProfile characterizes the temperature × prompt combination.
