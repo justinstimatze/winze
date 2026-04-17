@@ -397,10 +397,20 @@ func promoteConnections(dir string, connections []TripConnection) error {
 
 	promoted := 0
 	var promotedVars []string
+	var attempts []tripPromotionAttempt
 	for _, c := range promotable {
+		attemptName := fmt.Sprintf("%s_%s_%s", c.EntityA, c.Predicate, c.EntityB)
+
 		// Validate both entities exist
 		if !entityVars[c.EntityA] || !entityVars[c.EntityB] {
-			fmt.Printf("[trip-promote] skip %s ↔ %s: entity not found in KB\n", c.EntityA, c.EntityB)
+			evidence := fmt.Sprintf("%s ↔ %s: entity not found in KB", c.EntityA, c.EntityB)
+			fmt.Printf("[trip-promote] skip %s\n", evidence)
+			attempts = append(attempts, tripPromotionAttempt{
+				Name:     attemptName,
+				Accepted: false,
+				Reason:   "entity_not_found",
+				Evidence: evidence,
+			})
 			continue
 		}
 
@@ -419,8 +429,15 @@ func promoteConnections(dir string, connections []TripConnection) error {
 				subj, obj = obj, subj
 				subjRole, objRole = objRole, subjRole
 			} else {
-				fmt.Printf("[trip-promote] skip %s(%s) %s %s(%s): type mismatch\n",
+				evidence := fmt.Sprintf("%s(%s) %s %s(%s): neither orientation satisfies predicate slots",
 					c.EntityA, entityRoles[c.EntityA], c.Predicate, c.EntityB, entityRoles[c.EntityB])
+				fmt.Printf("[trip-promote] skip %s\n", evidence)
+				attempts = append(attempts, tripPromotionAttempt{
+					Name:     attemptName,
+					Accepted: false,
+					Reason:   "type_mismatch",
+					Evidence: evidence,
+				})
 				continue
 			}
 		}
@@ -450,6 +467,21 @@ func promoteConnections(dir string, connections []TripConnection) error {
 		sections = append(sections, b.String())
 		promoted++
 		promotedVars = append(promotedVars, claimVar)
+		attempts = append(attempts, tripPromotionAttempt{
+			Name:     claimVar,
+			Accepted: true,
+			Reason:   "accepted",
+			Evidence: fmt.Sprintf("%s %s %s (score %d/5)", subj, c.Predicate, obj, c.Score),
+		})
+	}
+
+	// Log the promotion funnel regardless of whether any survived.
+	// Visibility into entity_not_found / type_mismatch skip reasons is
+	// what lets us see *why* promotion rates are low.
+	if len(attempts) > 0 {
+		if err := logTripPromotionAttempts(dir, attempts); err != nil {
+			fmt.Fprintf(os.Stderr, "[trip-promote] log promotion attempts: %v\n", err)
+		}
 	}
 
 	if promoted == 0 {

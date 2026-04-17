@@ -84,6 +84,54 @@ func logTripLintDurability(dir string, claimVars []string) error {
 	return nil
 }
 
+// tripPromotionAttempt records one would-be trip promotion and whether it
+// made it into the corpus. Skipped attempts carry the reason.
+type tripPromotionAttempt struct {
+	Name     string
+	Accepted bool
+	Reason   string // accepted | entity_not_found | type_mismatch
+	Evidence string
+}
+
+// logTripPromotionAttempts writes one Cycle per promotion attempt with
+// prediction_type=trip_promotion_attempt. Accepted attempts resolve as
+// "confirmed", skipped attempts as "refuted" with the specific reason in
+// Evidence. This makes the promotion funnel legible in --calibrate:
+// hit rate = attempts that survived all validation gates, and the Reason
+// codes break down where we lose candidates.
+func logTripPromotionAttempts(dir string, attempts []tripPromotionAttempt) error {
+	if len(attempts) == 0 {
+		return nil
+	}
+	logPath := filepath.Join(dir, ".metabolism-log.json")
+	mlog := loadLog(logPath)
+	today := time.Now().Format("2006-01-02")
+	now := time.Now()
+
+	for _, a := range attempts {
+		c := Cycle{
+			Timestamp:      now,
+			Hypothesis:     a.Name,
+			Prediction:     "trip connection passes entity-existence and predicate-slot validation",
+			VulnType:       "trip_promotion",
+			PredictionType: "trip_promotion_attempt",
+			ResolvedAt:     today,
+			Evidence:       a.Evidence,
+		}
+		if a.Accepted {
+			c.Resolution = "confirmed"
+		} else {
+			c.Resolution = "refuted"
+		}
+		mlog.Cycles = append(mlog.Cycles, c)
+	}
+
+	if err := saveLog(logPath, mlog); err != nil {
+		return fmt.Errorf("save log: %w", err)
+	}
+	return nil
+}
+
 // findLintEvidence returns the first lint output line mentioning varName,
 // trimmed. Returns "" if not found. Lint prints var names verbatim inside
 // finding lines; an exact substring match suffices because trip claim vars
