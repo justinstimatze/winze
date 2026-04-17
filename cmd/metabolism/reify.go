@@ -32,6 +32,7 @@ type hypothesisRecord struct {
 	papers     []PaperSummary
 	backends   map[string]bool
 	resCounts  map[string]int // resolution → count (for history comments)
+	evidence   string         // first non-empty Evidence from any cycle (for KB-internal resolvers)
 }
 
 func runReify(dir string) {
@@ -43,11 +44,30 @@ func runReify(dir string) {
 		return
 	}
 
-	// Group cycles by hypothesis, determine aggregate resolution
-	records := map[string]*hypothesisRecord{}
-	var order []string
+	// Split cycles by prediction type so each gets its own section with
+	// its own meta-hypothesis. Empty prediction_type (legacy) is treated
+	// as "structural_fragility" — the original sensor-based vocabulary.
+	sensorRecords := map[string]*hypothesisRecord{}
+	var sensorOrder []string
+	tripRecords := map[string]*hypothesisRecord{}
+	var tripOrder []string
 
 	for _, c := range mlog.Cycles {
+		pt := c.PredictionType
+		if pt == "" {
+			pt = "structural_fragility"
+		}
+		var (
+			records map[string]*hypothesisRecord
+			order   *[]string
+		)
+		switch pt {
+		case "trip_lint_durability":
+			records, order = tripRecords, &tripOrder
+		default:
+			records, order = sensorRecords, &sensorOrder
+		}
+
 		r, ok := records[c.Hypothesis]
 		if !ok {
 			r = &hypothesisRecord{
@@ -57,7 +77,7 @@ func runReify(dir string) {
 				resCounts:  map[string]int{},
 			}
 			records[c.Hypothesis] = r
-			order = append(order, c.Hypothesis)
+			*order = append(*order, c.Hypothesis)
 		}
 		r.cycles++
 		if c.Resolution != "" {
@@ -70,7 +90,6 @@ func runReify(dir string) {
 		r.backends[be] = true
 		if c.PapersFound > 0 {
 			r.withSignal++
-			// Collect unique papers
 			for _, p := range c.Papers {
 				found := false
 				for _, existing := range r.papers {
@@ -84,9 +103,18 @@ func runReify(dir string) {
 				}
 			}
 		}
-		// Best resolution: corroborated > challenged > irrelevant > no_signal > ""
+		// Carry Evidence field forward for KB-internal resolvers; it's
+		// their only per-cycle evidence.
+		if c.Evidence != "" && r.evidence == "" {
+			r.evidence = c.Evidence
+		}
 		r.bestRes = betterResolution(r.bestRes, c.Resolution)
 	}
+
+	// Preserve legacy variable names so the rest of the function reads
+	// as the sensor-section emitter.
+	records := sensorRecords
+	order := sensorOrder
 
 	// Count stats
 	totalCycles := len(mlog.Cycles)
@@ -250,14 +278,87 @@ func runReify(dir string) {
 		}
 	}
 
+	// trip_lint_durability section — KB-internal resolver, one meta-
+	// hypothesis per prediction type, each promoted claim var gets an
+	// Event + Predicts + ResolvedAs.
+	tripResolved := 0
+	if len(tripOrder) > 0 {
+		fmt.Fprintf(&b, "\n// ---------------------------------------------------------------------------\n")
+		fmt.Fprintf(&b, "// Meta-hypothesis: trip-promoted claims survive cmd/lint.\n")
+		fmt.Fprintf(&b, "// KB-internal resolver — no external sensor, no LLM oracle; the\n")
+		fmt.Fprintf(&b, "// substrate's own deterministic consistency rules are the oracle.\n")
+		fmt.Fprintf(&b, "// ---------------------------------------------------------------------------\n\n")
+
+		fmt.Fprintf(&b, "var TripPromotionSurvivesLint = Hypothesis{&Entity{\n")
+		fmt.Fprintf(&b, "\tID:    \"trip-promotion-survives-lint\",\n")
+		fmt.Fprintf(&b, "\tName:  \"Trip-promoted claims survive cmd/lint\",\n")
+		fmt.Fprintf(&b, "\tKind:  \"hypothesis\",\n")
+		fmt.Fprintf(&b, "\tBrief: \"Speculative cross-cluster connections promoted by the trip cycle pass cmd/lint's deterministic rules (value-conflict, orphan-report, provenance-split, brief-check, naming-oracle, contested-concept). Self-resolving: no external sensor, no LLM oracle — the substrate's own rules are the oracle.\",\n")
+		fmt.Fprintf(&b, "}}\n")
+
+		for _, hypName := range tripOrder {
+			r := tripRecords[hypName]
+			varBase := "TripLint" + sanitizeIdent(hypName)
+			entityID := camelToKebab(hypName)
+
+			resLabel := "pending"
+			if r.bestRes != "" {
+				resLabel = r.bestRes
+			}
+
+			fmt.Fprintf(&b, "\n// ---------------------------------------------------------------------------\n")
+			fmt.Fprintf(&b, "// Lint durability check: %s\n", hypName)
+			fmt.Fprintf(&b, "// %d cycle(s), aggregate: %s\n", r.cycles, resLabel)
+			if r.evidence != "" {
+				fmt.Fprintf(&b, "// Evidence: %s\n", r.evidence)
+			}
+			fmt.Fprintf(&b, "// ---------------------------------------------------------------------------\n\n")
+
+			fmt.Fprintf(&b, "var %sCheck = Event{&Entity{\n", varBase)
+			fmt.Fprintf(&b, "\tID:    \"lint-durability-check-%s\",\n", entityID)
+			fmt.Fprintf(&b, "\tName:  \"Lint durability check for %s\",\n", hypName)
+			fmt.Fprintf(&b, "\tKind:  \"event\",\n")
+			fmt.Fprintf(&b, "\tBrief: \"cmd/lint run observing whether %s was flagged by any deterministic rule.\",\n", hypName)
+			fmt.Fprintf(&b, "}}\n\n")
+
+			fmt.Fprintf(&b, "var TripPromotionPredicts%sSurvival = Predicts{\n", varBase)
+			fmt.Fprintf(&b, "\tSubject: TripPromotionSurvivesLint,\n")
+			fmt.Fprintf(&b, "\tObject:  %sCheck,\n", varBase)
+			fmt.Fprintf(&b, "\tProv:    metabolismPredictionSource,\n")
+			fmt.Fprintf(&b, "}\n")
+
+			if r.bestRes != "" {
+				tripResolved++
+				evidence := r.evidence
+				if evidence == "" {
+					evidence = fmt.Sprintf("%d cycle(s), resolution: %s", r.cycles, r.bestRes)
+				}
+				fmt.Fprintf(&b, "\nvar %sCheckOutcome = &ResolutionOutcome{\n", varBase)
+				fmt.Fprintf(&b, "\tResult:   %q,\n", mapResolution(r.bestRes))
+				fmt.Fprintf(&b, "\tEvidence: %q,\n", evidence)
+				fmt.Fprintf(&b, "}\n")
+
+				fmt.Fprintf(&b, "\nvar %sCheckResolution = ResolvedAs{\n", varBase)
+				fmt.Fprintf(&b, "\tSubject: %sCheck,\n", varBase)
+				fmt.Fprintf(&b, "\tObject:  %sCheckOutcome,\n", varBase)
+				fmt.Fprintf(&b, "\tProv:    metabolismPredictionSource,\n")
+				fmt.Fprintf(&b, "}\n")
+			}
+		}
+	}
+
 	if err := os.WriteFile(outPath, []byte(b.String()), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "metabolism: write %s: %v\n", outPath, err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("[reify] generated %s\n", filepath.Base(outPath))
-	fmt.Printf("[reify] %d hypotheses → %d Events + %d Predicts + %d ResolvedAs\n",
+	fmt.Printf("[reify] structural_fragility: %d hypotheses → %d Events + %d Predicts + %d ResolvedAs\n",
 		uniqueHyps, uniqueHyps, uniqueHyps, resolved)
+	if len(tripOrder) > 0 {
+		fmt.Printf("[reify] trip_lint_durability: %d claims → %d Events + %d Predicts + %d ResolvedAs\n",
+			len(tripOrder), len(tripOrder), len(tripOrder), tripResolved)
+	}
 
 	// Verify it compiles
 	fmt.Println("[reify] verifying: go build ./...")
@@ -269,14 +370,20 @@ func runReify(dir string) {
 }
 
 // betterResolution returns the "better" of two resolutions.
-// Priority: corroborated > challenged > irrelevant > no_signal > ""
+// Priority: corroborated > challenged > confirmed > irrelevant > no_signal > refuted > ""
+// Sensor-based and KB-internal resolutions interleave, but in practice
+// each hypothesis name only sees one vocabulary (they come from different
+// prediction types), so interleaving doesn't matter in aggregation —
+// it just needs to be total-ordered.
 func betterResolution(a, b string) string {
 	priority := map[string]int{
-		"":           0,
-		"no_signal":  1,
-		"irrelevant": 2,
-		"challenged": 3,
-		"corroborated": 4,
+		"":             0,
+		"refuted":      1,
+		"no_signal":    2,
+		"irrelevant":   3,
+		"confirmed":    4,
+		"challenged":   5,
+		"corroborated": 6,
 	}
 	if priority[b] > priority[a] {
 		return b
@@ -300,6 +407,12 @@ func mapResolution(res string) string {
 	case "irrelevant":
 		return "ambiguous"
 	case "no_signal":
+		return "refuted"
+	case "confirmed":
+		// KB-internal resolver (e.g. trip_lint_durability) already
+		// uses the ResolutionOutcome vocabulary directly.
+		return "confirmed"
+	case "refuted":
 		return "refuted"
 	default:
 		return "ambiguous"
@@ -339,6 +452,20 @@ var camelSplitRe = regexp.MustCompile(`([a-z0-9])([A-Z])`)
 func camelToKebab(s string) string {
 	kebab := camelSplitRe.ReplaceAllString(s, "${1}-${2}")
 	return strings.ToLower(kebab)
+}
+
+// sanitizeIdent keeps only alphanumerics from s. Trip-promoted claim vars
+// are already valid Go identifiers, but we pass them through defensively
+// so reified var names never introduce a syntax error if a future code
+// path produces a name with punctuation.
+func sanitizeIdent(s string) string {
+	var out []rune
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			out = append(out, r)
+		}
+	}
+	return string(out)
 }
 
 // camelToWords converts CamelCase to space-separated words.
