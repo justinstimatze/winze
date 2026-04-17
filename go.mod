@@ -4,8 +4,9 @@ go 1.26
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.35.0
-	github.com/justinstimatze/defn v0.11.1
+	github.com/justinstimatze/defn v0.11.3
 	github.com/justinstimatze/gozim v0.1.0
+	github.com/mark3labs/mcp-go v0.48.0
 )
 
 require (
@@ -81,7 +82,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 // indirect
-	github.com/dolthub/dolt/go v0.40.5-0.20260416005252-1f991da3d959 // indirect
+	github.com/dolthub/dolt/go v0.40.5-0.20260416223919-b2acc3421e62 // indirect
 	github.com/dolthub/driver v1.84.2-0.20260415010027-81fe8bae47a0 // indirect
 	github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69 // indirect
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 // indirect
@@ -113,6 +114,7 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/go-github/v57 v57.0.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
+	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/pprof v0.0.0-20260302011040-a15ffb7f9dcc // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
@@ -149,6 +151,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
 	github.com/sony/gobreaker v1.0.0 // indirect
+	github.com/spf13/cast v1.7.1 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
 	github.com/tealeg/xlsx v1.0.5 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
@@ -159,6 +162,7 @@ require (
 	github.com/xitongsys/parquet-go v1.6.2 // indirect
 	github.com/xitongsys/parquet-go-source v0.0.0-20241021075129-b732d2ac9c9b // indirect
 	github.com/xtaci/smux v1.5.57 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.etcd.io/bbolt v1.4.3 // indirect
