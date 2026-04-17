@@ -397,6 +397,7 @@ func promoteConnections(dir string, connections []TripConnection) error {
 
 	promoted := 0
 	var promotedVars []string
+	var promotedClaims []promotedClaim
 	var attempts []tripPromotionAttempt
 	for _, c := range promotable {
 		attemptName := fmt.Sprintf("%s_%s_%s", c.EntityA, c.Predicate, c.EntityB)
@@ -467,6 +468,12 @@ func promoteConnections(dir string, connections []TripConnection) error {
 		sections = append(sections, b.String())
 		promoted++
 		promotedVars = append(promotedVars, claimVar)
+		promotedClaims = append(promotedClaims, promotedClaim{
+			VarName:   claimVar,
+			Subject:   subj,
+			Predicate: c.Predicate,
+			Object:    obj,
+		})
 		attempts = append(attempts, tripPromotionAttempt{
 			Name:     claimVar,
 			Accepted: true,
@@ -508,6 +515,12 @@ func promoteConnections(dir string, connections []TripConnection) error {
 	// fails — the claims are already in the corpus.
 	if err := logTripLintDurability(dir, promotedVars); err != nil {
 		fmt.Fprintf(os.Stderr, "[trip-promote] lint-durability resolution: %v\n", err)
+	}
+	// Stricter semantic check via LLM contradiction on the promoted
+	// claim's neighborhood. Gated on ANTHROPIC_API_KEY inside the
+	// resolver; silently skipped otherwise.
+	if err := logTripLLMDurability(dir, promotedClaims); err != nil {
+		fmt.Fprintf(os.Stderr, "[trip-promote] llm-durability resolution: %v\n", err)
 	}
 	return nil
 }

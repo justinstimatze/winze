@@ -1196,28 +1196,44 @@ func sensorVerdict(s hypothesisScore) string {
 }
 
 func scoreHypotheses(cycles []Cycle) []hypothesisScore {
-	// Group cycles by hypothesis, preserving order of first appearance.
+	// Group cycles by (hypothesis, prediction_type), preserving order of
+	// first appearance. Key-by-composite so that a single claim var with
+	// trip_promotion_attempt + trip_lint_durability + trip_llm_durability
+	// rows produces three separate scores rather than collapsing into
+	// whichever row came first. Display name drops the prediction_type
+	// suffix for the default (structural_fragility) to preserve legacy
+	// output.
 	type entry struct {
 		cycles         []Cycle
 		vulnType       string
 		predictionType string
+		displayName    string
 	}
-	byHyp := map[string]*entry{}
+	byKey := map[string]*entry{}
 	var order []string
 	for _, c := range cycles {
-		e, ok := byHyp[c.Hypothesis]
+		pt := c.PredictionType
+		if pt == "" {
+			pt = "structural_fragility"
+		}
+		key := c.Hypothesis + "|" + pt
+		e, ok := byKey[key]
 		if !ok {
-			e = &entry{vulnType: c.VulnType, predictionType: c.PredictionType}
-			byHyp[c.Hypothesis] = e
-			order = append(order, c.Hypothesis)
+			display := c.Hypothesis
+			if pt != "structural_fragility" {
+				display = fmt.Sprintf("%s [%s]", c.Hypothesis, pt)
+			}
+			e = &entry{vulnType: c.VulnType, predictionType: pt, displayName: display}
+			byKey[key] = e
+			order = append(order, key)
 		}
 		e.cycles = append(e.cycles, c)
 	}
 
 	var scores []hypothesisScore
-	for _, name := range order {
-		e := byHyp[name]
-		s := hypothesisScore{Name: name, VulnType: e.vulnType, PredictionType: e.predictionType}
+	for _, key := range order {
+		e := byKey[key]
+		s := hypothesisScore{Name: e.displayName, VulnType: e.vulnType, PredictionType: e.predictionType}
 		for _, c := range e.cycles {
 			s.TotalCycles++
 			if c.PapersFound > 0 {
