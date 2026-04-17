@@ -7,6 +7,13 @@ package winze
 // uses this constant.
 const QuoteMandateDate = "2026-04-13"
 
+// DefaultEntityCap is the default maximum entity count for the KB.
+// Topology suppresses breadth sensor targets above this threshold;
+// metabolism refuses ingest/pipeline above it. Depth-first: deepen
+// thin contested neighborhoods before expanding.
+// Override with WINZE_ENTITY_CAP env var or --entity-cap flag.
+const DefaultEntityCap = 300
+
 // Provenance is the audit trail for a claim. Source documents are transient
 // in winze's workflow (the KB is the canonical representation, not a mirror
 // of external files), so there is no live link to verify against. The Quote

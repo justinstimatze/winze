@@ -30,10 +30,22 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 
+	winze "github.com/justinstimatze/winze"
 	"github.com/justinstimatze/winze/internal/defndb"
 )
+
+func isFlagSet(name string) bool {
+	found := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
+}
 
 func main() {
 	if os.Getenv("GOMEMLIMIT") == "" {
@@ -44,8 +56,15 @@ func main() {
 	exportKB := flag.Bool("export-kb", false, "export claims as slimemold-compatible KBClaim JSON")
 	dotOut := flag.Bool("dot", false, "export epistemic support DAG as Graphviz DOT (pipe to dot -Tsvg)")
 	why := flag.String("why", "", "trace epistemic support chain for named entity (e.g., --why ChalmersHardProblemThesis)")
-	entityCap := flag.Int("entity-cap", 300, "max entities; suppresses breadth targets above this threshold")
+	entityCap := flag.Int("entity-cap", winze.DefaultEntityCap, "max entities; suppresses breadth targets above this threshold")
 	flag.Parse()
+
+	// WINZE_ENTITY_CAP env var overrides flag default (but explicit --entity-cap wins)
+	if envCap := os.Getenv("WINZE_ENTITY_CAP"); envCap != "" && !isFlagSet("entity-cap") {
+		if n, err := strconv.Atoi(envCap); err == nil && n > 0 {
+			*entityCap = n
+		}
+	}
 
 	dir := "."
 	if flag.NArg() > 0 {

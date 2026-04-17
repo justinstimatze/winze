@@ -34,12 +34,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	zim "github.com/justinstimatze/gozim"
+	winze "github.com/justinstimatze/winze"
 )
 
 // --- topology output types (subset) ---
@@ -174,6 +176,17 @@ func loadSensorConfig(dir string) sensorConfig {
 	return cfg
 }
 
+// isFlagSet returns true if the named flag was explicitly set on the command line.
+func isFlagSet(name string) bool {
+	found := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
+}
+
 func main() {
 	// Cap memory to avoid OOM during evolve cycles (Dolt caches default to ~544 MB).
 	if os.Getenv("GOMEMLIMIT") == "" {
@@ -187,7 +200,7 @@ func main() {
 	suggest := flag.Bool("suggest", false, "generate corpus template from corroborated cycles")
 	ingest := flag.Bool("ingest", false, "LLM-assisted ingest from corroborated ZIM cycles (needs --zim and ANTHROPIC_API_KEY)")
 	reify := flag.Bool("reify", false, "generate predictions.go from metabolism log (first-class Predicts/ResolvedAs claims)")
-	entityCap := flag.Int("entity-cap", 300, "max entities allowed in KB; refuse ingest/pipeline above this")
+	entityCap := flag.Int("entity-cap", winze.DefaultEntityCap, "max entities allowed in KB; refuse ingest/pipeline above this")
 	pipeline := flag.Bool("pipeline", false, "full quality pipeline: ingest → build → vet → lint → llm-contradiction → commit/reject")
 	llmBudget := flag.Int("llm-budget", 3, "max LLM calls for contradiction check in pipeline mode")
 	narrative := flag.Bool("narrative", false, "with --calibrate: tell the prediction story for each hypothesis")
@@ -208,6 +221,13 @@ func main() {
 	zimIndex := flag.String("zim-index", "", "path for Bleve index (default: <zimfile>.bleve/)")
 	rssFeeds := flag.String("rss-feeds", "", "comma-separated RSS/Atom feed URLs (overrides defaults)")
 	flag.Parse()
+
+	// WINZE_ENTITY_CAP env var overrides flag default (but explicit --entity-cap wins)
+	if envCap := os.Getenv("WINZE_ENTITY_CAP"); envCap != "" && !isFlagSet("entity-cap") {
+		if n, err := strconv.Atoi(envCap); err == nil && n > 0 {
+			*entityCap = n
+		}
+	}
 
 	dir := "."
 	if flag.NArg() > 0 {
