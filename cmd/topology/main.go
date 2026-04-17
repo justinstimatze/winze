@@ -32,7 +32,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/justinstimatze/winze/internal/astutil"
 	"github.com/justinstimatze/winze/internal/defndb"
 )
 
@@ -45,7 +44,7 @@ func main() {
 	exportKB := flag.Bool("export-kb", false, "export claims as slimemold-compatible KBClaim JSON")
 	dotOut := flag.Bool("dot", false, "export epistemic support DAG as Graphviz DOT (pipe to dot -Tsvg)")
 	why := flag.String("why", "", "trace epistemic support chain for named entity (e.g., --why ChalmersHardProblemThesis)")
-	entityCap := flag.Int("entity-cap", 250, "max entities; suppresses breadth targets above this threshold")
+	entityCap := flag.Int("entity-cap", 300, "max entities; suppresses breadth targets above this threshold")
 	flag.Parse()
 
 	dir := "."
@@ -1007,14 +1006,16 @@ func splitCamelCase(s string) []string {
 // collectEntityMetas walks .go files and extracts Name+Brief from entity
 // composite literals that embed *Entity.
 func collectEntityMetas(dir string) map[string]entityMeta {
-	// Try defndb first.
-	if client, err := defndb.New(dir); err == nil {
-		defer client.Close()
-		if metas, err := collectEntityMetasDefn(client); err == nil {
-			return metas
-		}
+	client, err := defndb.New(dir)
+	if err != nil {
+		return map[string]entityMeta{}
 	}
-	return collectEntityMetasAST(dir)
+	defer client.Close()
+	metas, err := collectEntityMetasDefn(client)
+	if err != nil {
+		return map[string]entityMeta{}
+	}
+	return metas
 }
 
 func collectEntityMetasDefn(client *defndb.Client) (map[string]entityMeta, error) {
@@ -1053,51 +1054,6 @@ func collectEntityMetasDefn(client *defndb.Client) (map[string]entityMeta, error
 	return metas, nil
 }
 
-func collectEntityMetasAST(dir string) map[string]entityMeta {
-	fset := token.NewFileSet()
-	metas := map[string]entityMeta{}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return metas
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			continue
-		}
-		for _, decl := range f.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok != token.VAR {
-				continue
-			}
-			for _, spec := range gen.Specs {
-				vs, ok := spec.(*ast.ValueSpec)
-				if !ok {
-					continue
-				}
-				for i, nameIdent := range vs.Names {
-					if i >= len(vs.Values) {
-						continue
-					}
-					cl, ok := vs.Values[i].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					meta := extractEntityMeta(cl)
-					if meta.name != "" || meta.brief != "" {
-						metas[nameIdent.Name] = meta
-					}
-				}
-			}
-		}
-	}
-	return metas
-}
 
 type entityMeta struct {
 	name     string // Entity.Name field (human-readable, often a full sentence for hypotheses)
@@ -1106,56 +1062,6 @@ type entityMeta struct {
 	explains string // Name of concept this hypothesis explains (from HypothesisExplains)
 }
 
-// extractEntityMeta finds Name and Brief fields from an entity composite
-// literal. Handles: RoleType{&Entity{Name: "...", Brief: "..."}} where
-// the first positional element is a &Entity{...} unary expression.
-func extractEntityMeta(cl *ast.CompositeLit) entityMeta {
-	var meta entityMeta
-	extractFields := func(elts []ast.Expr) {
-		for _, elt := range elts {
-			kv, ok := elt.(*ast.KeyValueExpr)
-			if !ok {
-				continue
-			}
-			key, ok := kv.Key.(*ast.Ident)
-			if !ok {
-				continue
-			}
-			switch key.Name {
-			case "Name":
-				meta.name = basicLitString(kv.Value)
-			case "Brief":
-				meta.brief = basicLitString(kv.Value)
-			}
-		}
-	}
-
-	for _, elt := range cl.Elts {
-		// Direct fields
-		if kv, ok := elt.(*ast.KeyValueExpr); ok {
-			if key, ok := kv.Key.(*ast.Ident); ok {
-				switch key.Name {
-				case "Name":
-					meta.name = basicLitString(kv.Value)
-				case "Brief":
-					meta.brief = basicLitString(kv.Value)
-				}
-			}
-			continue
-		}
-		// &Entity{Name: "...", Brief: "..."}
-		ue, ok := elt.(*ast.UnaryExpr)
-		if !ok {
-			continue
-		}
-		inner, ok := ue.X.(*ast.CompositeLit)
-		if !ok {
-			continue
-		}
-		extractFields(inner.Elts)
-	}
-	return meta
-}
 
 func basicLitString(e ast.Expr) string {
 	lit, ok := e.(*ast.BasicLit)
@@ -1170,16 +1076,13 @@ func basicLitString(e ast.Expr) string {
 	return s
 }
 
-// --- AST extraction (same patterns as cmd/lint) ---
-
 func collectEntities(dir string) ([]entityInfo, error) {
-	if client, err := defndb.New(dir); err == nil {
-		defer client.Close()
-		if ents, err := collectEntitiesDefn(client); err == nil {
-			return ents, nil
-		}
+	client, err := defndb.New(dir)
+	if err != nil {
+		return nil, fmt.Errorf("defndb: %w", err)
 	}
-	return collectEntitiesAST(dir)
+	defer client.Close()
+	return collectEntitiesDefn(client)
 }
 
 func collectEntitiesDefn(client *defndb.Client) ([]entityInfo, error) {
@@ -1198,90 +1101,14 @@ func collectEntitiesDefn(client *defndb.Client) ([]entityInfo, error) {
 	return out, nil
 }
 
-func collectEntitiesAST(dir string) ([]entityInfo, error) {
-	roleTypes, err := collectRoleTypesAST(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	fset := token.NewFileSet()
-	var out []entityInfo
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			continue
-		}
-		for _, decl := range f.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok != token.VAR {
-				continue
-			}
-			for _, spec := range gen.Specs {
-				vs, ok := spec.(*ast.ValueSpec)
-				if !ok {
-					continue
-				}
-				for i, nameIdent := range vs.Names {
-					if i >= len(vs.Values) {
-						continue
-					}
-					cl, ok := vs.Values[i].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeIdent, ok := cl.Type.(*ast.Ident)
-					if !ok {
-						continue
-					}
-					if roleTypes[typeIdent.Name] {
-						out = append(out, entityInfo{
-							name:     nameIdent.Name,
-							roleType: typeIdent.Name,
-							file:     e.Name(),
-						})
-					}
-				}
-			}
-		}
-	}
-	return out, nil
-}
-
-func collectRoleTypes(dir string) (map[string]bool, error) {
-	if client, err := defndb.New(dir); err == nil {
-		defer client.Close()
-		if roles, err := client.RoleTypeSet(); err == nil {
-			return roles, nil
-		}
-	}
-	return collectRoleTypesAST(dir)
-}
-
-func collectRoleTypesAST(dir string) (map[string]bool, error) {
-	pkgs, _, err := astutil.ParseCorpus(dir)
-	if err != nil {
-		return nil, err
-	}
-	return astutil.CollectRoleTypes(pkgs), nil
-}
 
 func collectClaims(dir string) ([]claimInfo, error) {
-	if client, err := defndb.New(dir); err == nil {
-		defer client.Close()
-		if claims, err := collectClaimsDefn(client); err == nil {
-			return claims, nil
-		}
+	client, err := defndb.New(dir)
+	if err != nil {
+		return nil, fmt.Errorf("defndb: %w", err)
 	}
-	return collectClaimsAST(dir)
+	defer client.Close()
+	return collectClaimsDefn(client)
 }
 
 func collectClaimsDefn(client *defndb.Client) ([]claimInfo, error) {
@@ -1331,113 +1158,6 @@ func collectClaimsDefn(client *defndb.Client) ([]claimInfo, error) {
 	return out, nil
 }
 
-func collectClaimsAST(dir string) ([]claimInfo, error) {
-	fset := token.NewFileSet()
-	var out []claimInfo
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			continue
-		}
-		for _, decl := range f.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok != token.VAR {
-				continue
-			}
-			for _, spec := range gen.Specs {
-				vs, ok := spec.(*ast.ValueSpec)
-				if !ok {
-					continue
-				}
-				for i, nameIdent := range vs.Names {
-					if i >= len(vs.Values) {
-						continue
-					}
-					cl, ok := vs.Values[i].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					predType, subj, obj, prov, ok := extractClaimFull(cl)
-					if !ok {
-						continue
-					}
-					out = append(out, claimInfo{
-						name:          nameIdent.Name,
-						predicateType: predType,
-						subject:       subj,
-						object:        obj,
-						file:          e.Name(),
-						provRef:       prov,
-					})
-				}
-			}
-		}
-	}
-	return out, nil
-}
-
-func extractClaim(cl *ast.CompositeLit) (predType, subject, object string, ok bool) {
-	predType, subject, object, _, ok = extractClaimFull(cl)
-	return
-}
-
-func extractClaimFull(cl *ast.CompositeLit) (predType, subject, object, provRef string, ok bool) {
-	typeIdent, typeOK := cl.Type.(*ast.Ident)
-	if !typeOK {
-		return "", "", "", "", false
-	}
-	var haveSubject, haveObject bool
-	for _, elt := range cl.Elts {
-		kv, ok := elt.(*ast.KeyValueExpr)
-		if !ok {
-			continue
-		}
-		key, ok := kv.Key.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		switch key.Name {
-		case "Subject":
-			haveSubject = true
-			subject = exprString(kv.Value)
-		case "Object":
-			haveObject = true
-			object = exprString(kv.Value)
-		case "Prov":
-			provRef = exprString(kv.Value)
-		}
-	}
-	if !haveSubject || !haveObject {
-		return "", "", "", "", false
-	}
-	return typeIdent.Name, subject, object, provRef, true
-}
-
-func exprString(e ast.Expr) string {
-	switch v := e.(type) {
-	case *ast.Ident:
-		return v.Name
-	case *ast.BasicLit:
-		return v.Value
-	case *ast.UnaryExpr:
-		return v.Op.String() + exprString(v.X)
-	case *ast.SelectorExpr:
-		return exprString(v.X) + "." + v.Sel.Name
-	case *ast.StarExpr:
-		return "*" + exprString(v.X)
-	default:
-		return fmt.Sprintf("<expr@%T>", e)
-	}
-}
 
 // collectProvenance walks .go files looking for Provenance composite
 // literals assigned to package-level vars. Records whether the Quote

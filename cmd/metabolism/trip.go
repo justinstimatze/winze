@@ -29,7 +29,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/justinstimatze/winze/internal/astutil"
 	"github.com/justinstimatze/winze/internal/defndb"
 )
 
@@ -67,7 +66,8 @@ type TripConnection struct {
 	Narrative   string   `json:"narrative,omitempty"`   // confluence/synthesis: full narrative
 	NewConcept  string   `json:"new_concept,omitempty"` // synthesis: proposed new concept name
 	Predicate   string   `json:"predicate,omitempty"`
-	Score       int      `json:"score"` // 1-5 interestingness
+	Subject     string   `json:"subject,omitempty"` // which entity is Subject (for predicate direction)
+	Score       int      `json:"score"`             // 1-5 interestingness
 	Rationale   string   `json:"rationale"`
 }
 
@@ -362,12 +362,18 @@ func promoteConnections(dir string, connections []TripConnection) error {
 			continue
 		}
 
-		provVar := fmt.Sprintf("tripCycle%d%s%sSource", cycleNum, c.EntityA, c.EntityB)
-		claimVar := fmt.Sprintf("TripCycle%d%s%s%s", cycleNum, c.EntityA, c.Predicate, c.EntityB)
+		// Determine Subject/Object direction from LLM's SUBJECT response
+		subj, obj := c.EntityA, c.EntityB
+		if strings.Contains(strings.ToUpper(c.Subject), "B") {
+			subj, obj = c.EntityB, c.EntityA
+		}
+
+		provVar := fmt.Sprintf("tripCycle%d%s%sSource", cycleNum, subj, obj)
+		claimVar := fmt.Sprintf("TripCycle%d%s%s%s", cycleNum, subj, c.Predicate, obj)
 
 		var b strings.Builder
 		b.WriteString(fmt.Sprintf("// ---------------------------------------------------------------------------\n"))
-		b.WriteString(fmt.Sprintf("// Trip connection: %s ↔ %s (score %d/5, %s)\n", c.EntityA, c.EntityB, c.Score, c.PromptType))
+		b.WriteString(fmt.Sprintf("// Trip connection: %s ↔ %s (score %d/5, %s)\n", subj, obj, c.Score, c.PromptType))
 		b.WriteString(fmt.Sprintf("// %s\n", c.Connection))
 		b.WriteString(fmt.Sprintf("// ---------------------------------------------------------------------------\n\n"))
 
@@ -379,8 +385,8 @@ func promoteConnections(dir string, connections []TripConnection) error {
 		b.WriteString("}\n\n")
 
 		b.WriteString(fmt.Sprintf("var %s = %s{\n", claimVar, c.Predicate))
-		b.WriteString(fmt.Sprintf("\tSubject: %s,\n", c.EntityA))
-		b.WriteString(fmt.Sprintf("\tObject:  %s,\n", c.EntityB))
+		b.WriteString(fmt.Sprintf("\tSubject: %s,\n", subj))
+		b.WriteString(fmt.Sprintf("\tObject:  %s,\n", obj))
 		b.WriteString(fmt.Sprintf("\tProv:    %s,\n", provVar))
 		b.WriteString("}\n")
 
@@ -447,22 +453,16 @@ func collectTripEntities(dir string) []tripEntity {
 	var entities []tripRawEntity
 	var claims []tripRawClaim
 
-	// Try defndb first for entity + claim collection.
-	if client, err := defndb.New(dir); err == nil {
-		defer client.Close()
-		if ents, cls, err := collectTripDataDefn(client); err == nil {
-			entities = ents
-			claims = cls
-		}
+	client, err := defndb.New(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[trip] defndb: %v\n", err)
+		return nil
 	}
-
-	// AST fallback if defndb didn't produce results.
-	if entities == nil {
-		var err error
-		entities, claims, err = collectTripDataAST(dir)
-		if err != nil {
-			return nil
-		}
+	defer client.Close()
+	entities, claims, err = collectTripDataDefn(client)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[trip] defndb data: %v\n", err)
+		return nil
 	}
 
 	// Build adjacency and BFS for clusters (always in-memory).
@@ -621,109 +621,6 @@ func collectTripDataDefn(client *defndb.Client) ([]tripRawEntity, []tripRawClaim
 	return entities, claims, nil
 }
 
-func collectTripDataAST(dir string) ([]tripRawEntity, []tripRawClaim, error) {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
-		return strings.HasSuffix(fi.Name(), ".go") && !strings.HasSuffix(fi.Name(), "_test.go")
-	}, parser.ParseComments)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	roleTypes := collectDreamRoleTypes(pkgs)
-
-	var entities []tripRawEntity
-	for _, pkg := range pkgs {
-		for fname, f := range pkg.Files {
-			base := filepath.Base(fname)
-			if isInfraFile(base) {
-				continue
-			}
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
-					continue
-				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeName := compositeTypeName(cl)
-					if !roleTypes[typeName] {
-						continue
-					}
-					brief := extractEntityBrief(cl)
-					entities = append(entities, tripRawEntity{
-						name: vs.Names[0].Name, roleType: typeName,
-						brief: brief, file: base,
-					})
-				}
-			}
-		}
-	}
-
-	var claims []tripRawClaim
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
-					continue
-				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeName := compositeTypeName(cl)
-					if roleTypes[typeName] || typeName == "Provenance" {
-						continue
-					}
-					subj, obj := extractClaimEndpoints(cl)
-					if subj != "" && obj != "" {
-						claims = append(claims, tripRawClaim{subject: subj, object: obj})
-					}
-				}
-			}
-		}
-	}
-
-	return entities, claims, nil
-}
-
-// extractClaimEndpoints extracts Subject and Object identifiers from a claim literal.
-func extractClaimEndpoints(cl *ast.CompositeLit) (string, string) {
-	var subj, obj string
-	for _, elt := range cl.Elts {
-		kv, ok := elt.(*ast.KeyValueExpr)
-		if !ok {
-			continue
-		}
-		key, ok := kv.Key.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		switch key.Name {
-		case "Subject":
-			subj = exprIdent(kv.Value)
-		case "Object":
-			obj = exprIdent(kv.Value)
-		}
-	}
-	return subj, obj
-}
-
-// exprIdent extracts the identifier name from various AST patterns.
-func exprIdent(e ast.Expr) string { return astutil.ExprIdent(e) }
 
 // pickCrossClusterPairs selects entity pairs from different clusters.
 // Prioritizes pairs where both entities have Briefs (for better LLM context).
@@ -1150,16 +1047,30 @@ Entity B: %s (%s)
 Connection type: %s
 %s
 
+Predicate compatibility (Subject→Object):
+  InfluencedBy: Person→Person
+  DerivedFrom: Concept→Concept
+  BelongsTo: Concept→Concept
+  Disputes: Person→Hypothesis
+  Proposes: Person→Hypothesis
+  Accepts: Person→Hypothesis
+  TheoryOf: Hypothesis→Concept
+  CommentaryOn: Concept→Concept
+
+Entity A is a %s. Entity B is a %s. Only suggest a predicate where A's role matches Subject and B's role matches Object (or vice versa). If no predicate's type constraints fit, use NONE.
+
 Respond in this exact format:
 CONNECTION: <one sentence describing the speculative connection>
-PREDICATE: <which KB predicate type fits: InfluencedBy, DerivedFrom, Disputes, TheoryOf, CommentaryOn, or NONE if no existing predicate fits>
+PREDICATE: <which KB predicate type fits, or NONE>
+SUBJECT: <which entity is the Subject — A or B>
 SCORE: <1-5 interestingness: 1=trivial, 2=weak, 3=interesting, 4=novel+defensible, 5=genuinely surprising>
 RATIONALE: <one sentence explaining why this score>
 
 If no meaningful connection exists, give SCORE: 1 and say so.`,
 		pair.A.name, pair.A.roleType, briefA,
 		pair.B.name, pair.B.roleType, briefB,
-		promptType, promptInstruction)
+		promptType, promptInstruction,
+		pair.A.roleType, pair.B.roleType)
 }
 
 func parseTripResponse(response string) TripConnection {
@@ -1173,6 +1084,8 @@ func parseTripResponse(response string) TripConnection {
 			if pred != "NONE" && pred != "" {
 				conn.Predicate = pred
 			}
+		} else if v, ok := strings.CutPrefix(line, "SUBJECT:"); ok {
+			conn.Subject = strings.TrimSpace(v)
 		} else if v, ok := strings.CutPrefix(line, "SCORE:"); ok {
 			v = strings.TrimSpace(v)
 			if n, err := strconv.Atoi(v); err == nil {

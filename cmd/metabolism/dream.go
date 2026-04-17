@@ -369,14 +369,16 @@ func analyzeProvenanceSplits(dir string) []DreamFinding {
 
 // analyzeBriefQuality checks entity Brief fields for quality issues.
 func analyzeBriefQuality(dir string) []DreamFinding {
-	// Try defndb first.
-	if client, err := defndb.New(dir); err == nil {
-		defer client.Close()
-		if findings, err := analyzeBriefQualityDefn(client); err == nil {
-			return findings
-		}
+	client, err := defndb.New(dir)
+	if err != nil {
+		return nil
 	}
-	return analyzeBriefQualityAST(dir)
+	defer client.Close()
+	findings, err := analyzeBriefQualityDefn(client)
+	if err != nil {
+		return nil
+	}
+	return findings
 }
 
 func analyzeBriefQualityDefn(client *defndb.Client) ([]DreamFinding, error) {
@@ -457,76 +459,7 @@ func analyzeBriefQualityDefn(client *defndb.Client) ([]DreamFinding, error) {
 	return findings, nil
 }
 
-func analyzeBriefQualityAST(dir string) []DreamFinding {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
-	if err != nil {
-		return nil
-	}
 
-	roleTypes := collectDreamRoleTypes(pkgs)
-	var findings []DreamFinding
-
-	for _, pkg := range pkgs {
-		for fname, f := range pkg.Files {
-			base := filepath.Base(fname)
-			if isInfraFile(base) {
-				continue
-			}
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
-					continue
-				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeName := compositeTypeName(cl)
-					if !roleTypes[typeName] {
-						continue
-					}
-
-					varName := vs.Names[0].Name
-					brief := extractEntityBrief(cl)
-
-					if brief == "" {
-						findings = append(findings, DreamFinding{
-							Category: "brief_quality", Severity: "warning",
-							File: base, Entity: varName,
-							Description: "missing Brief field",
-						})
-					} else if len(brief) < 20 {
-						findings = append(findings, DreamFinding{
-							Category: "brief_quality", Severity: "info",
-							File: base, Entity: varName,
-							Description: fmt.Sprintf("Brief is very short (%d chars) — may lack distinguishing detail", len(brief)),
-						})
-					} else if len(brief) > 300 {
-						findings = append(findings, DreamFinding{
-							Category: "brief_quality", Severity: "info",
-							File: base, Entity: varName,
-							Description: fmt.Sprintf("Brief is very long (%d chars) — consider tightening", len(brief)),
-						})
-					}
-				}
-			}
-		}
-	}
-
-	sort.Slice(findings, func(i, j int) bool {
-		if findings[i].Severity != findings[j].Severity {
-			return findings[i].Severity < findings[j].Severity
-		}
-		return findings[i].File < findings[j].File
-	})
-	return findings
-}
 
 // runAditScoring runs adit score-file on each corpus .go file if adit CLI is available.
 func runAditScoring(dir string) []DreamFinding {

@@ -187,7 +187,7 @@ func main() {
 	suggest := flag.Bool("suggest", false, "generate corpus template from corroborated cycles")
 	ingest := flag.Bool("ingest", false, "LLM-assisted ingest from corroborated ZIM cycles (needs --zim and ANTHROPIC_API_KEY)")
 	reify := flag.Bool("reify", false, "generate predictions.go from metabolism log (first-class Predicts/ResolvedAs claims)")
-	entityCap := flag.Int("entity-cap", 250, "max entities allowed in KB; refuse ingest/pipeline above this")
+	entityCap := flag.Int("entity-cap", 300, "max entities allowed in KB; refuse ingest/pipeline above this")
 	pipeline := flag.Bool("pipeline", false, "full quality pipeline: ingest → build → vet → lint → llm-contradiction → commit/reject")
 	llmBudget := flag.Int("llm-budget", 3, "max LLM calls for contradiction check in pipeline mode")
 	narrative := flag.Bool("narrative", false, "with --calibrate: tell the prediction story for each hypothesis")

@@ -20,9 +20,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -31,7 +28,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/justinstimatze/winze/internal/astutil"
 	"github.com/justinstimatze/winze/internal/defndb"
 )
 
@@ -419,14 +415,12 @@ func runStats(kb *kbIndex, jsonOut bool) {
 // --- index building ---
 
 func buildIndex(dir string) (*kbIndex, error) {
-	// Try defndb first for faster indexed access.
-	if client, err := defndb.New(dir); err == nil {
-		defer client.Close()
-		if kb, err := buildIndexDefn(client, dir); err == nil {
-			return kb, nil
-		}
+	client, err := defndb.New(dir)
+	if err != nil {
+		return nil, fmt.Errorf("defndb: %w", err)
 	}
-	return buildIndexAST(dir)
+	defer client.Close()
+	return buildIndexDefn(client, dir)
 }
 
 func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
@@ -545,183 +539,6 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 	return kb, nil
 }
 
-func buildIndexAST(dir string) (*kbIndex, error) {
-	roleTypes, err := collectRoleTypesAST(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	kb := &kbIndex{RoleTypes: roleTypes}
-	fset := token.NewFileSet()
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			continue
-		}
-		for _, decl := range f.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok != token.VAR {
-				continue
-			}
-			for _, spec := range gen.Specs {
-				vs, ok := spec.(*ast.ValueSpec)
-				if !ok {
-					continue
-				}
-				for i, nameIdent := range vs.Names {
-					if i >= len(vs.Values) {
-						continue
-					}
-					cl, ok := vs.Values[i].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeIdent, ok := cl.Type.(*ast.Ident)
-					if !ok {
-						continue
-					}
-					typeName := typeIdent.Name
-
-					switch {
-					case roleTypes[typeName]:
-						kb.Entities = append(kb.Entities, extractEntity(nameIdent.Name, typeName, e.Name(), cl))
-					case typeName == "Provenance":
-						kb.Provenance = append(kb.Provenance, extractProv(nameIdent.Name, e.Name(), cl))
-					default:
-						if c, ok := extractClaim(nameIdent.Name, typeName, e.Name(), cl); ok {
-							kb.Claims = append(kb.Claims, c)
-						}
-					}
-				}
-			}
-		}
-	}
-	return kb, nil
-}
-
-func collectRoleTypes(dir string) (map[string]bool, error) {
-	if client, err := defndb.New(dir); err == nil {
-		defer client.Close()
-		if roles, err := client.RoleTypeSet(); err == nil {
-			return roles, nil
-		}
-	}
-	return collectRoleTypesAST(dir)
-}
-
-func collectRoleTypesAST(dir string) (map[string]bool, error) {
-	pkgs, _, err := astutil.ParseCorpus(dir)
-	if err != nil {
-		return nil, err
-	}
-	return astutil.CollectRoleTypes(pkgs), nil
-}
-
-// --- extraction helpers ---
-
-func extractEntity(varName, roleType, file string, cl *ast.CompositeLit) entityRecord {
-	rec := entityRecord{VarName: varName, RoleType: roleType, File: file}
-
-	// Entity might be direct fields or nested via &Entity{...}
-	fields := cl.Elts
-	for _, elt := range cl.Elts {
-		if ue, ok := elt.(*ast.UnaryExpr); ok {
-			if inner, ok := ue.X.(*ast.CompositeLit); ok {
-				fields = inner.Elts
-				break
-			}
-		}
-	}
-
-	for _, elt := range fields {
-		kv, ok := elt.(*ast.KeyValueExpr)
-		if !ok {
-			continue
-		}
-		key, ok := kv.Key.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		switch key.Name {
-		case "ID":
-			rec.ID = unquote(kv.Value)
-		case "Name":
-			rec.Name = unquote(kv.Value)
-		case "Brief":
-			rec.Brief = resolveStringExpr(kv.Value)
-		case "Aliases":
-			rec.Aliases = extractStringSlice(kv.Value)
-		}
-	}
-	return rec
-}
-
-func extractClaim(varName, typeName, file string, cl *ast.CompositeLit) (claimRecord, bool) {
-	var subject, object, provRef string
-	var hasSubject, hasObject bool
-	for _, elt := range cl.Elts {
-		kv, ok := elt.(*ast.KeyValueExpr)
-		if !ok {
-			continue
-		}
-		key, ok := kv.Key.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		switch key.Name {
-		case "Subject":
-			hasSubject = true
-			subject = exprName(kv.Value)
-		case "Object":
-			hasObject = true
-			object = exprName(kv.Value)
-		case "Prov":
-			provRef = exprName(kv.Value)
-		}
-	}
-	if !hasSubject || !hasObject {
-		return claimRecord{}, false
-	}
-	return claimRecord{
-		VarName:   varName,
-		Predicate: typeName,
-		Subject:   subject,
-		Object:    object,
-		ProvRef:   provRef,
-		File:      file,
-	}, true
-}
-
-func extractProv(varName, file string, cl *ast.CompositeLit) provRecord {
-	rec := provRecord{VarName: varName, File: file}
-	for _, elt := range cl.Elts {
-		kv, ok := elt.(*ast.KeyValueExpr)
-		if !ok {
-			continue
-		}
-		key, ok := kv.Key.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		switch key.Name {
-		case "Origin":
-			rec.Origin = unquote(kv.Value)
-		case "Quote":
-			rec.Quote = unquote(kv.Value)
-		}
-	}
-	return rec
-}
 
 // --- search helpers ---
 
@@ -750,37 +567,6 @@ func claimsInvolving(kb *kbIndex, varName string) []claimRecord {
 	return out
 }
 
-// --- AST helpers ---
-
-func exprName(e ast.Expr) string {
-	switch v := e.(type) {
-	case *ast.Ident:
-		return v.Name
-	case *ast.UnaryExpr:
-		return exprName(v.X)
-	case *ast.CompositeLit:
-		return "<inline>"
-	default:
-		return fmt.Sprintf("<%T>", e)
-	}
-}
-
-func unquote(e ast.Expr) string          { return astutil.Unquote(e) }
-func resolveStringExpr(e ast.Expr) string { return astutil.ResolveStringExpr(e) }
-
-func extractStringSlice(e ast.Expr) []string {
-	cl, ok := e.(*ast.CompositeLit)
-	if !ok {
-		return nil
-	}
-	var out []string
-	for _, elt := range cl.Elts {
-		if s := unquote(elt); s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
-}
 
 // --- output helpers ---
 

@@ -36,11 +36,9 @@ package winze
 // does not cite Clark, Mattson, Shermer, or any other existing winze
 // Person.
 //
-// Consciousness is seeded as a contested-target-ready Concept with one
-// TheoryOf claim, parallel to HumanCognition and HumanRights. A rival
-// theory (Chalmers hard problem, Dennett eliminativism, Clark's
-// predictive-processing account) would fire contested-concept as the
-// seventh contested target.
+// Consciousness (now in consciousness.go) was originally seeded here
+// as a contested-target-ready Concept. It now has five competing
+// TheoryOf claims across four files.
 
 var blindsightSource = Provenance{
 	Origin:     "Wikipedia (zim 2025-12) / Blindsight_(Watts_novel)",
@@ -68,8 +66,7 @@ var blindsightSource = Provenance{
 // Real-world entities. The book is a Concept tagged IsFictionalWork; the
 // author is a Person who carries BOTH Authored (fiction authorship) and
 // Proposes (philosophical thesis advancement) — demonstrating that these
-// predicates coexist cleanly on a single Person entity. Consciousness is
-// a real-world Concept seeded as a contested-target-ready TheoryOf object.
+// predicates coexist cleanly on a single Person entity.
 // -----------------------------------------------------------------------------
 
 var (
@@ -88,12 +85,8 @@ var (
 		Brief: "Canadian science fiction writer and marine biologist with a PhD who authored Blindsight (2006) and Echopraxia (2014), known for hard SF exploring neuroscience and philosophy of mind.",
 	}}
 
-	Consciousness = Concept{&Entity{
-		ID:    "concept-consciousness",
-		Name:  "Consciousness",
-		Kind:  "concept",
-		Brief: "The philosophical and scientific question of what consciousness is, its necessity for intelligence, and its evolutionary role. A contested concept with competing theories including Watts's evolutionary-dead-end thesis, Chalmers's hard problem, and predictive-processing accounts.",
-	}}
+	// Consciousness is defined in consciousness.go — the hub concept
+	// that multiple files' TheoryOf claims converge on.
 
 	WattsConsciousnessAsDeadEndThesis = Hypothesis{&Entity{
 		ID:    "hypothesis-watts-consciousness-dead-end",

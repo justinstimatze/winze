@@ -31,6 +31,20 @@ import (
 	"strings"
 )
 
+// exprIdent extracts the identifier name from various AST expression patterns.
+func exprIdent(e ast.Expr) string {
+	switch v := e.(type) {
+	case *ast.Ident:
+		return v.Name
+	case *ast.UnaryExpr:
+		return exprIdent(v.X)
+	case *ast.SelectorExpr:
+		return v.Sel.Name
+	default:
+		return ""
+	}
+}
+
 // BiasReport holds findings from all bias auditors.
 type BiasReport struct {
 	Auditors []BiasAuditorResult `json:"auditors"`

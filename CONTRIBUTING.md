@@ -42,7 +42,7 @@ Contributions outside this domain will be declined. If you're unsure, open an is
 Rules:
 
 - **Mirror-source-commitments.** Only encode claims the source explicitly states. `Provenance.Quote` must contain the exact text supporting the claim. No inference, no extrapolation.
-- **Entity cap.** The KB targets depth over breadth. The default cap is 250 entities. Deepen thin contested neighborhoods before expanding.
+- **Entity cap.** The KB targets depth over breadth. The default cap is 300 entities. Deepen thin contested neighborhoods before expanding.
 - **Brief quality.** Entity Briefs should be one sentence, under 300 characters. State what the entity *is*, not what it *does in this KB*.
 
 ### New predicates
