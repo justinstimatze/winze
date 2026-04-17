@@ -1,10 +1,27 @@
 package main
 
 import (
+	"errors"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/justinstimatze/winze/internal/defndb"
 )
+
+// skipIfNoDefnDB skips the test when defn isn't reachable. CI doesn't run a
+// Dolt server and has no .defn/, so these integration tests can't index the
+// corpus there. Skip rather than fail — they're real coverage locally.
+func skipIfNoDefnDB(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		return
+	}
+	if errors.Is(err, defndb.ErrNotAvailable) || strings.Contains(err.Error(), "defn not available") {
+		t.Skipf("defn not available: %v", err)
+	}
+}
 
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -18,6 +35,7 @@ func repoRoot(t *testing.T) string {
 func TestBuildIndex(t *testing.T) {
 	root := repoRoot(t)
 	kb, err := buildIndex(root)
+	skipIfNoDefnDB(t, err)
 	if err != nil {
 		t.Fatalf("buildIndex: %v", err)
 	}

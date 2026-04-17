@@ -137,9 +137,9 @@ func TestDrugProfile(t *testing.T) {
 		{1.3, "analogy", "psychedelic/pattern-matching"},
 		{1.2, "contradiction", "psychedelic/adversarial"},
 		{0.8, "genealogy", "exploratory/causal-tracing"},
-		{1.0, "prediction", "exploratory/forecasting"},
+		{1.0, "prediction", "psychedelic/forecasting"}, // 1.0 >= 0.9 => psychedelic
 		{0.4, "analogy", "microdose/pattern-matching"},
-		{0.7, "contradiction", "microdose/adversarial"},
+		{0.7, "contradiction", "exploratory/adversarial"}, // 0.7 >= 0.6 => exploratory
 		{0.2, "genealogy", "sober/causal-tracing"},
 		{0.0, "prediction", "sober/forecasting"},
 	}
