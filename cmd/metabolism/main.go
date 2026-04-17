@@ -226,6 +226,7 @@ func main() {
 	tripTemp := flag.Float64("temperature", 1.0, "LLM temperature for --trip (0.0-1.5; higher = wilder connections)")
 	tripPrompt := flag.String("prompt-type", "analogy", "connection type for --trip: analogy, contradiction, genealogy, prediction")
 	tripPairs := flag.Int("pairs", 5, "number of cross-cluster entity pairs to evaluate in --trip")
+	tripPromote := flag.Bool("promote", false, "with --trip: also promote score-4+ connections to the corpus (off by default; --evolve always promotes)")
 	pkm := flag.String("pkm", "", "path to PKM vault directory (markdown notes → typed Go corpus files)")
 	jsonOut := flag.Bool("json", false, "output as JSON")
 	backend := flag.String("backend", "arxiv", "sensor backend: arxiv, zim, rss, or all")
@@ -336,7 +337,13 @@ func main() {
 	}
 
 	if *trip {
-		runTrip(dir, *tripTemp, *tripPrompt, *tripPairs, *dryRun, *jsonOut)
+		report := runTrip(dir, *tripTemp, *tripPrompt, *tripPairs, *dryRun, *jsonOut)
+		if *tripPromote && !*dryRun && len(report.Connections) > 0 {
+			if err := promoteConnections(dir, report.Connections); err != nil {
+				fmt.Fprintf(os.Stderr, "metabolism: trip promotion: %v\n", err)
+				os.Exit(1)
+			}
+		}
 		return
 	}
 
