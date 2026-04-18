@@ -1465,6 +1465,44 @@ func runCalibrate(dir string, jsonOut bool) {
 		}
 	}
 
+	// Post-hoc tautology scan: distinguish corroborations from novel
+	// sources vs corroborations from sources already in the corpus
+	// (gap_confirmed vs no_gap). Recomputed at calibrate time because
+	// novelty is a moving target as the corpus grows.
+	provIdx, provErr := collectCorpusProvenance(dir)
+	if provErr != nil {
+		fmt.Fprintf(os.Stderr, "calibrate: provenance scan: %v\n", provErr)
+	}
+	gapCounts := map[string]int{}
+	// corrobNovel counts corroborations whose cycles have at least one
+	// source not in the corpus (gap_confirmed + mixed_overlap). corrobTaut
+	// counts corroborations where every source was already ingested
+	// (no_gap). Only the latter is purely tautological signal.
+	corrobNovel, corrobTaut := 0, 0
+	challNovel, challTaut := 0, 0
+	for _, c := range mlog.Cycles {
+		status := classifyGapStatus(c, provIdx)
+		if status == "" {
+			continue
+		}
+		gapCounts[status]++
+		hasNovel := status == "gap_confirmed" || status == "mixed_overlap"
+		switch c.Resolution {
+		case "corroborated":
+			if hasNovel {
+				corrobNovel++
+			} else if status == "no_gap" {
+				corrobTaut++
+			}
+		case "challenged":
+			if hasNovel {
+				challNovel++
+			} else if status == "no_gap" {
+				challTaut++
+			}
+		}
+	}
+
 	if jsonOut {
 		type VulnTypeScore struct {
 			VulnType   string  `json:"vuln_type"`
@@ -1488,6 +1526,14 @@ func runCalibrate(dir string, jsonOut bool) {
 			Misses        int              `json:"misses"`
 			Pending       int              `json:"pending"`
 			AvgCyclesToHit float64         `json:"avg_cycles_to_hit"`
+			// Tautology scan (gap_confirmed, mixed_overlap, no_gap)
+			GapConfirmed      int `json:"gap_confirmed"`
+			MixedOverlap      int `json:"mixed_overlap"`
+			NoGap             int `json:"no_gap"`
+			CorroboratedNovel int `json:"corroborated_novel"`
+			CorroboratedTaut  int `json:"corroborated_tautological"`
+			ChallengedNovel   int `json:"challenged_novel"`
+			ChallengedTaut    int `json:"challenged_tautological"`
 			ByVulnType    []VulnTypeScore  `json:"by_vuln_type"`
 			Scores        []hypothesisScore `json:"scores"`
 		}
@@ -1504,6 +1550,13 @@ func runCalibrate(dir string, jsonOut bool) {
 			Misses:      misses,
 			Pending:     pending,
 			AvgCyclesToHit: avg(totalCyclesToVerdict, hitsWithCycles),
+			GapConfirmed:      gapCounts["gap_confirmed"],
+			MixedOverlap:      gapCounts["mixed_overlap"],
+			NoGap:             gapCounts["no_gap"],
+			CorroboratedNovel: corrobNovel,
+			CorroboratedTaut:  corrobTaut,
+			ChallengedNovel:   challNovel,
+			ChallengedTaut:    challTaut,
 			Scores:      scores,
 		}
 		for vt, a := range byVulnAcc {
@@ -1572,6 +1625,30 @@ func runCalibrate(dir string, jsonOut bool) {
 	}
 	if unresolved > 0 {
 		fmt.Printf("    unresolved: %d cycles\n", unresolved)
+	}
+
+	// Provenance overlap (gap_confirmed vs no_gap). A corroborated cycle
+	// whose sources are all already in the corpus provenance is
+	// tautological — the KB "corroborates" what it was built from.
+	// Scanned post-hoc so the stat tracks the current corpus, not
+	// whatever state existed when the cycle was logged.
+	totalScanned := gapCounts["gap_confirmed"] + gapCounts["mixed_overlap"] + gapCounts["no_gap"]
+	if totalScanned > 0 {
+		fmt.Printf("\n  provenance overlap (sensor cycles with papers):\n")
+		fmt.Printf("    gap_confirmed:     %.0f%% (%d/%d) — every source new to corpus\n",
+			pct(gapCounts["gap_confirmed"], totalScanned), gapCounts["gap_confirmed"], totalScanned)
+		fmt.Printf("    mixed_overlap:     %.0f%% (%d/%d) — some sources already in corpus, some new\n",
+			pct(gapCounts["mixed_overlap"], totalScanned), gapCounts["mixed_overlap"], totalScanned)
+		fmt.Printf("    no_gap:            %.0f%% (%d/%d) — every source already in corpus (tautological)\n",
+			pct(gapCounts["no_gap"], totalScanned), gapCounts["no_gap"], totalScanned)
+		if corrobNovel+corrobTaut > 0 {
+			fmt.Printf("    of corroborated:   %d with novel source, %d tautological (%.0f%% non-tautological)\n",
+				corrobNovel, corrobTaut, pct(corrobNovel, corrobNovel+corrobTaut))
+		}
+		if challNovel+challTaut > 0 {
+			fmt.Printf("    of challenged:     %d with novel source, %d tautological (%.0f%% non-tautological)\n",
+				challNovel, challTaut, pct(challNovel, challNovel+challTaut))
+		}
 	}
 
 	// By prediction type — primary bucketing. Separates tautological

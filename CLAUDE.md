@@ -200,7 +200,11 @@ applied as deterministic auditors checking KB structure. Runs standalone or as
 part of dream (`--dream --bias`). Each auditor reports a metric, threshold,
 and whether the bias was triggered. The KB eats its own dogfood.
 `--calibrate` now includes prediction accuracy scoring per hypothesis with
-hit rate, precision, and efficiency metrics.
+hit rate, precision, and efficiency metrics, plus a post-hoc provenance-overlap
+scan (gap_confirmed / mixed_overlap / no_gap). A corroborated cycle whose
+sources are all already in the corpus provenance is tautological (no_gap);
+one with at least one novel source is real external signal. Recomputed each
+run because novelty is a moving target as the corpus grows.
 `--durability` re-runs KB-internal resolvers (lint, functional, build-gate)
 against the current corpus and reports drift vs historical verdicts:
 stable, flipped_to_confirmed, flipped_to_refuted, now_ambiguous,
