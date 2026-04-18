@@ -1905,6 +1905,15 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	phases := 0
 	failures := 0
 
+	// Phase 0: Bias audit gates downstream phases. README flagged
+	// "triggered bias auditors don't gate the next metabolism phase"
+	// as a known problem — wiring it here closes that gap. At minimum
+	// the triggered set is surfaced; specific triggers can modify
+	// phase behavior (currently: availability_heuristic → skip ZIM).
+	biasGates := runBiasGates(dir)
+	phases++
+	fmt.Println()
+
 	// Phase 1: Metabolism (sensor queries + optional ingest)
 	{
 		fmt.Println("=== Phase 1: Metabolism (wake) ===")
@@ -1935,11 +1944,17 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 						fmt.Printf("  [dry-run] would query: %s → %q\n", t.Hypothesis, t.Query)
 						continue
 					}
-					// ZIM backend (if available)
-					if zimPath != "" {
+					// ZIM backend (if available and not gated by bias audit).
+					// Availability-heuristic trigger means provenance HHI > 0.25,
+					// i.e. the KB is already over-concentrated on one source.
+					// Querying ZIM (Wikipedia) while concentrated would deepen the
+					// concentration; skip it this cycle to diversify.
+					if zimPath != "" && !biasGates.skipZim {
 						zimQ := t.queryFor("zim")
 						fmt.Printf("  querying (zim): %s → %q\n", t.Hypothesis, zimQ)
 						runSensorCycle(dir, zimPath, zimIndex, t, "zim", nil)
+					} else if zimPath != "" && biasGates.skipZim {
+						fmt.Printf("  skipping zim for %s (availability-heuristic bias gate)\n", t.Hypothesis)
 					}
 					// RSS backend (always available, no prereqs)
 					rssQ := t.queryFor("rss")

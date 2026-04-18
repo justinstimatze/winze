@@ -134,7 +134,7 @@ most structurally fragile hypotheses.
 
 ```bash
 # === THE DEFAULT: one command, full KB evolution ===
-go run ./cmd/metabolism --evolve .                     # full KB evolution: sense → evaluate → ingest → trip (promote) → dream (cleanup) → calibrate
+go run ./cmd/metabolism --evolve .                     # full KB evolution: bias-audit → sense → evaluate → ingest → trip (promote) → dream (cleanup) → calibrate
 go run ./cmd/metabolism --evolve --dry-run .            # preview what would happen
 
 # === Individual phases (for debugging/manual control) ===
@@ -199,6 +199,11 @@ bias, anchoring, clustering illusion, availability heuristic, survivorship bias)
 applied as deterministic auditors checking KB structure. Runs standalone or as
 part of dream (`--dream --bias`). Each auditor reports a metric, threshold,
 and whether the bias was triggered. The KB eats its own dogfood.
+Bias auditors also gate `--evolve` as Phase 0. When AvailabilityHeuristic
+triggers (provenance HHI > 0.25, i.e. too concentrated on one source), the
+cycle skips the ZIM backend so querying Wikipedia-while-Wikipedia-dominant
+doesn't deepen the concentration. Other triggers currently surface only;
+wiring more gates belongs in cmd/metabolism/bias_gates.go.
 `--calibrate` now includes prediction accuracy scoring per hypothesis with
 hit rate, precision, and efficiency metrics, plus a post-hoc provenance-overlap
 scan (gap_confirmed / mixed_overlap / no_gap). A corroborated cycle whose
