@@ -89,6 +89,8 @@ func logTripFunctionalDurability(dir string, claims []promotedClaim) error {
 	mlog := loadLog(logPath)
 	today := time.Now().Format("2006-01-02")
 	now := time.Now()
+	commit := oracleCommit(dir)
+	digest := oracleDigest(dir, "trip_functional_durability")
 
 	confirmed, refuted, vacuous := 0, 0, 0
 	for _, pc := range claims {
@@ -99,6 +101,8 @@ func logTripFunctionalDurability(dir string, claims []promotedClaim) error {
 			VulnType:       "trip_promotion",
 			PredictionType: "trip_functional_durability",
 			ResolvedAt:     today,
+			OracleCommit:   commit,
+			OracleDigest:   digest,
 		}
 		if !functional[pc.Predicate] {
 			c.Resolution = "confirmed"

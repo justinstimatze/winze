@@ -62,6 +62,8 @@ func logTripLLMDurability(dir string, claims []promotedClaim) error {
 	logPath := filepath.Join(dir, ".metabolism-log.json")
 	mlog := loadLog(logPath)
 	today := time.Now().Format("2006-01-02")
+	commit := oracleCommit(dir)
+	digest := oracleDigest(dir, "trip_llm_durability")
 
 	confirmed, refuted, errored := 0, 0, 0
 	for _, pc := range claims {
@@ -74,6 +76,8 @@ func logTripLLMDurability(dir string, claims []promotedClaim) error {
 			PredictionType: "trip_llm_durability",
 			ResolvedAt:     today,
 			Evidence:       evidence,
+			OracleCommit:   commit,
+			OracleDigest:   digest,
 		}
 		switch result {
 		case "confirmed":

@@ -49,6 +49,8 @@ func logTripLintDurability(dir string, claimVars []string) error {
 	mlog := loadLog(logPath)
 	today := time.Now().Format("2006-01-02")
 	now := time.Now()
+	commit := oracleCommit(dir)
+	digest := oracleDigest(dir, "trip_lint_durability")
 
 	confirmed, refuted := 0, 0
 	for _, varName := range claimVars {
@@ -59,6 +61,8 @@ func logTripLintDurability(dir string, claimVars []string) error {
 			VulnType:       "trip_promotion",
 			PredictionType: "trip_lint_durability",
 			ResolvedAt:     today,
+			OracleCommit:   commit,
+			OracleDigest:   digest,
 		}
 		if exitCode == 0 {
 			c.Resolution = "confirmed"
@@ -107,6 +111,8 @@ func logTripPromotionAttempts(dir string, attempts []tripPromotionAttempt) error
 	mlog := loadLog(logPath)
 	today := time.Now().Format("2006-01-02")
 	now := time.Now()
+	commit := oracleCommit(dir)
+	digest := oracleDigest(dir, "trip_promotion_attempt")
 
 	for _, a := range attempts {
 		c := Cycle{
@@ -117,6 +123,8 @@ func logTripPromotionAttempts(dir string, attempts []tripPromotionAttempt) error
 			PredictionType: "trip_promotion_attempt",
 			ResolvedAt:     today,
 			Evidence:       a.Evidence,
+			OracleCommit:   commit,
+			OracleDigest:   digest,
 		}
 		if a.Accepted {
 			c.Resolution = "confirmed"

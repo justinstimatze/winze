@@ -145,6 +145,15 @@ type Cycle struct {
 	// carry their evidence in Papers; this field is for resolvers that
 	// produce short textual evidence instead of paper summaries.
 	Evidence string `json:"evidence,omitempty"`
+	// OracleCommit is the short git HEAD SHA at resolution time. Empty on
+	// pre-versioning entries. Used by --durability to attribute drift
+	// between re-runs: a changed OracleCommit identifies corpus churn.
+	OracleCommit string `json:"oracle_commit,omitempty"`
+	// OracleDigest is a short sha256 over the resolver's source files at
+	// resolution time (e.g. cmd/lint/*.go for trip_lint_durability). A
+	// change between re-runs identifies oracle-code drift, distinguishing
+	// "we edited the rule" from "the corpus changed under a stable rule".
+	OracleDigest string `json:"oracle_digest,omitempty"`
 	// PipelineClaims records per-claim accept/reject decisions during ingest.
 	// Added for pipeline observability.
 	PipelineClaims []PipelineClaim `json:"pipeline_claims,omitempty"`
@@ -209,6 +218,8 @@ func main() {
 	limit := flag.Int("limit", 5, "max results per query")
 	dryRun := flag.Bool("dry-run", false, "show targets without querying")
 	calibrate := flag.Bool("calibrate", false, "analyze existing log instead of running a cycle")
+	durability := flag.Bool("durability", false, "re-run KB-internal resolvers against current corpus and report drift vs historical verdicts")
+	durabilityWrite := flag.Bool("write", false, "with --durability: append recheck entries to .metabolism-log.json (default: read-only)")
 	resolve := flag.String("resolve", "", "resolve a hypothesis: HYPOTHESIS=corroborated|challenged|irrelevant|no_signal")
 	suggest := flag.Bool("suggest", false, "generate corpus template from corroborated cycles")
 	ingest := flag.Bool("ingest", false, "LLM-assisted ingest from corroborated ZIM cycles (needs --zim and ANTHROPIC_API_KEY)")
@@ -369,6 +380,11 @@ func main() {
 		} else {
 			runCalibrate(dir, *jsonOut)
 		}
+		return
+	}
+
+	if *durability {
+		runDurability(dir, *jsonOut, *durabilityWrite)
 		return
 	}
 
