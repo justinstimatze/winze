@@ -14,19 +14,26 @@ import (
 	"github.com/justinstimatze/winze/internal/defndb"
 )
 
-// runDurability re-runs KB-internal resolvers against the current corpus
-// and reports drift vs historical verdicts. This is the A3 mechanism:
-// turning calibrate into a moving time-series statistic by detecting
-// which historical promotions have flipped verdicts under the current
-// corpus + current oracle code.
+// runDurability re-checks KB-internal verdicts against the current corpus
+// and reports drift. This is the A3 mechanism: turning calibrate into a
+// moving time-series statistic by detecting which historical verdicts
+// have flipped under the current corpus + current oracle code.
 //
-// Three resolvers are rechecked in this first cut:
-//   - trip_lint_durability: re-runs cmd/lint once, substring-matches per var
-//   - trip_functional_durability: re-runs //winze:functional collision check
-//   - trip_promotion_attempt: re-runs `go build ./...`
+// Resolver semantics per prediction type:
+//   - trip_lint_durability: identical re-run of cmd/lint with per-var
+//     substring match.
+//   - trip_functional_durability: identical re-run of the functional-pragma
+//     collision check against current claim graph.
+//   - trip_promotion_attempt: PROXY. The original oracle was the promotion
+//     pipeline's entity-existence + slot-type validation, which we cannot
+//     replay for rejected attempts (candidate data is gone). We substitute
+//     a presence+build check: does the claim var exist and does `go build`
+//     still succeed? Accepted promotions with missing vars or build errors
+//     flip to refuted; rejected promotions register as unresolvable.
 //
-// Skipped: trip_llm_durability (API cost + stochasticity). Sensor cycles
-// are a separate concern — their oracle is external (arXiv/ZIM).
+// Skipped: trip_llm_durability (API cost + stochasticity makes "flip"
+// noisy until results cache). Sensor cycles are a separate concern —
+// their oracle is external (arXiv/ZIM).
 //
 // Read-only by default. Pass writeLog=true to append recheck entries
 // with suffixed PredictionType ("_recheck") so calibrate picks them up.
@@ -474,14 +481,15 @@ func existingVars(dir string) map[string]bool {
 // ---- report types ----
 
 type durabilityReport struct {
-	Stable              int            `json:"stable"`
-	FlippedToConfirmed  int            `json:"flipped_to_confirmed"`
-	FlippedToRefuted    int            `json:"flipped_to_refuted"`
-	NowAmbiguous        int            `json:"now_ambiguous"`
-	Unresolvable        int            `json:"unresolvable"`
-	ResolverChanged     int            `json:"resolver_changed"`
-	ByResolver          map[string]int `json:"by_resolver"`
-	Total               int            `json:"total"`
+	Stable                 int            `json:"stable"`
+	StableHeldAcrossCommit int            `json:"stable_held_across_commit"`
+	FlippedToConfirmed     int            `json:"flipped_to_confirmed"`
+	FlippedToRefuted       int            `json:"flipped_to_refuted"`
+	NowAmbiguous           int            `json:"now_ambiguous"`
+	Unresolvable           int            `json:"unresolvable"`
+	ResolverChanged        int            `json:"resolver_changed"`
+	ByResolver             map[string]int `json:"by_resolver"`
+	Total                  int            `json:"total"`
 }
 
 func buildDurabilityReport(results []durabilityResult) durabilityReport {
@@ -492,6 +500,9 @@ func buildDurabilityReport(results []durabilityResult) durabilityReport {
 		switch x.drift {
 		case driftStable:
 			r.Stable++
+			if x.oldOracleCommit != "" && x.newOracleCommit != "" && x.oldOracleCommit != x.newOracleCommit {
+				r.StableHeldAcrossCommit++
+			}
 		case driftFlippedConfirmed:
 			r.FlippedToConfirmed++
 		case driftFlippedRefuted:
@@ -564,6 +575,13 @@ func emitDurabilityText(report durabilityReport, results []durabilityResult, wro
 		fmt.Println()
 	}
 
+	// Stable-despite-churn: positive durability signal that would otherwise
+	// be hidden since the per-entry detail loop skips stable entries.
+	if report.StableHeldAcrossCommit > 0 {
+		fmt.Printf("DURABILITY  %d of %d stable verdicts held across a corpus commit change\n",
+			report.StableHeldAcrossCommit, report.Stable)
+	}
+
 	fmt.Printf("SUMMARY  stable=%d  flipped→confirmed=%d  flipped→refuted=%d  resolver_changed=%d  ambiguous=%d  unresolvable=%d  (total=%d)\n",
 		report.Stable, report.FlippedToConfirmed, report.FlippedToRefuted, report.ResolverChanged, report.NowAmbiguous, report.Unresolvable, report.Total)
 	if !wrote {
@@ -587,7 +605,7 @@ func emitDurabilityJSON(report durabilityReport, results []durabilityResult) {
 		OldDigest     string `json:"old_oracle_digest,omitempty"`
 		NewDigest     string `json:"new_oracle_digest,omitempty"`
 	}
-	var items []flip
+	items := []flip{}
 	for _, r := range results {
 		if r.drift == driftStable {
 			continue
@@ -680,6 +698,22 @@ func oracleCommit(dir string) string {
 	return sha
 }
 
+// goVersionDigest returns a short hash of `go version` output. Used as
+// the oracle digest for build-gate rechecks so Go toolchain changes
+// surface as resolver_changed rather than looking like corpus drift.
+func goVersionDigest() string {
+	out, err := exec.Command("go", "version").Output()
+	if err != nil {
+		return ""
+	}
+	h := sha256.Sum256(out)
+	sum := fmt.Sprintf("%x", h)
+	if len(sum) > 12 {
+		sum = sum[:12]
+	}
+	return sum
+}
+
 // oracleDigest returns a short sha256 over the source files that define
 // a resolver's behavior at call time. A change between old and new
 // verdicts for the same (hypothesis, prediction_type) means we edited
@@ -701,9 +735,11 @@ func oracleDigest(dir, predictionType string) string {
 	case "trip_llm_durability":
 		files = []string{filepath.Join(dir, "cmd", "metabolism", "trip_llm_resolve.go")}
 	case "trip_promotion_attempt":
-		// build-gate depends on the whole corpus + Go toolchain; digesting
-		// a single file would be misleading. Leave empty.
-		return ""
+		// build-gate's oracle is the whole corpus + Go toolchain. We can't
+		// digest the corpus (it IS the thing under test), but we can digest
+		// the toolchain version so flips attributable to a Go upgrade show
+		// up as resolver_changed rather than unattributed corpus drift.
+		return goVersionDigest()
 	default:
 		return ""
 	}

@@ -30,7 +30,7 @@ func TestClassifyDrift(t *testing.T) {
 
 		{"empty new verdict treated as ambiguous", "confirmed", "", "abc", "abc", driftNowAmbiguous},
 
-		{"old unset, new confirmed (stable)", "", "confirmed", "", "abc", driftFlippedConfirmed},
+		{"old unset, new confirmed → treated as flip", "", "confirmed", "", "abc", driftFlippedConfirmed},
 	}
 
 	for _, tc := range cases {
@@ -103,18 +103,25 @@ func TestIsRecheckable(t *testing.T) {
 
 func TestBuildDurabilityReport(t *testing.T) {
 	results := []durabilityResult{
-		{oldPredictionType: "trip_lint_durability", drift: driftStable},
+		// Stable, same commit — not counted as held-across-churn.
+		{oldPredictionType: "trip_lint_durability", drift: driftStable, oldOracleCommit: "a", newOracleCommit: "a"},
+		// Stable, commit changed — counted as held-across-churn.
+		{oldPredictionType: "trip_lint_durability", drift: driftStable, oldOracleCommit: "a", newOracleCommit: "b"},
+		// Stable but old commit empty (pre-versioning) — not counted.
+		{oldPredictionType: "trip_promotion_attempt", drift: driftStable, oldOracleCommit: "", newOracleCommit: "b"},
 		{oldPredictionType: "trip_lint_durability", drift: driftFlippedRefuted},
 		{oldPredictionType: "trip_functional_durability", drift: driftResolverChanged},
 		{oldPredictionType: "trip_functional_durability", drift: driftUnresolvable},
-		{oldPredictionType: "trip_promotion_attempt", drift: driftStable},
 	}
 	r := buildDurabilityReport(results)
-	if r.Total != 5 {
-		t.Errorf("Total = %d, want 5", r.Total)
+	if r.Total != 6 {
+		t.Errorf("Total = %d, want 6", r.Total)
 	}
-	if r.Stable != 2 {
-		t.Errorf("Stable = %d, want 2", r.Stable)
+	if r.Stable != 3 {
+		t.Errorf("Stable = %d, want 3", r.Stable)
+	}
+	if r.StableHeldAcrossCommit != 1 {
+		t.Errorf("StableHeldAcrossCommit = %d, want 1", r.StableHeldAcrossCommit)
 	}
 	if r.FlippedToRefuted != 1 {
 		t.Errorf("FlippedToRefuted = %d, want 1", r.FlippedToRefuted)
@@ -125,7 +132,21 @@ func TestBuildDurabilityReport(t *testing.T) {
 	if r.Unresolvable != 1 {
 		t.Errorf("Unresolvable = %d, want 1", r.Unresolvable)
 	}
-	if r.ByResolver["trip_lint_durability"] != 2 {
-		t.Errorf("ByResolver[trip_lint_durability] = %d, want 2", r.ByResolver["trip_lint_durability"])
+	if r.ByResolver["trip_lint_durability"] != 3 {
+		t.Errorf("ByResolver[trip_lint_durability] = %d, want 3", r.ByResolver["trip_lint_durability"])
+	}
+}
+
+func TestGoVersionDigest(t *testing.T) {
+	d := goVersionDigest()
+	if d == "" {
+		t.Fatal("goVersionDigest returned empty — go binary missing?")
+	}
+	if len(d) != 12 {
+		t.Errorf("digest length = %d, want 12", len(d))
+	}
+	// Two calls should be identical (Go version doesn't change mid-test)
+	if d2 := goVersionDigest(); d2 != d {
+		t.Errorf("goVersionDigest not deterministic: %q vs %q", d, d2)
 	}
 }
