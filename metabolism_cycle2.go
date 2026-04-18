@@ -7,41 +7,14 @@ package winze
 // generate speculative relationships. Only connections scoring 4+/5
 // are promoted. Provenance is marked as speculative.
 
-// ---------------------------------------------------------------------------
-// Trip connection: StevenPinker ↔ LoyFiveFlavorsTypology (score 4/5, analogy)
-// Both Pinker's evolutionary psychology and the Loy typology systematically deconstruct dualistic frameworks—one by reducing mind-behavior binaries to unified biological substrates, the other by collapsing subject-object and phenomenon-absolute distinctions into non-dual ontologies.
-// ---------------------------------------------------------------------------
-
-var tripCycle2StevenPinkerLoyFiveFlavorsTypologySource = Provenance{
-	Origin:     "winze trip cycle 2 (speculative cross-cluster connection)",
-	IngestedAt: "2026-04-17",
-	IngestedBy: "winze metabolism trip (score 4/5, analogy, temp=0.8)",
-	Quote:      "Both Pinker's evolutionary psychology and the Loy typology systematically deconstruct dualistic frameworks—one by reducing mind-behavior binaries to unified biological substrates, the other by collapsing subject-object and phenomenon-absolute distinctions into non-dual ontologies. Both frameworks share a deep structural commitment to dissolving foundational dualisms (nature-nurture, mind-body, subject-object) through unifying principles, making them conceptual analogues despite operating in cognitive science versus metaphysics domains.",
-}
-
-var TripCycle2StevenPinkerProposesLoyFiveFlavorsTypology = Proposes{
-	Subject: StevenPinker,
-	Object:  LoyFiveFlavorsTypology,
-	Prov:    tripCycle2StevenPinkerLoyFiveFlavorsTypologySource,
-}
-
-// ---------------------------------------------------------------------------
-// Trip connection: SukhiShergill ↔ KeithCampbell (score 4/5, analogy)
-// Shergill's empirical work on motor prediction and sensory attenuation provides a neurobiological resolution to the explanatory gap that Campbell's zombie argument exposed in 1970.
-// ---------------------------------------------------------------------------
-
-var tripCycle2SukhiShergillKeithCampbellSource = Provenance{
-	Origin:     "winze trip cycle 2 (speculative cross-cluster connection)",
-	IngestedAt: "2026-04-17",
-	IngestedBy: "winze metabolism trip (score 4/5, analogy, temp=0.8)",
-	Quote:      "Shergill's empirical work on motor prediction and sensory attenuation provides a neurobiological resolution to the explanatory gap that Campbell's zombie argument exposed in 1970. Both thinkers address the hard problem of consciousness through complementary approaches—Campbell posed the logical problem of conceivability (zombies), while Shergill's predictive coding framework suggests how first-person sensory experience arises from motor-prediction mismatches, making the zombie scenario empirically implausible rather than merely conceptually incoherent.",
-}
-
-var TripCycle2SukhiShergillInfluencedByKeithCampbell = InfluencedBy{
-	Subject: SukhiShergill,
-	Object:  KeithCampbell,
-	Prov:    tripCycle2SukhiShergillKeithCampbellSource,
-}
+// (Removed: StevenPinkerProposesLoyFiveFlavorsTypology — trip-fabricated
+// Proposes claim. Pinker did not propose Loy's five-flavors typology; the
+// trip cycle had no source-grounding step. Proposes is in
+// tripBannedPredicates.)
+//
+// (Removed: SukhiShergillInfluencedByKeithCampbell — trip-fabricated
+// InfluencedBy claim. No source-grounding for the biographical
+// influence claim. InfluencedBy is in tripBannedPredicates.)
 
 // ---------------------------------------------------------------------------
 // Trip connection: Mieli ↔ Apophenia (score 4/5, analogy)

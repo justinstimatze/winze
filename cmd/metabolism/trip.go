@@ -325,11 +325,13 @@ func printTripReport(report TripReport, jsonOut bool) {
 // predicate that trip promotion knows how to emit. Keep in sync with predicates.go.
 // A predicate not listed here cannot be promoted — add it deliberately.
 //
-// IMPORTANT: when adding an attribution predicate (Proposes-family,
-// Authored-family, Accepts-family, EarlyFormulationOf, ResolvedAs), also
-// add it to tripBannedPredicates. The trip cycle has no source-grounding
-// step, so attribution claims it generates would be fabrications. See
-// feedback memory feedback_trip_promotion_fabrication.md.
+// IMPORTANT: when adding a Person-attribution predicate (Proposes-family,
+// Authored-family, Accepts-family, InfluencedBy, EarlyFormulationOf,
+// ResolvedAs, or anything else asserting intellectual/biographical fact
+// about a real person), also add it to tripBannedPredicates. The trip
+// cycle has no source-grounding step, so Person-attribution claims it
+// generates would be fabrications. See feedback memory
+// feedback_trip_promotion_fabrication.md.
 var predicateSlots = map[string]struct {
 	Subject string
 	Object  string
@@ -368,32 +370,41 @@ func compatiblePredicates(roleA, roleB string) []string {
 }
 
 // tripBannedPredicates lists predicates the trip cycle MUST NOT promote.
-// These predicates assert intellectual commitment by a specific Person
-// (Proposes, Disputes, Accepts) — fabricating any of these is a
-// mirror-source-commitments violation: the corpus would assert "X said Y"
-// without X having said Y.
+// The line drawn here: ban predicates whose Subject is a Person and whose
+// semantics assert intellectual commitment or biographical fact about
+// that Person. Fabricating any of these is a mirror-source-commitments
+// violation: the corpus would assert "X said Y" or "A was influenced by
+// B" without grounding evidence.
 //
-// The trip cycle generates speculative cross-cluster connections from an
-// LLM, with no source-grounding step. Permissive predicates (TheoryOf,
-// CommentaryOn, InfluencedBy, BelongsTo, DerivedFrom) are still allowed
-// — they make looser relational claims where the speculative provenance
-// tag carries less weight. Attribution claims need real sources; trip
-// can't supply them. Filed in feedback memory as
+// Currently bans:
+//   - Proposes, Disputes, Accepts: Person → Hypothesis. Assert that a
+//     specific Person committed to a position on a hypothesis.
+//   - InfluencedBy: Person → Person. Asserts a biographical claim about
+//     intellectual influence between two real people.
+//
+// Knowingly permitted (with the gap noted in feedback memory):
+//   - TheoryOf, CommentaryOn, BelongsTo, DerivedFrom: Concept/Hypothesis
+//     subjects, no Person attribution. Trip-fabricated nonsense in these
+//     shapes is a category error ("AdiabaticCompression TheoryOf
+//     ReificationRisk") rather than a false attribution to a real
+//     person. Less corrosive but not harmless. The cleaner long-term
+//     fix is a separate SpeculativeProposes-style predicate type or
+//     mandatory source grounding; until then these predicates are
+//     allowed because banning them would empty the trip emit menu.
+//
+// Future predicateSlots additions that are Person-attribution must also
+// be added here: ProposesOrg, DisputesOrg, AcceptsOrg, Authored,
+// AuthoredOrg, EarlyFormulationOf, and ResolvedAs all qualify. See the
+// comment on predicateSlots and the reviewer prompt in
 // feedback_trip_promotion_fabrication.md.
-//
-// Currently lists only the 3 attribution predicates that exist in
-// predicateSlots (the trip cycle's emit menu). Org-suffix variants
-// (ProposesOrg, DisputesOrg, AcceptsOrg), Authored, AuthoredOrg,
-// EarlyFormulationOf, and ResolvedAs are also attribution-laden and
-// must be added here if predicateSlots is ever extended to include
-// them — see the comment on predicateSlots.
 //
 // Reverted commit 4e350dc (session 8) is the case study: 8 fabricated
 // "X Proposes Y" claims promoted in one cycle with the bias active.
 var tripBannedPredicates = map[string]bool{
-	"Proposes": true,
-	"Disputes": true,
-	"Accepts":  true,
+	"Proposes":     true,
+	"Disputes":     true,
+	"Accepts":      true,
+	"InfluencedBy": true,
 }
 
 // tripCompatiblePredicates is compatiblePredicates with attribution
@@ -700,9 +711,19 @@ func collectTripEntities(dir string) []tripEntity {
 		clusterID++
 	}
 
-	// Build output
+	// Build output, excluding reified meta-hypotheses. Reified entities
+	// (TripPromotionSurvivesLint, EvidenceSearchXxx, etc., declared in
+	// predictions.go) are loop artifacts of the metabolism's own
+	// self-reporting; treating them as candidate trip subjects produces
+	// recursive amplification — speculative claims about the substrate's
+	// own meta-claims, which the substrate then reifies into more
+	// meta-claims. Cycle 4's "TripPromotionPassesContradictionCheck
+	// TheoryOf UDHR1948" is the case study for why we filter here.
 	var result []tripEntity
 	for _, e := range entities {
+		if isReifiedEntityFile(e.file) {
+			continue
+		}
 		cid, ok := clusterOf[e.name]
 		if !ok {
 			cid = -1 // isolated
@@ -716,6 +737,14 @@ func collectTripEntities(dir string) []tripEntity {
 		})
 	}
 	return result
+}
+
+// isReifiedEntityFile reports whether a corpus file holds reify-output
+// entities (meta-hypotheses, EvidenceSearch events, ResolutionOutcome
+// vars). Trip pair selection excludes these — see the comment in
+// collectTripEntities.
+func isReifiedEntityFile(file string) bool {
+	return file == "predictions.go"
 }
 
 // tripRawEntity and tripRawClaim are used by both defn and AST data collection.

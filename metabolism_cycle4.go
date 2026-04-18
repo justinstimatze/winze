@@ -25,20 +25,9 @@ var TripCycle4HumanCognitionCommentaryOnEarthSeasons = CommentaryOn{
 	Prov:    tripCycle4HumanCognitionEarthSeasonsSource,
 }
 
-// ---------------------------------------------------------------------------
-// Trip connection: TripPromotionPassesContradictionCheck ↔ UDHR1948 (score 3/5, contradiction)
-// The contradictions that TripPromotionPassesContradictionCheck allows (non-contradicting hypotheses in a constrained topology) may serve as a meta-theory of how the UDHR's universal claims avoid internal logical collapse despite diverse geopolitical and cultural contexts.
-// ---------------------------------------------------------------------------
-
-var tripCycle4TripPromotionPassesContradictionCheckUDHR1948Source = Provenance{
-	Origin:     "winze trip cycle 4 (speculative cross-cluster connection)",
-	IngestedAt: "2026-04-17",
-	IngestedBy: "winze metabolism trip (score 3/5, contradiction, temp=1.0)",
-	Quote:      "The contradictions that TripPromotionPassesContradictionCheck allows (non-contradicting hypotheses in a constrained topology) may serve as a meta-theory of how the UDHR's universal claims avoid internal logical collapse despite diverse geopolitical and cultural contexts. This is interesting because it inverts the relationship: A's mechanism for tolerance of localized inconsistency mirrors B's real-world success despite apparent contradictions between universalism and cultural relativism, making A a potential epistemological lens for understanding how B maintains coherence in practice.",
-}
-
-var TripCycle4TripPromotionPassesContradictionCheckTheoryOfUDHR1948 = TheoryOf{
-	Subject: TripPromotionPassesContradictionCheck,
-	Object:  UDHR1948,
-	Prov:    tripCycle4TripPromotionPassesContradictionCheckUDHR1948Source,
-}
+// (Removed: TripPromotionPassesContradictionCheckTheoryOfUDHR1948 — trip
+// picked a reified meta-hypothesis from predictions.go as the Subject of
+// a TheoryOf claim. Recursive amplification: the substrate's own
+// self-reporting becomes claim material. Trip pair selection now
+// excludes entities declared in predictions.go; see
+// isReifiedEntityFile.)

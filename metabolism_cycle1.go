@@ -25,20 +25,7 @@ var TripCycle1MathematicalFoundationsCommentaryOnNondualism = CommentaryOn{
 	Prov:    tripCycle1MathematicalFoundationsNondualismSource,
 }
 
-// ---------------------------------------------------------------------------
-// Trip connection: GalenStrawson ↔ UDHRArticle18 (score 4/5, analogy)
-// Galen Strawson's defense of the conceivability of phenomenal consciousness structurally parallels Article 18's protection of internal mental freedom—both assert that something fundamentally subjective (conscious experience or belief) cannot be externally negated or legislated away.
-// ---------------------------------------------------------------------------
-
-var tripCycle1GalenStrawsonUDHRArticle18Source = Provenance{
-	Origin:     "winze trip cycle 1 (speculative cross-cluster connection)",
-	IngestedAt: "2026-04-17",
-	IngestedBy: "winze metabolism trip (score 4/5, analogy, temp=0.8)",
-	Quote:      "Galen Strawson's defense of the conceivability of phenomenal consciousness structurally parallels Article 18's protection of internal mental freedom—both assert that something fundamentally subjective (conscious experience or belief) cannot be externally negated or legislated away. Both entities defend the inviolability of first-person mental states against external constraint: Strawson argues consciousness cannot be philosophically eliminated, while Article 18 protects the inalienable right to hold and manifest beliefs, treating thought as a non-negotiable human domain resistant to external control.",
-}
-
-var TripCycle1GalenStrawsonAcceptsUDHRArticle18 = Accepts{
-	Subject: GalenStrawson,
-	Object:  UDHRArticle18,
-	Prov:    tripCycle1GalenStrawsonUDHRArticle18Source,
-}
+// (Removed: GalenStrawsonAcceptsUDHRArticle18 — trip-fabricated Accepts
+// claim. Strawson did not document accepting UDHR Article 18; the trip
+// cycle had no source-grounding step. Accepts is now in
+// tripBannedPredicates; see commit history for the audit.)

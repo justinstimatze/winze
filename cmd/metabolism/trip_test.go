@@ -129,10 +129,10 @@ func TestCompatiblePredicates(t *testing.T) {
 }
 
 // TestTripCompatiblePredicates pins the contract between the trip cycle and
-// tripBannedPredicates: the LLM prompt must never offer attribution
-// predicates (Proposes, Disputes, etc.). If a future predicate is added
-// that would let the trip cycle fabricate attribution, this test catches
-// the omission when the predicate gets banned.
+// tripBannedPredicates: the LLM prompt must never offer Person-attribution
+// predicates (Proposes, Disputes, Accepts, InfluencedBy). If a future
+// predicate is added that would let the trip cycle fabricate attribution,
+// this test catches the omission when the predicate gets banned.
 func TestTripCompatiblePredicates(t *testing.T) {
 	cases := []struct {
 		roleA string
@@ -140,12 +140,15 @@ func TestTripCompatiblePredicates(t *testing.T) {
 		want  []string
 	}{
 		// Person ↔ Hypothesis used to surface Proposes/Disputes/Accepts.
-		// All three are attribution-laden and now filtered.
+		// All three are Person-attribution and now filtered.
 		{"Person", "Hypothesis", []string{}},
 		{"Hypothesis", "Person", []string{}},
-		// Permissive cases unaffected.
-		{"Person", "Person", []string{"InfluencedBy"}},
+		// Person ↔ Person used to surface InfluencedBy.
+		// InfluencedBy is biographical attribution; banned.
+		{"Person", "Person", []string{}},
+		// Concept-relational cases unaffected.
 		{"Hypothesis", "Concept", []string{"TheoryOf"}},
+		{"Concept", "Concept", []string{"BelongsTo", "CommentaryOn", "DerivedFrom"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.roleA+"-"+tc.roleB, func(t *testing.T) {
@@ -170,6 +173,30 @@ func TestTripCompatiblePredicates(t *testing.T) {
 	for p := range tripBannedPredicates {
 		if _, ok := predicateSlots[p]; !ok {
 			t.Errorf("tripBannedPredicates entry %q has no predicateSlots entry — dead ban", p)
+		}
+	}
+}
+
+// TestIsReifiedEntityFile pins which corpus files are treated as reify
+// output and excluded from trip pair selection. Currently just
+// predictions.go (the reify command's only output target). If reify ever
+// emits to a sibling file, that file must be added here too — otherwise
+// recursive amplification (trip picks a meta-hypothesis as a candidate,
+// promotes a claim about it, reify emits a meta-claim about that claim)
+// silently re-opens.
+func TestIsReifiedEntityFile(t *testing.T) {
+	cases := []struct {
+		file string
+		want bool
+	}{
+		{"predictions.go", true},
+		{"hard_problem.go", false},
+		{"metabolism_cycle3.go", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := isReifiedEntityFile(tc.file); got != tc.want {
+			t.Errorf("isReifiedEntityFile(%q) = %v, want %v", tc.file, got, tc.want)
 		}
 	}
 }
