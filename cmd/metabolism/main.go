@@ -220,6 +220,10 @@ func main() {
 	calibrate := flag.Bool("calibrate", false, "analyze existing log instead of running a cycle")
 	durability := flag.Bool("durability", false, "re-run KB-internal resolvers against current corpus and report drift vs historical verdicts")
 	durabilityWrite := flag.Bool("write", false, "with --durability: append recheck entries to .metabolism-log.json (default: read-only)")
+	irrelevanceAudit := flag.Bool("irrelevance-audit", false, "diagnostic: reclassify a sample of 'irrelevant' cycles under a neutral prompt; report flip rate (needs ANTHROPIC_API_KEY)")
+	irrelevanceN := flag.Int("audit-n", 10, "with --irrelevance-audit: number of cycles to sample")
+	auditHaiku := flag.Bool("audit-haiku", true, "with --irrelevance-audit: use Haiku (cheap) instead of Sonnet")
+	auditRequireSnippet := flag.Bool("audit-require-snippet", false, "with --irrelevance-audit: only sample cycles whose papers carry at least one snippet (filters out title-only cases)")
 	resolve := flag.String("resolve", "", "resolve a hypothesis: HYPOTHESIS=corroborated|challenged|irrelevant|no_signal")
 	suggest := flag.Bool("suggest", false, "generate corpus template from corroborated cycles")
 	ingest := flag.Bool("ingest", false, "LLM-assisted ingest from corroborated ZIM cycles (needs --zim and ANTHROPIC_API_KEY)")
@@ -385,6 +389,12 @@ func main() {
 
 	if *durability {
 		runDurability(dir, *jsonOut, *durabilityWrite)
+		return
+	}
+
+	if *irrelevanceAudit {
+		loadDotEnv(dir)
+		runIrrelevanceAudit(dir, *irrelevanceN, *jsonOut, *auditHaiku, *auditRequireSnippet)
 		return
 	}
 

@@ -210,6 +210,13 @@ scan (gap_confirmed / mixed_overlap / no_gap). A corroborated cycle whose
 sources are all already in the corpus provenance is tautological (no_gap);
 one with at least one novel source is real external signal. Recomputed each
 run because novelty is a moving target as the corpus grows.
+`--irrelevance-audit` re-classifies a sample of "irrelevant" cycles under
+a neutral prompt (no "default to irrelevant" framing) and reports the
+flip rate. Diagnostic only — does not mutate the log. Flags:
+`--audit-n=N` (default 10), `--audit-haiku=true` (default), and
+`--audit-require-snippet` (only sample cycles whose papers carry at
+least one snippet). When the flip rate is non-trivial the production
+prompt at main.go:1064 is likely over-strict.
 `--durability` re-runs KB-internal resolvers (lint, functional, build-gate)
 against the current corpus and reports drift vs historical verdicts:
 stable, flipped_to_confirmed, flipped_to_refuted, now_ambiguous,
