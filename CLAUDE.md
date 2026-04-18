@@ -145,6 +145,8 @@ go run ./cmd/metabolism --dream .                      # consolidation: topology
 go run ./cmd/metabolism --dream --fix --tighten .      # auto-fix overlong Briefs via LLM
 go run ./cmd/metabolism --trip .                       # speculative cross-cluster connections
 go run ./cmd/metabolism --calibrate .                  # prediction accuracy analysis
+go run ./cmd/metabolism --durability .                 # re-run KB-internal resolvers against current corpus; report drift
+go run ./cmd/metabolism --durability --write .         # also append _recheck entries to the log
 go run ./cmd/metabolism --reify .                      # generate predictions.go from log
 go run ./cmd/metabolism --bias .                       # cognitive bias self-audit
 go run ./cmd/metabolism --trip .                       # speculative cross-cluster connections (needs ANTHROPIC_API_KEY)
@@ -199,6 +201,15 @@ part of dream (`--dream --bias`). Each auditor reports a metric, threshold,
 and whether the bias was triggered. The KB eats its own dogfood.
 `--calibrate` now includes prediction accuracy scoring per hypothesis with
 hit rate, precision, and efficiency metrics.
+`--durability` re-runs KB-internal resolvers (lint, functional, build-gate)
+against the current corpus and reports drift vs historical verdicts:
+stable, flipped_to_confirmed, flipped_to_refuted, now_ambiguous,
+unresolvable (claim var gone), resolver_changed (oracle code digest moved
+but verdict unchanged — attribution guard). Each cycle now records
+OracleCommit (git HEAD SHA) and OracleDigest (sha256 over resolver source
+files) so drift can be attributed to corpus-change vs oracle-code-change.
+Read-only by default; `--durability --write` appends _recheck entries to
+the log so next `--calibrate` sees time-series signal.
 `--pkm` reads a directory of markdown notes (Obsidian vaults, Zettelkasten, plain
 markdown) and generates typed Go corpus files (`pkm_*.go`). Mechanical extraction:
 parses titles, authors, wikilinks, and `**Prediction**:` lines. No LLM needed.

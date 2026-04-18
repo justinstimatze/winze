@@ -20,9 +20,10 @@ import (
 // a hypothesis. Each evidence search is an Event, and its resolution records
 // whether the prediction was confirmed.
 //
-// This is the sophotech move: the KB becomes self-aware about its own
-// epistemic performance. It knows what it predicted, what it found, and
-// whether its predictions were right.
+// The KB records what it predicted, what it found, and whether its
+// predictions resolved — making epistemic performance a first-class
+// queryable property of the corpus rather than external bookkeeping.
+//
 // hypothesisRecord aggregates metabolism cycles for a single hypothesis.
 type hypothesisRecord struct {
 	name       string
