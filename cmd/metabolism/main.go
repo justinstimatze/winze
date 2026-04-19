@@ -2080,6 +2080,16 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 					arxivQ := t.queryFor("arxiv")
 					fmt.Printf("  querying (arxiv): %s → %q\n", t.Hypothesis, arxivQ)
 					runSensorCycle(dir, "", "", t, "arxiv", nil)
+					// Kagi backend — live web search, per-query signal across
+					// encyclopedias / journals / blogs / news. Metered at
+					// ~$0.025/query, so only fires when KAGI_API_KEY is set.
+					// Unlike ZIM, not gated by availability heuristic: Kagi
+					// returns diversified sources by design.
+					if os.Getenv("KAGI_API_KEY") != "" {
+						kagiQ := t.queryFor("kagi")
+						fmt.Printf("  querying (kagi): %s → %q\n", t.Hypothesis, kagiQ)
+						runSensorCycle(dir, "", "", t, "kagi", nil)
+					}
 				}
 				phases++
 			} else {
