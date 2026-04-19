@@ -438,12 +438,12 @@ func main() {
 				time.Sleep(5 * time.Second) // arXiv rate limit
 			}
 			arxivQ := t.queryFor("arxiv")
-			papers, err := searchArxiv(arxivQ, *limit)
+			papers, effQ, err := searchArxiv(arxivQ, *limit)
 			if err != nil {
 				if strings.Contains(err.Error(), "429") {
 					fmt.Fprintf(os.Stderr, "metabolism: rate limited, waiting 30s...\n")
 					time.Sleep(30 * time.Second)
-					papers, err = searchArxiv(arxivQ, *limit)
+					papers, effQ, err = searchArxiv(arxivQ, *limit)
 				}
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "metabolism: arxiv %q: %v\n", arxivQ, err)
@@ -460,7 +460,7 @@ func main() {
 					Timestamp:   time.Now(),
 					Hypothesis:  t.Hypothesis,
 					Prediction:  t.Prediction,
-					Query:       arxivQ,
+					Query:       effQ,
 					Backend:     "arxiv",
 					VulnType:    t.VulnType,
 					VulnCount:   t.VulnCount,
@@ -684,8 +684,43 @@ func runTopology(dir string) ([]SensorTarget, TopologyReport, error) {
 	return report.SensorTargets, report, nil
 }
 
-// searchArxiv queries the arXiv API. Terms are AND-joined.
-func searchArxiv(query string, limit int) ([]PaperSummary, error) {
+// searchArxiv queries the arXiv API, relaxing the query by dropping the
+// last term on 0-hit responses (down to 2 terms) until a match is found
+// or the floor is reached. Returns the effective query that produced the
+// papers so callers can log what actually ran.
+//
+// Topology-derived queries like "2020 Dimara Task" AND-join 3-4 terms
+// that over-specify against arXiv's index — a manual audit on
+// 2026-04-19 showed "task-based cognitive bias" hits 87 papers while
+// the composed "2020 Dimara Task" hits 0. Relaxation recovers the
+// recall that the topology's proposer+concept heuristic surrenders.
+// Downstream, the tuned llmResolve prompt handles relevance filtering
+// on broader result sets.
+func searchArxiv(query string, limit int) ([]PaperSummary, string, error) {
+	terms := strings.Fields(query)
+	if len(terms) < 2 {
+		papers, err := searchArxivExact(query, limit)
+		return papers, query, err
+	}
+	for n := len(terms); n >= 2; n-- {
+		if n < len(terms) {
+			time.Sleep(3 * time.Second) // arXiv rate limit
+		}
+		q := strings.Join(terms[:n], " ")
+		papers, err := searchArxivExact(q, limit)
+		if err != nil {
+			return nil, q, err
+		}
+		if len(papers) > 0 || n == 2 {
+			return papers, q, nil
+		}
+	}
+	return nil, query, nil
+}
+
+// searchArxivExact performs a single AND-joined arXiv query. Split from
+// searchArxiv so the relaxation loop can reuse it without recursion.
+func searchArxivExact(query string, limit int) ([]PaperSummary, error) {
 	terms := strings.Fields(query)
 	var parts []string
 	for _, t := range terms {
@@ -2210,7 +2245,9 @@ func runSensorCycle(dir, zimPath, zimIndex string, target SensorTarget, backend 
 			results = append(results, r...)
 		}
 	case "arxiv":
-		results, err = searchArxiv(q, 5)
+		var effQ string
+		results, effQ, err = searchArxiv(q, 5)
+		q = effQ // log the query that actually ran after relaxation
 	default:
 		results, err = searchZim(zimPath, zimIndex, q, 5)
 	}
