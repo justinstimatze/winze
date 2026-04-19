@@ -1118,11 +1118,39 @@ After your reasoning, state your final classification: irrelevant, corroborated,
 }
 
 // extractClassification parses an LLM response for a resolution classification.
-// The LLM may reason before answering, so we search for the classification
-// keyword anywhere in the response. Ambiguous responses (multiple keywords) are rejected.
-// Uses word-boundary matching to avoid false positives from negation ("not challenged").
+// The production prompt ends with "state your final classification: X" so the
+// label is expected to appear after that marker. Multi-label reasoning (e.g.
+// "source A is irrelevant but source B corroborates → final: corroborated")
+// used to be rejected as ambiguous by the whole-response scan; the marker-
+// aware path preserves the LLM's final verdict.
+//
+// Ordering:
+//  1. If "final classification" marker exists, pick the first label after the
+//     LAST occurrence (LLMs sometimes echo the marker once mid-reasoning).
+//  2. Otherwise fall back to the original strict whole-response scan — a
+//     single label anywhere is accepted; more than one is rejected.
+//
+// Uses containsWordBoundary in the fallback path to avoid false positives
+// from negations like "not challenged".
 func extractClassification(raw string) (string, error) {
 	valid := []string{"irrelevant", "corroborated", "challenged"}
+	lower := strings.ToLower(raw)
+
+	if idx := strings.LastIndex(lower, "final classification"); idx >= 0 {
+		tail := lower[idx:]
+		pos := len(tail)
+		chosen := ""
+		for _, v := range valid {
+			if i := strings.Index(tail, v); i >= 0 && i < pos {
+				pos = i
+				chosen = v
+			}
+		}
+		if chosen != "" {
+			return chosen, nil
+		}
+	}
+
 	var matches []string
 	for _, v := range valid {
 		if containsWordBoundary(raw, v) {

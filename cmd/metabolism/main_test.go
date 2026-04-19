@@ -144,6 +144,67 @@ func TestExtractClassification_UpperCase(t *testing.T) {
 	}
 }
 
+func TestExtractClassification_FinalClassificationMarker(t *testing.T) {
+	// The production prompt instructs "state your final classification: X"
+	// at the end. The LLM often reasons about individual sources (mentioning
+	// multiple labels) before the final verdict. The whole-response scan
+	// used to reject these as ambiguous; the marker-aware path preserves
+	// the LLM's final answer.
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			"reasoning mentions irrelevant for one source, final corroborated",
+			"source 3 is irrelevant. source 1 provides specific evidence.\n\n## final classification: corroborated\n\nthe first source contains historical facts.",
+			"corroborated",
+		},
+		{
+			"many labels in reasoning, final irrelevant",
+			"the paper could be seen as corroborated or challenged, but the key facts are weak.\n\nfinal classification: irrelevant",
+			"irrelevant",
+		},
+		{
+			"marker without colon followed by label",
+			"extensive reasoning here mentions irrelevant and challenged once each.\n\nfinal classification is corroborated based on the direct evidence",
+			"corroborated",
+		},
+		{
+			"marker repeated; last one wins",
+			"early preview: final classification: irrelevant (tentative). after further review: final classification: corroborated.",
+			"corroborated",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := extractClassification(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExtractClassification_RealLLMResponse(t *testing.T) {
+	// Verbatim shape of the response seen in the 2026-04-18 audit that
+	// the old extractor rejected as ambiguous even though the LLM clearly
+	// concluded "corroborated". Source mentions: "irrelevant" twice (for
+	// unrelated sources), "corroborated" at the final classification line
+	// and once more in the justification that follows.
+	input := "# analysis\n\n## step 1: identify the hypothesis's specific claim\n\nthe hypothesis appears to assert a connection between conrad and apophenia.\n\n## step 2: examine source evidence\n\n**source 1** - directly corroborating evidence\n**source 2** - no substantive evidence\n**source 3** - irrelevant to the hypothesis\n**source 4** - irrelevant to the hypothesis\n\n## final classification: corroborated\n\nthe first source contains specific historical facts that substantively support the hypothesis."
+	got, err := extractClassification(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "corroborated" {
+		t.Errorf("got %q, want %q", got, "corroborated")
+	}
+}
+
 func TestScoreHypotheses(t *testing.T) {
 	cases := []struct {
 		name       string
