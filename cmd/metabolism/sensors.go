@@ -77,10 +77,9 @@ func tryAtomParse(data []byte, query string, limit int) ([]PaperSummary, bool) {
 		return nil, false
 	}
 
-	q := strings.ToLower(query)
 	var papers []PaperSummary
 	for _, e := range feed.Entries {
-		if query != "" && !containsIgnoreCase(e.Title+e.Summary, q) {
+		if !matchesAnyTerm(e.Title+e.Summary, query) {
 			continue
 		}
 		year := parseYear(e.Published)
@@ -105,10 +104,9 @@ func tryRSSParse(data []byte, query string, limit int) ([]PaperSummary, bool) {
 		return nil, false
 	}
 
-	q := strings.ToLower(query)
 	var papers []PaperSummary
 	for _, item := range feed.Channel.Items {
-		if query != "" && !containsIgnoreCase(item.Title+item.Desc, q) {
+		if !matchesAnyTerm(item.Title+item.Desc, query) {
 			continue
 		}
 		id := item.GUID
@@ -127,8 +125,38 @@ func tryRSSParse(data []byte, query string, limit int) ([]PaperSummary, bool) {
 	return papers, true
 }
 
-func containsIgnoreCase(s, substr string) bool {
-	return strings.Contains(strings.ToLower(s), substr)
+// matchesAnyTerm returns true if at least one content word from query
+// (length ≥ 4, case-insensitive) appears as a substring of text. Blank
+// query matches everything.
+//
+// The prior matcher required the entire query string as one verbatim
+// substring — fine for ZIM fulltext search, disastrous for RSS, where
+// topic feeds virtually never contain a multi-word entity-derived
+// phrase verbatim. Any-term matching hands llmResolve a broader
+// candidate set; relevance filtering happens at classification time.
+//
+// This is still a weak matcher. The real unlock for RSS signal is
+// feed curation — current default feeds are topic-broad streams
+// (Nature Reviews Neuroscience, PhilPapers consciousness) unlikely to
+// mention specific KB entities regardless of matcher quality. The
+// natural upgrade for the "real-time external sensor" slot is a
+// search API (kagi, google-scholar) that builds URLs per-query rather
+// than polling static feeds.
+func matchesAnyTerm(text, query string) bool {
+	if query == "" {
+		return true
+	}
+	lt := strings.ToLower(text)
+	for _, w := range strings.Fields(strings.ToLower(query)) {
+		w = strings.Trim(w, ".,;:\"'()-/")
+		if len(w) < 4 {
+			continue
+		}
+		if strings.Contains(lt, w) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseYear(dateStr string) int {
