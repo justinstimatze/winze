@@ -29,14 +29,14 @@ import (
 // whether to tune the production prompt.
 
 type irrelevanceAuditEntry struct {
-	CycleIndex      int      `json:"cycle_index"`
-	Hypothesis      string   `json:"hypothesis"`
-	Backend         string   `json:"backend"`
-	OriginalVerdict string   `json:"original_verdict"`
-	NeutralVerdict  string   `json:"neutral_verdict"`
-	Flipped         bool     `json:"flipped"`
-	PaperTitles     []string `json:"paper_titles"`
-	SnippetPreview  string   `json:"snippet_preview,omitempty"`
+	CycleIndex       int      `json:"cycle_index"`
+	Hypothesis       string   `json:"hypothesis"`
+	Backend          string   `json:"backend"`
+	OriginalVerdict  string   `json:"original_verdict"`
+	AuditVerdict     string   `json:"audit_verdict"`
+	Flipped          bool     `json:"flipped"`
+	PaperTitles      []string `json:"paper_titles"`
+	SnippetPreview   string   `json:"snippet_preview,omitempty"`
 }
 
 type irrelevanceAuditReport struct {
@@ -50,14 +50,27 @@ type irrelevanceAuditReport struct {
 }
 
 // runIrrelevanceAudit samples n "irrelevant" cycles from the log and
-// reclassifies them with a neutral prompt, comparing verdicts. n is
-// clamped to the number of available irrelevant cycles. When
-// requireSnippet is true, only cycles whose papers carry at least one
-// non-empty snippet are sampled — the prompt is only meaningful when
+// reclassifies them, comparing verdicts.
+//
+// mode selects which prompt to reclassify with:
+//
+//	"neutral"    — audit's own neutral prompt (default-irrelevant framing
+//	               removed, criteria symmetrized). Diagnostic against any
+//	               current production prompt.
+//	"production" — the actual llmResolve production prompt. Useful after
+//	               a prompt tune to measure whether the change recovers
+//	               the flip rate that motivated the tune.
+//
+// requireSnippet=true restricts sampling to cycles whose papers carry
+// at least one non-empty snippet — the prompt is only meaningful when
 // the LLM has paper content beyond titles.
-func runIrrelevanceAudit(dir string, n int, jsonOut bool, useHaiku, requireSnippet bool) {
+func runIrrelevanceAudit(dir string, n int, jsonOut bool, useHaiku, requireSnippet bool, mode string) {
 	if n <= 0 {
 		n = 10
+	}
+	if mode != "neutral" && mode != "production" {
+		fmt.Fprintf(os.Stderr, "metabolism: --audit-mode must be 'neutral' or 'production' (got %q)\n", mode)
+		os.Exit(1)
 	}
 	logPath := filepath.Join(dir, ".metabolism-log.json")
 	mlog := loadLog(logPath)
@@ -99,18 +112,18 @@ func runIrrelevanceAudit(dir string, n int, jsonOut bool, useHaiku, requireSnipp
 		Sampled:         len(sample),
 		TotalIrrelevant: len(irrelevantIdx),
 		FlipBreakdown:   map[string]int{},
-		ModelUsed:       modelName,
+		ModelUsed:       modelName + "/" + mode,
 	}
 
 	for _, ci := range sample {
 		c := mlog.Cycles[ci]
-		verdict, err := reclassifyNeutral(client, model, c)
+		verdict, err := reclassifyUnderMode(client, model, c, mode)
 		entry := irrelevanceAuditEntry{
 			CycleIndex:      ci,
 			Hypothesis:      c.Hypothesis,
 			Backend:         c.Backend,
 			OriginalVerdict: c.Resolution,
-			NeutralVerdict:  verdict,
+			AuditVerdict:    verdict,
 		}
 		for _, p := range c.Papers {
 			entry.PaperTitles = append(entry.PaperTitles, p.Title)
@@ -123,7 +136,7 @@ func runIrrelevanceAudit(dir string, n int, jsonOut bool, useHaiku, requireSnipp
 			entry.SnippetPreview = snip
 		}
 		if err != nil {
-			entry.NeutralVerdict = "error:" + err.Error()
+			entry.AuditVerdict = "error:" + err.Error()
 		} else if verdict != "" && verdict != "irrelevant" {
 			entry.Flipped = true
 			report.Flipped++
@@ -142,6 +155,22 @@ func runIrrelevanceAudit(dir string, n int, jsonOut bool, useHaiku, requireSnipp
 		return
 	}
 	emitIrrelevanceAuditText(report)
+}
+
+// reclassifyUnderMode dispatches to the neutral reclassifier or the
+// production llmResolve call based on mode.
+func reclassifyUnderMode(client anthropic.Client, model anthropic.Model, c Cycle, mode string) (string, error) {
+	if mode == "production" {
+		// llmResolve is hard-coded to Sonnet internally. For cheap
+		// auditing we ideally reuse the same prompt at the audit's
+		// chosen model (Haiku by default); but respecting llmResolve's
+		// exact config — including model — gives the most faithful
+		// readout of "what production will actually do." Accept the
+		// higher cost as a tradeoff.
+		_ = model
+		return llmResolve(client, c.Hypothesis, lookupBrief(c.Hypothesis), c.Papers)
+	}
+	return reclassifyNeutral(client, model, c)
 }
 
 // reclassifyNeutral runs llmResolve-equivalent classification but with
@@ -305,7 +334,7 @@ func emitIrrelevanceAuditText(r irrelevanceAuditReport) {
 			marker = "→ "
 		}
 		fmt.Printf("%scycle %d [%s] %s\n", marker, e.CycleIndex, e.Backend, e.Hypothesis)
-		fmt.Printf("    original: %s    neutral: %s", e.OriginalVerdict, e.NeutralVerdict)
+		fmt.Printf("    original: %s    audit: %s", e.OriginalVerdict, e.AuditVerdict)
 		if e.Flipped {
 			fmt.Printf("    *FLIP*")
 		}
