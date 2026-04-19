@@ -2067,10 +2067,12 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 					} else if zimPath != "" && biasGates.skipZim {
 						fmt.Printf("  skipping zim for %s (availability-heuristic bias gate)\n", t.Hypothesis)
 					}
-					// RSS backend (always available, no prereqs)
-					rssQ := t.queryFor("rss")
-					fmt.Printf("  querying (rss): %s → %q\n", t.Hypothesis, rssQ)
-					runSensorCycle(dir, "", "", t, "rss", nil)
+					// RSS is opt-in only (via --backend rss / --backend all).
+					// Default feeds are topic-broad (Nature Reviews, PhilPapers)
+					// and don't match entity-specific topology queries —
+					// historically 0/131 signal. Contributors who curate
+					// per-cluster feeds can still use RSS explicitly; no reason
+					// to pay its fetch latency in every --evolve.
 					// arXiv backend — always on so phase 1 still produces signal
 					// when ZIM is gated by availability heuristic. arXiv rate-limits
 					// tight queries; sleep 5s between calls per arXiv etiquette.
