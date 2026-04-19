@@ -317,3 +317,27 @@ var (
 		Prov:    cognitiveBiasesSource,
 	}
 )
+
+// ---------------------------------------------------------------------------
+// Task-based language teaching: Complexity, Accuracy, and Fluency (CAF) measures IsPolyvalentTerm DimaraTaskBasedClassification
+// This claim reveals a critical epistemological failure where observable performance metrics diverge from underlying cognitive processes, illustrating how minds can mislead researchers about actual model-building processes.
+// ---------------------------------------------------------------------------
+
+var complexityAccuracyAndFluencyCAFMeasuresIsPolyvalentTermSource = Provenance{
+	Origin:     "Wikipedia (zim 2025-12) / Task-based_language_teaching",
+	IngestedAt: "2026-04-19",
+	IngestedBy: "winze metabolism cycle 5 (LLM-assisted ingest from ZIM)",
+	Quote:      "\"Some researchers critique the CAF-based investigation, arguing that it fails to measure cognitive processes and instead offers just a performance-based proxy. Emprical studies have reported cases where performance does not correspond to the underlying processing, highlighting significant issues in linking CAF measures to cognitive processes.\"",
+}
+
+var ComplexityAccuracyAndFluencyCAFMeasures = Concept{&Entity{
+	ID:    "caf-measures",
+	Name:  "Complexity, Accuracy, and Fluency (CAF) measures",
+	Kind:  "concept",
+	Brief: "Performance metrics used as proxies for cognitive effort and learning in task-based language research.",
+}}
+
+var ComplexityAccuracyAndFluencyCAFMeasuresIsPolyvalentTermDimaraTaskBasedClassification = IsPolyvalentTerm{
+	Subject: ComplexityAccuracyAndFluencyCAFMeasures,
+	Prov:    complexityAccuracyAndFluencyCAFMeasuresIsPolyvalentTermSource,
+}
