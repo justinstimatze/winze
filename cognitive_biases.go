@@ -182,7 +182,7 @@ var (
 		ID:    "hyp-dimara-task-based-classification",
 		Name:  "Dimara et al. 2020 task-based classification of cognitive biases",
 		Kind:  "hypothesis",
-		Brief: "A cognitive bias classification system organized by task type (estimation, decision, hypothesis assessment, causal attribution, recall, opinion reporting) and five behavioral flavors (Association, Baseline, Inertia, Outcome, Self-perspective).",
+		Brief: "A classification system for cognitive biases organized by the task the bias affects, proposed by Dimara et al. in 2020 and adopted by Wikipedia's List of cognitive biases as its primary organizing principle.",
 	}}
 
 	GigerenzerRationalDeviationReframing = Hypothesis{&Entity{
