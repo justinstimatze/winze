@@ -226,6 +226,7 @@ func main() {
 	auditRequireSnippet := flag.Bool("audit-require-snippet", false, "with --irrelevance-audit: only sample cycles whose papers carry at least one snippet (filters out title-only cases)")
 	auditMode := flag.String("audit-mode", "neutral", "with --irrelevance-audit: 'neutral' (audit's own default-neutral prompt) or 'production' (llmResolve path — tests current production prompt)")
 	reresolveIrrelevant := flag.Bool("reresolve-irrelevant", false, "reclassify historical 'irrelevant' sensor cycles under the current production prompt; update log where verdicts flip (needs ANTHROPIC_API_KEY)")
+	autoResolvePending := flag.Bool("autoresolve", false, "resolve pending sensor cycles with 3+ signal cycles using the current llmResolve prompt (needs ANTHROPIC_API_KEY)")
 	reresolveN := flag.Int("reresolve-n", 20, "with --reresolve-irrelevant: max cycles to reclassify (0 = all)")
 	reresolveRequireSnippet := flag.Bool("reresolve-require-snippet", true, "with --reresolve-irrelevant: only reclassify cycles whose papers carry at least one snippet (default true — title-only reclassification is noise)")
 	resolve := flag.String("resolve", "", "resolve a hypothesis: HYPOTHESIS=corroborated|challenged|irrelevant|no_signal")
@@ -406,6 +407,16 @@ func main() {
 	if *reresolveIrrelevant {
 		loadDotEnv(dir)
 		runReresolveIrrelevant(dir, *reresolveN, *reresolveRequireSnippet, *dryRun, *jsonOut)
+		return
+	}
+
+	if *autoResolvePending {
+		loadDotEnv(dir)
+		results := autoResolve(dir)
+		fmt.Printf("[autoresolve] resolved %d hypotheses\n", len(results))
+		for _, r := range results {
+			fmt.Printf("  %s → %s\n", r.Hypothesis, r.Outcome)
+		}
 		return
 	}
 
