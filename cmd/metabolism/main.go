@@ -1055,23 +1055,22 @@ func llmResolve(client anthropic.Client, hypothesis, brief string, papers []Pape
 		sourceDescriptions = append(sourceDescriptions, desc)
 	}
 
-	// The prompt is deliberately skeptical. The default should be "irrelevant"
-	// — most keyword-matched articles discuss the same topic without providing
-	// evidence for or against the specific hypothesis. "Corroborated" requires
-	// the sources to contain evidence that specifically supports the hypothesis's
-	// central claim, not just discuss the same subject area.
+	// The prompt evaluates whether the sources provide substantive evidence
+	// about the hypothesis. Keyword overlap alone is not evidence — the
+	// sources must contain specific facts, data, or arguments that bear on
+	// the hypothesis's truth.
 	//
-	// PROMPT BALANCE NOTE:
-	// Corroboration criteria: 1 condition (specific evidence supporting).
-	// Challenge criteria: 4 sub-conditions (dates, attributions, results, alternatives).
-	// This asymmetry is intentional: challenges require MORE detail because
-	// they're structurally rarer in Wikipedia (which contextualizes rather than
-	// contradicts). The zero-challenge rate (263 cycles, 0 challenged) is
-	// expected: Wikipedia articles about hypotheses rarely contain direct
-	// contradictions. Real challenges come from cross-article comparisons
-	// (e.g., date discrepancies between two Wikipedia articles about the same
-	// event). The metabolism log tracks this for calibration.
-	prompt := fmt.Sprintf(`You are a skeptical evaluator. Your job is to classify whether found sources provide genuine evidence about a specific hypothesis. Most sources that share keywords with a hypothesis do NOT actually provide evidence for or against it — they merely discuss the same topic. Your default classification should be "irrelevant" unless you see strong reason otherwise.
+	// Recalibrated 2026-04-18 after the --irrelevance-audit diagnostic
+	// found the prior version over-strict: of 10 snippet-bearing "irrelevant"
+	// cycles sampled, 3 cleanly flipped to "corroborated" under a neutral
+	// prompt (30% flip rate). The prior had four separate reinforcements of
+	// "default to irrelevant" plus asymmetric criteria (1 condition for
+	// corroboration, 4 for challenge). The current version keeps the core
+	// "keywords aren't evidence" guard but drops the DEFAULT framing and
+	// symmetrizes corroboration vs challenge. Expected side effect: the
+	// survivorship-bias auditor should see the irrelevant:challenged ratio
+	// fall from 197:1 toward a range where real challenges surface.
+	prompt := fmt.Sprintf(`You are a careful evaluator. Classify whether the sources below provide substantive evidence about the hypothesis. Weigh evidence for and against with equal rigor.
 
 Hypothesis: %s
 Brief: %s
@@ -1079,21 +1078,17 @@ Brief: %s
 Sources found by automated sensor queries (titles and content excerpts):
 - %s
 
-Classify using these criteria (apply strictly):
-
-- "irrelevant" — DEFAULT. The sources discuss the same topic area but do not provide specific evidence that bears on whether this hypothesis is true or false. Sharing keywords or subject matter is NOT enough for corroboration.
-- "corroborated" — The sources contain specific evidence, data, or arguments that directly support the hypothesis's central claim. The evidence must go beyond merely discussing the same topic. Ask: does this source give me reason to believe the hypothesis is MORE LIKELY true?
-- "challenged" — The sources contain specific evidence, data, or arguments that contradict the hypothesis, present a competing account, or undermine its evidentiary basis. This includes: different dates, different attributions, contradictory experimental results, or alternative explanations that the hypothesis doesn't account for.
-
-Pay close attention to specific facts in the content: dates, numbers, attributions, experimental results. If the source states a fact that contradicts what the hypothesis claims, that is a challenge — even if the source broadly discusses the same topic.
+Labels:
+- "corroborated" — sources contain specific evidence, data, or arguments that support the hypothesis's central claim. Evidence must go beyond merely discussing the same topic — look for specific facts like dates, numbers, attributions, or experimental results that make the claim more likely true.
+- "challenged" — sources contain specific evidence, data, or arguments that contradict the hypothesis, present a competing account, or undermine its evidentiary basis. Look for the same kinds of specifics — different dates, different attributions, contradictory results, alternative explanations — that make the claim less likely true.
+- "irrelevant" — sources discuss the same topic area but do not provide evidence bearing on whether this hypothesis is true or false. Keyword overlap alone is not evidence.
 
 Think step by step:
 1. What specific claim does the hypothesis make?
-2. What specific evidence would CHALLENGE this hypothesis? (State this explicitly before proceeding.)
-3. Do any of these sources provide that kind of evidence, or evidence that SUPPORTS the claim?
-4. If neither — classify as irrelevant. But you must answer step 2 first.
+2. What concrete facts in the sources bear on that claim — for or against?
+3. If the sources provide substantive support, classify as corroborated. If they provide substantive contradiction, classify as challenged. If the sources only share keywords without touching the specific claim, classify as irrelevant.
 
-After your reasoning, state your final classification: irrelevant, corroborated, or challenged.`,
+State your final classification: irrelevant, corroborated, or challenged.`,
 		hypothesis, brief, strings.Join(sourceDescriptions, "\n- "))
 
 	resp, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
