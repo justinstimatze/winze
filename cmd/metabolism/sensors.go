@@ -1,9 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -172,6 +176,88 @@ func parseYear(dateStr string) int {
 		}
 	}
 	return 0
+}
+
+// --- Kagi Search API backend ---
+//
+// Fills the "real-time external sensor" slot that static RSS feeds
+// address poorly. Rather than polling a curated feed list and
+// filtering entries post-hoc, Kagi queries the live web index
+// per-topology-target. Result shape is general (encyclopedias,
+// blogs, news, academic) — broader than arXiv (academic preprints
+// only) and more current than ZIM (cached Wikipedia snapshot).
+//
+// Auth: KAGI_API_KEY env var. If unset, searchKagi returns an
+// error with a clear message; the --evolve rotation should check
+// availability and skip gracefully rather than failing the cycle.
+//
+// Cost: Kagi Search API is metered. Each call debits the account
+// balance (check via meta.api_balance in the response).
+
+type kagiResponse struct {
+	Meta struct {
+		APIBalance float64 `json:"api_balance"`
+	} `json:"meta"`
+	Data []kagiResult `json:"data"`
+}
+
+type kagiResult struct {
+	T         int    `json:"t"` // 0 = search result, 1 = related queries
+	URL       string `json:"url"`
+	Title     string `json:"title"`
+	Snippet   string `json:"snippet"`
+	Published string `json:"published"`
+}
+
+// searchKagi queries Kagi's Search API. Returns only t=0 results
+// (the t=1 "related queries" block is metadata, not a hit).
+func searchKagi(query string, limit int) ([]PaperSummary, error) {
+	apiKey := os.Getenv("KAGI_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("KAGI_API_KEY not set")
+	}
+
+	u := fmt.Sprintf("https://kagi.com/api/v0/search?q=%s&limit=%d",
+		url.QueryEscape(query), limit)
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bot "+apiKey)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("kagi API returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var kr kagiResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 10<<20)).Decode(&kr); err != nil {
+		return nil, err
+	}
+
+	var papers []PaperSummary
+	for _, r := range kr.Data {
+		if r.T != 0 {
+			continue // skip related-queries blocks
+		}
+		snippet := strings.Join(strings.Fields(r.Snippet), " ")
+		if len(snippet) > 500 {
+			snippet = snippet[:500]
+		}
+		papers = append(papers, PaperSummary{
+			ID:      r.URL,
+			Title:   strings.Join(strings.Fields(r.Title), " "),
+			Year:    parseYear(r.Published),
+			Snippet: snippet,
+		})
+	}
+	return papers, nil
 }
 
 // --- RSS feed configuration ---

@@ -250,7 +250,7 @@ func main() {
 	tripMinScore := flag.Int("min-score", 4, "with --trip --promote: minimum score to promote (default 4; lower for resolver stress-tests)")
 	pkm := flag.String("pkm", "", "path to PKM vault directory (markdown notes → typed Go corpus files)")
 	jsonOut := flag.Bool("json", false, "output as JSON")
-	backend := flag.String("backend", "arxiv", "sensor backend: arxiv, zim, rss, or all")
+	backend := flag.String("backend", "arxiv", "sensor backend: arxiv, zim, rss, kagi, or all")
 	zimPath := flag.String("zim", "", "path to .zim file (required for zim backend)")
 	zimIndex := flag.String("zim-index", "", "path for Bleve index (default: <zimfile>.bleve/)")
 	rssFeeds := flag.String("rss-feeds", "", "comma-separated RSS/Atom feed URLs (overrides defaults)")
@@ -284,14 +284,15 @@ func main() {
 		*backend = cfg.Backend
 	}
 
-	validBackends := map[string]bool{"arxiv": true, "zim": true, "rss": true, "all": true}
+	validBackends := map[string]bool{"arxiv": true, "zim": true, "rss": true, "kagi": true, "all": true}
 	if !validBackends[*backend] {
-		fmt.Fprintf(os.Stderr, "metabolism: --backend must be arxiv, zim, rss, or all (got %q)\n", *backend)
+		fmt.Fprintf(os.Stderr, "metabolism: --backend must be arxiv, zim, rss, kagi, or all (got %q)\n", *backend)
 		os.Exit(1)
 	}
 	useArxiv := *backend == "arxiv" || *backend == "all"
 	useZim := *backend == "zim" || *backend == "all"
 	useRSS := *backend == "rss" || *backend == "all"
+	useKagi := *backend == "kagi" || *backend == "all"
 	if useZim && *zimPath == "" {
 		fmt.Fprintf(os.Stderr, "metabolism: --zim path required when backend includes zim\n")
 		os.Exit(1)
@@ -538,6 +539,27 @@ func main() {
 				PapersFound: len(deduped),
 				Papers:      deduped,
 			})
+		}
+
+		// Kagi backend — live web search, per-query. Costs API balance.
+		if useKagi {
+			kagiQ := t.queryFor("kagi")
+			papers, err := searchKagi(kagiQ, *limit)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "metabolism: kagi %q: %v\n", kagiQ, err)
+			} else {
+				cycles = append(cycles, Cycle{
+					Timestamp:   time.Now(),
+					Hypothesis:  t.Hypothesis,
+					Prediction:  t.Prediction,
+					Query:       kagiQ,
+					Backend:     "kagi",
+					VulnType:    t.VulnType,
+					VulnCount:   t.VulnCount,
+					PapersFound: len(papers),
+					Papers:      papers,
+				})
+			}
 		}
 	}
 
@@ -2248,6 +2270,8 @@ func runSensorCycle(dir, zimPath, zimIndex string, target SensorTarget, backend 
 		var effQ string
 		results, effQ, err = searchArxiv(q, 5)
 		q = effQ // log the query that actually ran after relaxation
+	case "kagi":
+		results, err = searchKagi(q, 5)
 	default:
 		results, err = searchZim(zimPath, zimIndex, q, 5)
 	}
