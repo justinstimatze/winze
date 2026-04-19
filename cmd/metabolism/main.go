@@ -1994,6 +1994,15 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 					rssQ := t.queryFor("rss")
 					fmt.Printf("  querying (rss): %s → %q\n", t.Hypothesis, rssQ)
 					runSensorCycle(dir, "", "", t, "rss", nil)
+					// arXiv backend — always on so phase 1 still produces signal
+					// when ZIM is gated by availability heuristic. arXiv rate-limits
+					// tight queries; sleep 5s between calls per arXiv etiquette.
+					if i > 0 {
+						time.Sleep(5 * time.Second)
+					}
+					arxivQ := t.queryFor("arxiv")
+					fmt.Printf("  querying (arxiv): %s → %q\n", t.Hypothesis, arxivQ)
+					runSensorCycle(dir, "", "", t, "arxiv", nil)
 				}
 				phases++
 			} else {
