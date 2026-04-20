@@ -1967,6 +1967,22 @@ func runCalibrate(dir string, jsonOut bool) {
 			verdictMarker, s.Name, s.Verdict, s.WithSignal, s.TotalCycles, precisionStr, efficiency)
 	}
 	fmt.Println("\n  legend: + corroborated  ! challenged  ✓ confirmed  - irrelevant  . no_signal  ✗ refuted  ? pending")
+
+	// Append one row to .metabolism-calibration.jsonl for time-series
+	// readers (--calibrate-trend, Gas Town phase self-gating). We run the
+	// bias audit here to capture HHI + survivorship ratio at this moment;
+	// calibrate is not a hot path and the audit is O(corpus).
+	biasReport := collectBiasResults(dir, nil, false, false)
+	backendTotals := map[string]struct{ WithSignal, Total int }{}
+	for be, s := range byBackend {
+		backendTotals[be] = struct{ WithSignal, Total int }{s.withSignal, s.total}
+	}
+	corrobTotal := resolutions["corroborated"]
+	challTotal := resolutions["challenged"]
+	row := computeCalibrationRow(mlog, biasReport.Auditors, corrobTotal, corrobNovel, challTotal, challNovel, backendTotals)
+	if err := appendCalibrationRow(dir, row); err != nil {
+		fmt.Fprintf(os.Stderr, "[calibrate] timeseries append: %v\n", err)
+	}
 }
 
 func pct(n, d int) float64 {

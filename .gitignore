@@ -23,6 +23,9 @@
 # Metabolism log (rebuilt each cycle)
 .metabolism-log.json
 
+# Metabolism calibration time series (append-only, local trend signal)
+.metabolism-calibration.jsonl
+
 # Sensor config (contains local paths)
 .metabolism.json
 
