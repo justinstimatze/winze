@@ -337,32 +337,7 @@ var ComplexityAccuracyAndFluencyCAFMeasures = Concept{&Entity{
 	Brief: "Performance metrics used as proxies for cognitive effort and learning in task-based language research.",
 }}
 
-var ComplexityAccuracyAndFluencyCAFMeasuresIsPolyvalentTermDimaraTaskBasedClassification = IsPolyvalentTerm{
+var ComplexityAccuracyAndFluencyCAFMeasuresIsPolyvalentTerm = IsPolyvalentTerm{
 	Subject: ComplexityAccuracyAndFluencyCAFMeasures,
 	Prov:    complexityAccuracyAndFluencyCAFMeasuresIsPolyvalentTermSource,
-}
-
-// ---------------------------------------------------------------------------
-// A Task-Based Taxonomy of Cognitive Biases for Information Visualization: Dimara et al. (inferred from context; source does not name authors) ProposesOrg DimaraTaskBasedClassification
-// This claim documents how a cognitive bias classification system was proposed to help minds (researchers and visualization users) detect and correct biased judgment, which directly relates to how minds validate and fail at modeling reality through data interpretation.
-// ---------------------------------------------------------------------------
-
-var dimaraEtAlInferredFromContextSourceDoesNotNameAuthorsProposesOrgSource = Provenance{
-	Origin:     "Kagi web search result / https://www.semanticscholar.org/paper/A-Task-Based-Taxonomy-of-Cognitive-Biases-for-Dimara-Franconeri/b2e9f35d60b00c7319a6763a477857e5215082f5/figure/0",
-	IngestedAt: "2026-04-20",
-	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest, source type varies per origin)",
-	Quote:      "\"A task-based taxonomy of 154 cognitive biases organized in 7 main categories is proposed that will help visualization researchers relate their design to the corresponding possible biases, and lead to new research that detects and addresses biased judgment and decision making in data visualization.\"",
-}
-
-var DimaraEtAlInferredFromContextSourceDoesNotNameAuthors = Organization{&Entity{
-	ID:    "dimara-et-al-task-based-taxonomy",
-	Name:  "Dimara et al. (inferred from context; source does not name authors)",
-	Kind:  "organization",
-	Brief: "The research group that proposed a task-based taxonomy of cognitive biases for information visualization.",
-}}
-
-var DimaraEtAlInferredFromContextSourceDoesNotNameAuthorsProposesOrgDimaraTaskBasedClassification = ProposesOrg{
-	Subject: DimaraEtAlInferredFromContextSourceDoesNotNameAuthors,
-	Object:  DimaraTaskBasedClassification,
-	Prov:    dimaraEtAlInferredFromContextSourceDoesNotNameAuthorsProposesOrgSource,
 }

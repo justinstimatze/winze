@@ -25,6 +25,73 @@ import (
 // Uses a unique string to prevent injection via article text.
 const claimDelimiter = "===WINZE_CLAIM==="
 
+// fabricatedNamePatterns catches entity names that contain LLM
+// self-narration about its own extraction uncertainty. These phrases
+// signal the model inferred rather than extracted — a mirror-source-
+// commitments violation. Names matching any of these patterns are
+// rejected before claim emission.
+var fabricatedNameHints = []string{
+	"(inferred",
+	"(unclear",
+	"(likely",
+	"(probably",
+	"(possibly",
+	"(unknown",
+	"(not named",
+	"(not specified",
+	"(source does not",
+	"(based on",
+	"[inferred",
+	"[unclear",
+	"[unknown",
+}
+
+// classifyFabricatedName returns a non-empty reason string if the
+// entity name should be rejected. Reasons are short so they can go
+// into PipelineClaim.Reason for calibrate-time analysis. Empty
+// return means the name is OK.
+//
+// kind is lowercased entity_kind from the LLM; "Author et al." style
+// names are valid Persons but NEVER valid Organizations (the LLM
+// sometimes picks org to make a ProposesOrg slot fit when the right
+// choice is Proposes with a Person).
+func classifyFabricatedName(name, kind string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "empty"
+	}
+	if len(name) > 80 {
+		// Real person/org names don't run past 80 chars. LLMs that
+		// stuff their narration into entity_name usually blow this.
+		return "too_long"
+	}
+	lowered := strings.ToLower(name)
+	for _, hint := range fabricatedNameHints {
+		if strings.Contains(lowered, hint) {
+			return "meta_annotation"
+		}
+	}
+	// "X et al." is an authorship pattern — always a collection of
+	// Persons, never a standalone Organization. When the LLM picks
+	// Organization it's usually because ProposesOrg was the only slot
+	// it could fit. Reject to force either Person+Proposes or
+	// NO_CLAIMS.
+	if strings.ToLower(kind) == "organization" && strings.Contains(lowered, " et al") {
+		return "et_al_as_org"
+	}
+	return ""
+}
+
+// truncateForLog shortens a string for stderr output. Long LLM
+// fabrications would dominate cycle logs otherwise.
+func truncateForLog(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) > 60 {
+		return s[:57] + "..."
+	}
+	return s
+}
+
 // ingestOutcome holds the result of an LLM-assisted ingest run.
 type ingestOutcome struct {
 	OutPath      string            // first modified file (for pipeline reporting)
@@ -250,6 +317,23 @@ func runIngest(dir, zimPath, zimIndex string) ingestOutcome {
 			}
 
 			for _, result := range results {
+				// Entity-name sanity guard. The LLM sometimes returns names
+				// containing meta-annotations ("Dimara et al. (inferred from
+				// context; source does not name authors)", "Unknown author
+				// (unclear)") — these are the model narrating its own
+				// uncertainty, not extraction. Such names violate
+				// mirror-source-commitments and produce grotesque
+				// identifiers. Reject them; the correct LLM behavior is to
+				// return NO_CLAIMS when the source doesn't commit to a
+				// named proposer.
+				if reason := classifyFabricatedName(result.entityName, result.entityKind); reason != "" {
+					fmt.Printf("    → skip %s (%s)\n", truncateForLog(result.entityName), reason)
+					pipelineClaims = append(pipelineClaims, PipelineClaim{
+						EntityName: result.entityName, Predicate: result.predicate,
+						Target: hypName, Reason: "fabricated_entity_" + reason,
+					})
+					continue
+				}
 				// Verify quote exists in source text
 				if !verifyQuote(artText, result.quote) {
 					fmt.Printf("    → QUOTE MISMATCH: %s (quote not found in source, skipping)\n", result.entityName)
@@ -356,8 +440,13 @@ func runIngest(dir, zimPath, zimIndex string) ingestOutcome {
 					targetFile = info.File
 				}
 
+				// Unary predicates (IsCognitiveBias, IsPolyvalentTerm, etc.)
+				// have no Object slot; their claim var should not carry a
+				// target-name suffix. collectPredicateSlots stores "" in
+				// slot[1] for unary types.
+				isUnary := predicateSlots[result.predicate][1] == ""
 				// Generate Go code (knownVars prevents redeclaration)
-				section := generateClaimCode(hypName, needType, article, result, cycleNum, knownVars)
+				section := generateClaimCode(hypName, needType, article, result, cycleNum, knownVars, isUnary)
 				fileSections[targetFile] = append(fileSections[targetFile], section)
 				totalClaims++
 			}
@@ -474,7 +563,9 @@ func buildIngestPrompt(hypName, hypBrief, needType string, existingClaims []stri
 	b.WriteString("2. Extract the EXACT quote from the source (1-3 complete sentences verbatim). Do NOT truncate or paraphrase.\n")
 	b.WriteString("3. DOMAIN BOUNDARY: Only extract claims relevant to how minds build, validate, and fail at modeling reality. Skip claims about recipes, sports, pure engineering, etc.\n")
 	b.WriteString("4. Extract ALL in-domain claims you find, not just one. Each claim needs a person/organization who makes it.\n")
-	b.WriteString("5. THIN SOURCES: Snippet-based sources (Kagi, arXiv abstracts) support at most 1-2 claims. Do not pad.\n\n")
+	b.WriteString("5. THIN SOURCES: Snippet-based sources (Kagi, arXiv abstracts) support at most 1-2 claims. Do not pad.\n")
+	b.WriteString("6. ENTITY NAMES MUST BE LITERAL. The ENTITY_NAME field must be a real name as it appears in the source — NEVER include parenthetical commentary like \"(inferred from context)\", \"(unclear)\", \"(unknown author)\", \"(likely)\", or similar meta-annotations. If the source does not explicitly name the person or organization proposing the claim, return NO_CLAIMS instead of inventing an attribution.\n")
+	b.WriteString("7. \"X et al.\" IS NEVER AN ORGANIZATION. The pattern \"Author et al.\" refers to a collaboration of Persons (the first author plus co-authors). Use PREDICATE=Proposes and ENTITY_KIND=person. Do NOT pick ProposesOrg with ENTITY_KIND=organization to make a slot fit.\n\n")
 
 	b.WriteString("## Context\n\n")
 	b.WriteString(fmt.Sprintf("This article was found while investigating hypothesis: %s\n", hypName))
@@ -625,7 +716,7 @@ func parseIngestResponse(response string) []*ingestResult {
 // generateClaimCode produces Go source code for a single extracted claim.
 // knownVars tracks variable names that already exist (in KB or emitted earlier in this file)
 // to avoid redeclaration. New declarations are added to knownVars.
-func generateClaimCode(hypName, claimType string, article PaperSummary, result *ingestResult, cycleNum int, knownVars map[string]bool) string {
+func generateClaimCode(hypName, claimType string, article PaperSummary, result *ingestResult, cycleNum int, knownVars map[string]bool, isUnary bool) string {
 	var b strings.Builder
 
 	// Use predicate from result if available, otherwise fall back to claimType
@@ -648,7 +739,14 @@ func generateClaimCode(hypName, claimType string, article PaperSummary, result *
 	// Convert entity name to a Go variable name (PascalCase)
 	varName := toPascalCase(result.entityName)
 	provVar := lowerFirst(varName) + upperFirst(predType) + "Source"
+	// Unary predicates (UnaryClaim[Subject]) have no Object — their
+	// claim var name should not end in a targetName suffix or we
+	// produce misleading identifiers like
+	// "ConceptIsPolyvalentTermUnrelatedHypothesis".
 	claimVar := varName + upperFirst(predType) + targetName
+	if isUnary {
+		claimVar = varName + upperFirst(predType)
+	}
 
 	// Clean LLM artifacts from strings
 	quote := cleanLLMString(result.quote)
@@ -726,12 +824,14 @@ func generateClaimCode(hypName, claimType string, article PaperSummary, result *
 			claimPredType = "AcceptsOrg"
 		}
 
-		// Unary predicates (IsCognitiveBias, IsPolyvalentTerm) have Subject only
-		unary := claimPredType == "IsCognitiveBias" || claimPredType == "IsPolyvalentTerm"
-
+		// isUnary was computed at the call site from predicateSlots,
+		// which is the authoritative source (parses predicates.go).
+		// The old hard-coded list here lagged schema changes — any new
+		// UnaryClaim type would have emitted a broken Object slot
+		// until someone remembered to update two places.
 		b.WriteString(fmt.Sprintf("var %s = %s{\n", claimVar, claimPredType))
 		b.WriteString(fmt.Sprintf("\tSubject: %s,\n", varName))
-		if !unary {
+		if !isUnary {
 			b.WriteString(fmt.Sprintf("\tObject:  %s,\n", targetName))
 		}
 		b.WriteString(fmt.Sprintf("\tProv:    %s,\n", provVar))

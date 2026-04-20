@@ -7,6 +7,44 @@ import (
 	"testing"
 )
 
+func TestClassifyFabricatedName(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		kind    string
+		wantOK  bool   // true means accepted (empty reason)
+		wantReason string
+	}{
+		{name: "plain person", input: "Daniel Kahneman", kind: "person", wantOK: true},
+		{name: "plain org", input: "ACME Corp", kind: "organization", wantOK: true},
+		{name: "et al as person", input: "Dimara et al.", kind: "person", wantOK: true},
+		{name: "et al as org rejected", input: "Dimara et al.", kind: "organization", wantReason: "et_al_as_org"},
+		{name: "inferred annotation", input: "Dimara et al. (inferred from context; source does not name authors)", kind: "organization", wantReason: "meta_annotation"},
+		{name: "unclear annotation", input: "Author (unclear)", kind: "person", wantReason: "meta_annotation"},
+		{name: "likely annotation", input: "John Smith (likely)", kind: "person", wantReason: "meta_annotation"},
+		{name: "unknown annotation", input: "Unknown author (unknown)", kind: "person", wantReason: "meta_annotation"},
+		{name: "empty", input: "", kind: "person", wantReason: "empty"},
+		{name: "whitespace only", input: "   ", kind: "person", wantReason: "empty"},
+		{name: "too long", input: strings.Repeat("Very Long Name ", 10), kind: "person", wantReason: "too_long"},
+		{name: "bracketed variant", input: "Author [inferred]", kind: "person", wantReason: "meta_annotation"},
+		{name: "not named variant", input: "Author (not named in source)", kind: "person", wantReason: "meta_annotation"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := classifyFabricatedName(c.input, c.kind)
+			if c.wantOK {
+				if got != "" {
+					t.Errorf("classifyFabricatedName(%q, %q) = %q, want accepted", c.input, c.kind, got)
+				}
+				return
+			}
+			if got != c.wantReason {
+				t.Errorf("classifyFabricatedName(%q, %q) = %q, want %q", c.input, c.kind, got, c.wantReason)
+			}
+		})
+	}
+}
+
 // repoRoot returns the winze repo root for tests that need real corpus files.
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -456,7 +494,7 @@ func TestGenerateClaimCode(t *testing.T) {
 			quote:       "Smith proposed the theory",
 		}
 		known := map[string]bool{}
-		code := generateClaimCode("SomeHypothesis", "Proposes", article, result, 1, known)
+		code := generateClaimCode("SomeHypothesis", "Proposes", article, result, 1, known, false)
 
 		if !strings.Contains(code, "var JohnSmith = Person{") {
 			t.Error("missing entity declaration")
@@ -482,7 +520,7 @@ func TestGenerateClaimCode(t *testing.T) {
 			quote:      "ACME proposed it",
 		}
 		known := map[string]bool{}
-		code := generateClaimCode("SomeHypothesis", "Proposes", article, result, 1, known)
+		code := generateClaimCode("SomeHypothesis", "Proposes", article, result, 1, known, false)
 
 		if !strings.Contains(code, "= ProposesOrg{") {
 			t.Errorf("expected ProposesOrg for organization, got:\n%s", code)
@@ -502,7 +540,7 @@ func TestGenerateClaimCode(t *testing.T) {
 			quote:      "It is a bias",
 		}
 		known := map[string]bool{}
-		code := generateClaimCode("", "IsCognitiveBias", article, result, 1, known)
+		code := generateClaimCode("", "IsCognitiveBias", article, result, 1, known, true)
 
 		if strings.Contains(code, "Object:") {
 			t.Error("unary predicate should not have Object field")
@@ -524,7 +562,7 @@ func TestGenerateClaimCode(t *testing.T) {
 		known := map[string]bool{
 			"ExistingEntity": true, // entity already in KB
 		}
-		code := generateClaimCode("SomeTarget", "Proposes", article, result, 1, known)
+		code := generateClaimCode("SomeTarget", "Proposes", article, result, 1, known, false)
 
 		if strings.Contains(code, "var ExistingEntity = Person{") {
 			t.Error("should not redeclare existing entity")
