@@ -285,6 +285,65 @@ is earned by the calibration record, not declared by a deny-list.
 If you're a Gas Town polecat, your workflow is defined by the `mol-curate`
 formula in `.beads/formulas/`. Run `gt prime` to see your checklist.
 
+### Multi-timescale laminar cycles (Gas Town integration)
+
+Cadence belongs to Gas Town. Phase granularity and self-gating belong to
+winze. The recommended pattern: a Gas Town formula fires
+`go run ./cmd/metabolism --evolve .` on a regular clock (hourly is a
+reasonable default), and winze's per-phase gates decide what's actually
+worth running on each tick. Cost tracks opportunity, not the clock.
+
+**Phase composition.** `--evolve` runs seven named phases: `bias`,
+`sense`, `resolve`, `ingest`, `trip`, `dream`, `calibrate`. Cheap phases
+(`bias`, `dream`, `calibrate`) emit telemetry every tick — they have no
+LLM or sensor cost and produce the signal the dynamic gates read.
+Expensive phases (`sense`, `resolve`, `ingest`, `trip`, plus dream's
+optional brief-tightening) self-gate against that telemetry.
+
+Gas Town can also fire a phase subset directly with `--phases`:
+
+```bash
+go run ./cmd/metabolism --evolve --phases=cheap .   # bias + dream + calibrate (no LLM, no sensors)
+go run ./cmd/metabolism --evolve --phases=llm .     # resolve + ingest + trip + dream
+go run ./cmd/metabolism --evolve --phases=sense,resolve .
+```
+
+**Default gate thresholds.** Sensible for a ~300-cycle corpus on an
+hourly tick. Override with the matching CLI flag (set `=0` to disable
+that gate).
+
+| Phase   | Default gate                                   | Flag |
+|---------|------------------------------------------------|------|
+| sense   | last sensor cycle ≥ 4h ago                     | `--sense-min-hours` |
+| resolve | ≥3 hypotheses with 3+ unresolved signal cycles | `--resolve-min-unresolved` |
+| trip    | last `metabolism_cycle*.go` mtime ≥ 24h ago    | `--trip-min-hours` |
+| ingest  | ≥1 corroborated-but-uningested cycle           | `--ingest-min-corroborated` |
+
+Gate decisions print as `[gate] <phase>: ALLOW|SKIP: <reason>` so
+formula logs make every firing decision auditable. The `--phases`
+filter, the dynamic gate, and the budget guard all stack
+independently — a phase needs all three to greenlight before it runs.
+
+**Budget guard (hard ceiling).** Set `METABOLISM_BUDGET_CENTS` to cap
+estimated monthly LLM/API spend. Per-phase estimates: sense 13¢,
+resolve 10¢, ingest 20¢, trip 15¢, dream-fix 1¢. Per `--evolve` run
+when all expensive phases fire: ~59¢; on the gated rhythm most
+ticks are mostly-cheap. State persists in `.metabolism-budget.json`
+with monthly auto-reset. Set `METABOLISM_BUDGET_CENTS=0` (or unset) to
+disable. Estimates are approximations — actual spend depends on
+response length; the bookkeeping is conservative.
+
+**Trend reader.** `go run ./cmd/metabolism --calibrate-trend .` prints
+the rolling time series from `.metabolism-calibration.jsonl` (one row
+per past `--calibrate` invocation). Use it to answer "is useful signal
+trending up?" without re-running calibrate or eyeballing the JSONL.
+
+**What to ignore.** Do NOT add cron, systemd, or any cadence-management
+machinery inside winze itself. Gas Town owns cadence; winze owns
+self-gating. If a Gas Town formula needs a different rhythm, change the
+formula or set the `--*-min-*` thresholds — never grow winze a
+scheduler.
+
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker
