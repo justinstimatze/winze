@@ -26,6 +26,9 @@
 # Metabolism calibration time series (append-only, local trend signal)
 .metabolism-calibration.jsonl
 
+# Metabolism budget state (per-checkout monthly accounting)
+.metabolism-budget.json
+
 # Sensor config (contains local paths)
 .metabolism.json
 

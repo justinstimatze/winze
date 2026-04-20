@@ -2165,6 +2165,13 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	mlog := loadLog(filepath.Join(dir, ".metabolism-log.json"))
 	now := time.Now()
 
+	// Budget guard: hard ceiling on monthly LLM/API spend (estimated).
+	// Cap of 0 = unlimited (matches pre-budget behavior). When tracked,
+	// each expensive phase that fires also increments the persisted total.
+	budget := loadBudgetGuard(dir)
+	fmt.Printf("[cycle] %s\n", budget.summary())
+	fmt.Println()
+
 	// Phase 0: Bias audit gates downstream phases. README flagged
 	// "triggered bias auditors don't gate the next metabolism phase"
 	// as a known problem — wiring it here closes that gap. At minimum
@@ -2183,9 +2190,14 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	// Phase 1: Metabolism (sensor queries + optional ingest)
 	senseDecision := shouldFireSense(gateCfg, mlog, now)
 	logGate("sense", senseDecision)
-	if sel.has("sense") && senseDecision.Fire {
+	senseAllow, senseBudgetReason := budget.allow("sense", costSenseCents)
+	if !senseAllow {
+		logGate("sense-budget", gateDecision{Fire: false, Reason: senseBudgetReason})
+	}
+	if sel.has("sense") && senseDecision.Fire && senseAllow {
 		fmt.Println("=== Phase 1: Metabolism (wake) ===")
 		fmt.Println()
+		budget.charge("sense", costSenseCents)
 
 		// Check entity cap
 		count, err := countEntities(dir)
@@ -2272,8 +2284,13 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	mlog = loadLog(filepath.Join(dir, ".metabolism-log.json"))
 	resolveDecision := shouldFireResolve(gateCfg, mlog)
 	logGate("resolve", resolveDecision)
-	if sel.has("resolve") && resolveDecision.Fire && os.Getenv("ANTHROPIC_API_KEY") != "" && !dryRun {
+	resolveAllow, resolveBudgetReason := budget.allow("resolve", costResolveCents)
+	if !resolveAllow {
+		logGate("resolve-budget", gateDecision{Fire: false, Reason: resolveBudgetReason})
+	}
+	if sel.has("resolve") && resolveDecision.Fire && resolveAllow && os.Getenv("ANTHROPIC_API_KEY") != "" && !dryRun {
 		fmt.Println("=== Phase 1b: Evaluate (auto-resolve pending hypotheses) ===")
+		budget.charge("resolve", costResolveCents)
 		fmt.Println()
 		results := autoResolve(dir)
 		if len(results) > 0 {
@@ -2362,7 +2379,12 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	mlog = loadLog(filepath.Join(dir, ".metabolism-log.json"))
 	ingestDecision := shouldFireIngest(gateCfg, mlog)
 	logGate("ingest", ingestDecision)
-	if sel.has("ingest") && ingestDecision.Fire && os.Getenv("ANTHROPIC_API_KEY") != "" && zimPath != "" && !dryRun {
+	ingestAllow, ingestBudgetReason := budget.allow("ingest", costIngestCents)
+	if !ingestAllow {
+		logGate("ingest-budget", gateDecision{Fire: false, Reason: ingestBudgetReason})
+	}
+	if sel.has("ingest") && ingestDecision.Fire && ingestAllow && os.Getenv("ANTHROPIC_API_KEY") != "" && zimPath != "" && !dryRun {
+		budget.charge("ingest", costIngestCents)
 		fmt.Println("=== Phase 2: Ingest (evolve KB from corroborated findings) ===")
 		fmt.Println()
 
@@ -2386,13 +2408,18 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	// Phase 3: Trip (speculative connections — runs BEFORE dream so dream can clean up)
 	tripDecision := shouldFireTrip(gateCfg, dir, now)
 	logGate("trip", tripDecision)
+	tripAllow, tripBudgetReason := budget.allow("trip", costTripCents)
+	if !tripAllow {
+		logGate("trip-budget", gateDecision{Fire: false, Reason: tripBudgetReason})
+	}
 	var tripReport TripReport
-	if sel.has("trip") && tripDecision.Fire && os.Getenv("ANTHROPIC_API_KEY") != "" {
+	if sel.has("trip") && tripDecision.Fire && tripAllow && os.Getenv("ANTHROPIC_API_KEY") != "" {
 		fmt.Println("=== Phase 3: Trip (REM speculation) ===")
 		fmt.Println()
 		if dryRun {
 			fmt.Println("[cycle] [dry-run] would run trip cycle")
 		} else {
+			budget.charge("trip", costTripCents)
 			tripReport = runTrip(dir, 1.0, "analogy", 3, false, jsonOut) // temp=1.0, analogy, 3 pairs
 			// Promote high-scoring connections to corpus claims
 			if len(tripReport.Connections) > 0 {
@@ -2419,14 +2446,21 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 		phases++
 		_ = dreamReport
 
-		// Auto-fix overlong Briefs if API key is available
-		if os.Getenv("ANTHROPIC_API_KEY") != "" && !dryRun {
+		// Auto-fix overlong Briefs if API key is available and budget allows.
+		// Dream-fix is cheap (~1¢ Haiku) so it almost always fits, but the
+		// charge is still recorded for accurate monthly accounting.
+		dreamFixAllow, dreamFixBudgetReason := budget.allow("dream-fix", costDreamFixCents)
+		if !dreamFixAllow {
+			logGate("dream-fix-budget", gateDecision{Fire: false, Reason: dreamFixBudgetReason})
+		}
+		if dreamFixAllow && os.Getenv("ANTHROPIC_API_KEY") != "" && !dryRun {
 			fmt.Println()
 			fmt.Println("[cycle] running Brief tightening...")
+			budget.charge("dream-fix", costDreamFixCents)
 			runDreamFix(dir, true, false, jsonOut) // tighten=true, dryRun=false
 			// Future: consolidateProvenance from dreamReport.ProvenanceSplits
 			// Future: fix framing effect from dreamReport.BiasAudit
-		} else if !dryRun {
+		} else if !dryRun && os.Getenv("ANTHROPIC_API_KEY") == "" {
 			fmt.Println("[cycle] skipping Brief tightening (no ANTHROPIC_API_KEY)")
 		}
 		fmt.Println()
