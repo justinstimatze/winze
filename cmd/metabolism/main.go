@@ -269,6 +269,7 @@ func main() {
 	limit := flag.Int("limit", 5, "max results per query")
 	dryRun := flag.Bool("dry-run", false, "show targets without querying")
 	calibrate := flag.Bool("calibrate", false, "analyze existing log instead of running a cycle")
+	calibrateTrend := flag.Bool("calibrate-trend", false, "print the .metabolism-calibration.jsonl time series (one row per past --calibrate run)")
 	durability := flag.Bool("durability", false, "re-run KB-internal resolvers against current corpus and report drift vs historical verdicts")
 	durabilityWrite := flag.Bool("write", false, "with --durability: append recheck entries to .metabolism-log.json (default: read-only)")
 	irrelevanceAudit := flag.Bool("irrelevance-audit", false, "diagnostic: reclassify a sample of 'irrelevant' cycles; report flip rate (needs ANTHROPIC_API_KEY)")
@@ -453,6 +454,11 @@ func main() {
 		} else {
 			runCalibrate(dir, *jsonOut)
 		}
+		return
+	}
+
+	if *calibrateTrend {
+		runCalibrateTrend(dir, *jsonOut)
 		return
 	}
 
