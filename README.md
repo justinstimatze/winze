@@ -4,13 +4,13 @@
 
 A knowledge base that sleeps, dreams, and trips.
 
-Every agent memory system in 2026 solves the same problem: remembering what you said. None of them solve knowing where you're probably wrong. Winze is a typed epistemic substrate where `go build` is the consistency checker, contested theories are first-class structure, and an automated metabolism loop evolves the KB while you're away — seeking disconfirming evidence, generating speculative connections, and auditing its own cognitive biases.
+Most agent memory systems solve retrieval: remembering what you said. None of the ones we've surveyed — [MemPalace](https://github.com/milla-jovovich/mempalace), [Hermes](https://github.com/nousresearch/hermes-agent), [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), [Monarch dismech](https://github.com/monarch-initiative/dismech), [Open Ontologies](https://github.com/fabio-rovai/open-ontologies), [Lean Mathlib](https://github.com/leanprover-community/mathlib4) — target *knowing where you're probably wrong*. Winze is a typed epistemic substrate where `go build` is the consistency checker, contested theories are first-class structure, and an automated metabolism loop evolves the KB while you're away — seeking disconfirming evidence, generating speculative connections, and auditing its own cognitive biases.
 
 Knowledge looks like code. Entities are typed constants, claims are variable declarations, predicates are generic types. Put the wrong entity type in a relationship slot and it doesn't compile. Standard tooling works unchanged: LSP, `go/ast`, CI, code review, `git blame`. Every improvement to Claude Code, OpenClaw, Cursor, or Devin directly benefits this knowledge base — no adapter required.
 
 ## Where this is headed
 
-The agent memory race is building filing cabinets. MemPalace stores conversations verbatim. Hermes writes reusable skills. Karpathy's LLM wiki compiles markdown from raw sources. They all solve retrieval. None of them solve *epistemic self-awareness* — knowing which beliefs are load-bearing and which might break.
+The agent memory race is building filing cabinets. [MemPalace](https://github.com/milla-jovovich/mempalace) stores conversations verbatim. [Hermes](https://github.com/nousresearch/hermes-agent) writes reusable skills. [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) compiles markdown from raw sources. These three solve retrieval. None of the six systems in the comparison below target *epistemic self-awareness* — knowing which beliefs are load-bearing and which might break.
 
 Winze is the layer underneath. When an agent is backed by winze, it can be confidently precise on well-supported topics and naturally cautious on thin ones, without being told which is which. The topology tells it. The metabolism thinks ahead:
 
@@ -30,13 +30,13 @@ The output isn't a status report. It's better answers the next time someone asks
 **Side project — blind field discovery:** Can the metabolism autonomously map a scientific field it doesn't know? Rediscover periodicity from raw NIST atomic data (calibration run), then map quantum computing from arXiv papers with Wikipedia blinders on.
 
 **Known problems:**
-- Calibration needs `gap_confirmed` vs `no_gap` distinction (searching Wikipedia for Wikipedia topics is tautological)
-- Triggered bias auditors don't yet gate the next metabolism phase
-- 88% Wikipedia provenance concentration
+- Wikipedia provenance concentration (HHI ~0.6). The availability-heuristic bias gate now skips ZIM when this fires; Kagi fills the resulting signal gap. Structural fix still requires diversified ingest.
+- RSS feed curation unsolved — default topic feeds don't match entity-specific topology queries (0/131 signal historically). RSS still available via `--backend rss` for contributors who curate their own feeds.
+- Source reputation not yet tracked — no automated mechanism for down-weighting historically low-quality domains based on calibration outcomes.
 
 ### DARPA alignment
 
-Two active DARPA programs (April 2026) overlap with winze's approach:
+Two active DARPA programs (April 2026) overlap with winze's approach. Both have public program pages at [darpa.mil](https://www.darpa.mil/); BAA documents are indexed on [SAM.gov](https://sam.gov/).
 
 **MATHBAC** (Mathematics of Boosting Agentic Communication): "AI excels at navigating solution spaces but struggles to systematically explore hypothesis spaces." Winze's metabolism is systematic hypothesis space exploration. Gas Town's multi-agent orchestration maps to MATHBAC's agent collective topology.
 

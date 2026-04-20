@@ -16,7 +16,7 @@ bd dolt push          # Push beads data to remote
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
 
-Shell commands like `cp`, `mv`, and `rm` may be aliased to include `-i` (interactive) mode on some systems, causing the agent to hang indefinitely waiting for y/n input.
+Shell commands like `cp`, `mv`, and `rm` are aliased to `-i` (interactive) by default under root on Red Hat / Fedora / CentOS, and commonly aliased in user shells on Debian / Ubuntu / macOS via `.bashrc` or `.zshrc`. When that alias is inherited by an agent's shell, the confirmation prompt causes the agent to hang indefinitely waiting for y/n input.
 
 **Use these forms instead:**
 ```bash
