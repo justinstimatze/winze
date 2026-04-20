@@ -307,6 +307,11 @@ func main() {
 	zimIndex := flag.String("zim-index", "", "path for Bleve index (default: <zimfile>.bleve/)")
 	rssFeeds := flag.String("rss-feeds", "", "comma-separated RSS/Atom feed URLs (overrides defaults)")
 	phasesFlag := flag.String("phases", "", "comma-separated phases to run under --evolve; default = all. Phase keys: bias, sense, resolve, ingest, trip, dream, calibrate. Aliases: 'all', 'cheap' (=bias,dream,calibrate), 'llm' (=resolve,ingest,trip,dream). Cheap phases produce telemetry even when expensive phases are skipped.")
+	defaults := defaultPhaseGates()
+	senseMinHours := flag.Float64("sense-min-hours", defaults.SenseMinHours, "phase gate: only fire sense if last cycle ≥ N hours ago (0 = always fire)")
+	resolveMinUnresolved := flag.Int("resolve-min-unresolved", defaults.ResolveMinUnresolved, "phase gate: only fire resolve if ≥N hypotheses have 3+ unresolved signal cycles (0 = always fire)")
+	tripMinHours := flag.Float64("trip-min-hours", defaults.TripMinHours, "phase gate: only fire trip if last metabolism_cycle*.go mtime ≥ N hours ago (0 = always fire)")
+	ingestMinCorroborated := flag.Int("ingest-min-corroborated", defaults.IngestMinCorroborated, "phase gate: only fire ingest if ≥N corroborated-but-uningested cycles exist (0 = always fire)")
 	flag.Parse()
 
 	// WINZE_ENTITY_CAP env var overrides flag default (but explicit --entity-cap wins)
@@ -363,7 +368,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "metabolism: --phases: %v\n", err)
 			os.Exit(1)
 		}
-		runCycle(dir, *zimPath, *zimIndex, *llmBudget, *entityCap, *dryRun, *jsonOut, sel)
+		gates := phaseGatesFromFlags(senseMinHours, resolveMinUnresolved, tripMinHours, ingestMinCorroborated)
+		runCycle(dir, *zimPath, *zimIndex, *llmBudget, *entityCap, *dryRun, *jsonOut, sel, gates)
 		return
 	}
 
@@ -2135,7 +2141,12 @@ func runCalibrateNarrative(dir string) {
 // The `sel` phaseSet filters which phases run. nil/empty = all phases
 // (pre-flag default behavior). When bias is skipped the downstream gates
 // still get zero-value biasGates — safe default (nothing is gated off).
-func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, jsonOut bool, sel phaseSet) {
+//
+// The `gateCfg` phaseGateConfig provides dynamic, signal-driven gating:
+// expensive phases (sense, resolve, trip, ingest) check whether firing
+// is justified given the metabolism log + corpus state. Gates log their
+// decision regardless. Zero-valued thresholds disable individual gates.
+func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, jsonOut bool, sel phaseSet, gateCfg phaseGateConfig) {
 	fmt.Println("[cycle] starting full sleep cycle")
 	if len(sel) > 0 {
 		var phases []string
@@ -2149,6 +2160,10 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 
 	phases := 0
 	failures := 0
+
+	// Load the metabolism log up front — expensive-phase gates all read it.
+	mlog := loadLog(filepath.Join(dir, ".metabolism-log.json"))
+	now := time.Now()
 
 	// Phase 0: Bias audit gates downstream phases. README flagged
 	// "triggered bias auditors don't gate the next metabolism phase"
@@ -2166,7 +2181,9 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	}
 
 	// Phase 1: Metabolism (sensor queries + optional ingest)
-	if sel.has("sense") {
+	senseDecision := shouldFireSense(gateCfg, mlog, now)
+	logGate("sense", senseDecision)
+	if sel.has("sense") && senseDecision.Fire {
 		fmt.Println("=== Phase 1: Metabolism (wake) ===")
 		fmt.Println()
 
@@ -2239,16 +2256,23 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 			}
 		}
 		fmt.Println()
-	} else {
+	} else if !sel.has("sense") {
 		fmt.Println("=== Phase 1: Sense (skipped by --phases) ===")
+		fmt.Println()
+	} else {
+		fmt.Println("=== Phase 1: Sense (skipped by gate) ===")
 		fmt.Println()
 	}
 
 	// Load API key for LLM phases (auto-resolve, dream-fix, trip)
 	loadDotEnv(dir)
 
-	// Phase 1b: Auto-resolve pending hypotheses with sufficient signal
-	if sel.has("resolve") && os.Getenv("ANTHROPIC_API_KEY") != "" && !dryRun {
+	// Phase 1b: Auto-resolve pending hypotheses with sufficient signal.
+	// Reload the log because sense may have appended new cycles the gate needs to see.
+	mlog = loadLog(filepath.Join(dir, ".metabolism-log.json"))
+	resolveDecision := shouldFireResolve(gateCfg, mlog)
+	logGate("resolve", resolveDecision)
+	if sel.has("resolve") && resolveDecision.Fire && os.Getenv("ANTHROPIC_API_KEY") != "" && !dryRun {
 		fmt.Println("=== Phase 1b: Evaluate (auto-resolve pending hypotheses) ===")
 		fmt.Println()
 		results := autoResolve(dir)
@@ -2334,7 +2358,11 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 		fmt.Println("[cycle] skipping auto-resolve (no ANTHROPIC_API_KEY)")
 	}
 
-	if sel.has("ingest") && os.Getenv("ANTHROPIC_API_KEY") != "" && zimPath != "" && !dryRun {
+	// Reload again — resolve may have set Resolution on cycles the ingest gate needs to see.
+	mlog = loadLog(filepath.Join(dir, ".metabolism-log.json"))
+	ingestDecision := shouldFireIngest(gateCfg, mlog)
+	logGate("ingest", ingestDecision)
+	if sel.has("ingest") && ingestDecision.Fire && os.Getenv("ANTHROPIC_API_KEY") != "" && zimPath != "" && !dryRun {
 		fmt.Println("=== Phase 2: Ingest (evolve KB from corroborated findings) ===")
 		fmt.Println()
 
@@ -2356,8 +2384,10 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	}
 
 	// Phase 3: Trip (speculative connections — runs BEFORE dream so dream can clean up)
+	tripDecision := shouldFireTrip(gateCfg, dir, now)
+	logGate("trip", tripDecision)
 	var tripReport TripReport
-	if sel.has("trip") && os.Getenv("ANTHROPIC_API_KEY") != "" {
+	if sel.has("trip") && tripDecision.Fire && os.Getenv("ANTHROPIC_API_KEY") != "" {
 		fmt.Println("=== Phase 3: Trip (REM speculation) ===")
 		fmt.Println()
 		if dryRun {
