@@ -128,21 +128,31 @@ func shouldFireTrip(cfg phaseGateConfig, dir string, now time.Time) gateDecision
 // Pipeline is bounded by --llm-budget already, so this gate is
 // intentionally permissive — it mostly skips ingest when there's
 // nothing corroborated to ingest.
+//
+// Only ZIM-backed cycles are counted because runPipeline extracts
+// claims from full article text, which only ZIM provides; arXiv
+// abstracts and Kagi snippets are too thin for the current ingest
+// path. An earlier cross-backend count produced false-ALLOW gate
+// decisions followed by "[pipeline] nothing to ingest" no-ops.
 func shouldFireIngest(cfg phaseGateConfig, mlog MetabolismLog) gateDecision {
 	if cfg.IngestMinCorroborated <= 0 {
 		return gateDecision{Fire: true, Reason: "gate disabled (ingest-min-corroborated<=0)"}
 	}
-	// Count corroborated cycles that haven't been ingested yet.
 	n := 0
 	for _, c := range mlog.Cycles {
-		if c.Resolution == "corroborated" && !c.Ingested && c.PapersFound > 0 {
-			n++
+		if c.Resolution != "corroborated" || c.Ingested || c.PapersFound == 0 {
+			continue
 		}
+		// Empty backend is legacy/arxiv; only literal "zim" gets ingested today.
+		if c.Backend != "zim" {
+			continue
+		}
+		n++
 	}
 	if n >= cfg.IngestMinCorroborated {
-		return gateDecision{Fire: true, Reason: fmt.Sprintf("%d corroborated-but-uningested cycles (threshold: %d)", n, cfg.IngestMinCorroborated)}
+		return gateDecision{Fire: true, Reason: fmt.Sprintf("%d corroborated-but-uningested ZIM cycles (threshold: %d)", n, cfg.IngestMinCorroborated)}
 	}
-	return gateDecision{Fire: false, Reason: fmt.Sprintf("%d corroborated-but-uningested < %d (set --ingest-min-corroborated=0 to force)", n, cfg.IngestMinCorroborated)}
+	return gateDecision{Fire: false, Reason: fmt.Sprintf("%d corroborated-but-uningested ZIM cycles < %d (set --ingest-min-corroborated=0 to force)", n, cfg.IngestMinCorroborated)}
 }
 
 // lastTripFileTime returns the mtime of the most-recent metabolism_cycle*.go

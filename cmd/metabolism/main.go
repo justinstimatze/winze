@@ -2167,6 +2167,12 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	phases := 0
 	failures := 0
 
+	// Load .env BEFORE any phase so Kagi and Anthropic keys are visible
+	// to Phase 1 (sense). Previously this ran after Phase 1, which made
+	// a freshly-added KAGI_API_KEY invisible on the first --evolve after
+	// editing .env — silently skipping the kagi backend.
+	loadDotEnv(dir)
+
 	// Load the metabolism log up front — expensive-phase gates all read it.
 	mlog := loadLog(filepath.Join(dir, ".metabolism-log.json"))
 	now := time.Now()
@@ -2281,9 +2287,6 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 		fmt.Println("=== Phase 1: Sense (skipped by gate) ===")
 		fmt.Println()
 	}
-
-	// Load API key for LLM phases (auto-resolve, dream-fix, trip)
-	loadDotEnv(dir)
 
 	// Phase 1b: Auto-resolve pending hypotheses with sufficient signal.
 	// Reload the log because sense may have appended new cycles the gate needs to see.
@@ -2436,11 +2439,15 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 		}
 		phases++
 		fmt.Println()
-	} else if sel.has("trip") {
-		fmt.Println("=== Phase 3: Trip (skipped — no ANTHROPIC_API_KEY) ===")
+	} else if !sel.has("trip") {
+		fmt.Println("=== Phase 3: Trip (skipped by --phases) ===")
 		fmt.Println()
 	} else {
-		fmt.Println("=== Phase 3: Trip (skipped by --phases) ===")
+		// Phase was included by --phases but one of gate / budget / API key
+		// gated it off. The specific reason was already emitted via logGate
+		// (trip, trip-budget) or obvious from env state; the banner just
+		// marks that Phase 3 did not run.
+		fmt.Println("=== Phase 3: Trip (skipped — see [gate] lines above) ===")
 		fmt.Println()
 	}
 

@@ -163,21 +163,37 @@ func TestShouldFireIngest_NoCorroborated_Skips(t *testing.T) {
 	}
 }
 
-func TestShouldFireIngest_HasCorroborated_Fires(t *testing.T) {
+func TestShouldFireIngest_HasCorroboratedZim_Fires(t *testing.T) {
 	cfg := phaseGateConfig{IngestMinCorroborated: 1}
 	mlog := MetabolismLog{Cycles: []Cycle{
-		{Hypothesis: "A", Resolution: "corroborated", PapersFound: 1, Ingested: false},
+		{Hypothesis: "A", Backend: "zim", Resolution: "corroborated", PapersFound: 1, Ingested: false},
 	}}
 	d := shouldFireIngest(cfg, mlog)
 	if !d.Fire {
-		t.Errorf("1 corroborated-uningested ≥ 1 threshold — should fire, got skip: %v", d)
+		t.Errorf("1 corroborated-uningested ZIM ≥ 1 threshold — should fire, got skip: %v", d)
+	}
+}
+
+func TestShouldFireIngest_NonZimBackends_Skip(t *testing.T) {
+	// Pipeline only ingests ZIM; arXiv abstracts and Kagi snippets are
+	// too thin. Corroborated cycles from those backends should NOT
+	// advance the gate.
+	cfg := phaseGateConfig{IngestMinCorroborated: 1}
+	mlog := MetabolismLog{Cycles: []Cycle{
+		{Hypothesis: "A", Backend: "arxiv", Resolution: "corroborated", PapersFound: 1},
+		{Hypothesis: "B", Backend: "kagi", Resolution: "corroborated", PapersFound: 1},
+		{Hypothesis: "C", Backend: "", Resolution: "corroborated", PapersFound: 1}, // legacy empty
+	}}
+	d := shouldFireIngest(cfg, mlog)
+	if d.Fire {
+		t.Errorf("non-ZIM corroborated cycles — should skip (pipeline won't ingest them), got fire: %v", d)
 	}
 }
 
 func TestShouldFireIngest_AlreadyIngested_Skips(t *testing.T) {
 	cfg := phaseGateConfig{IngestMinCorroborated: 1}
 	mlog := MetabolismLog{Cycles: []Cycle{
-		{Hypothesis: "A", Resolution: "corroborated", PapersFound: 1, Ingested: true},
+		{Hypothesis: "A", Backend: "zim", Resolution: "corroborated", PapersFound: 1, Ingested: true},
 	}}
 	d := shouldFireIngest(cfg, mlog)
 	if d.Fire {
