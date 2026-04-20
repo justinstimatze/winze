@@ -637,9 +637,9 @@ var LeonidKulikProposesHypothesisStonyAsteroidAirburst = Proposes{
 // ---------------------------------------------------------------------------
 
 var vladimirABronshtenAcceptsSource = Provenance{
-	Origin:     "Wikipedia (zim 2025-12) / https://www.sciencedirect.com/science/article/abs/pii/S0032063300000283",
+	Origin:     "Kagi web search result / https://www.sciencedirect.com/science/article/abs/pii/S0032063300000283",
 	IngestedAt: "2026-04-20",
-	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest from ZIM)",
+	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest, source type varies per origin)",
 	Quote:      "\"They assume the TCB to be: (i) a fragment of a stony asteroid; (ii) a porous snowball; and (iii) a plasmoid\"",
 }
 
@@ -662,9 +662,9 @@ var VladimirABronshtenAcceptsHypothesisStonyAsteroidAirburst = Accepts{
 // ---------------------------------------------------------------------------
 
 var vABronshtenAcceptsSource = Provenance{
-	Origin:     "Wikipedia (zim 2025-12) / https://ui.adsabs.harvard.edu/abs/2000P%26SS...48..855B/abstract",
+	Origin:     "Kagi web search result / https://ui.adsabs.harvard.edu/abs/2000P%26SS...48..855B/abstract",
 	IngestedAt: "2026-04-20",
-	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest from ZIM)",
+	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest, source type varies per origin)",
 	Quote:      "\"Three alternative hypotheses are considered here. They assume the TCB to be: (i) a fragment of a stony asteroid; (ii) a porous snowball; and (iii) a plasmoid ...\"",
 }
 

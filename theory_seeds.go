@@ -256,9 +256,9 @@ var FEPBelongsToHumanCognition = BelongsTo{
 // ---------------------------------------------------------------------------
 
 var reificationFeedbackLoopTheoryOfSource = Provenance{
-	Origin:     "Wikipedia (zim 2025-12) / http://arxiv.org/abs/2604.01661v1",
+	Origin:     "arXiv abstract / http://arxiv.org/abs/2604.01661v1",
 	IngestedAt: "2026-04-20",
-	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest from ZIM)",
+	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest, source type varies per origin)",
 	Quote:      "\"the reification feedback loop through which AI may amplify coding artefacts\"",
 }
 

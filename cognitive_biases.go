@@ -348,9 +348,9 @@ var ComplexityAccuracyAndFluencyCAFMeasuresIsPolyvalentTermDimaraTaskBasedClassi
 // ---------------------------------------------------------------------------
 
 var dimaraEtAlInferredFromContextSourceDoesNotNameAuthorsProposesOrgSource = Provenance{
-	Origin:     "Wikipedia (zim 2025-12) / https://www.semanticscholar.org/paper/A-Task-Based-Taxonomy-of-Cognitive-Biases-for-Dimara-Franconeri/b2e9f35d60b00c7319a6763a477857e5215082f5/figure/0",
+	Origin:     "Kagi web search result / https://www.semanticscholar.org/paper/A-Task-Based-Taxonomy-of-Cognitive-Biases-for-Dimara-Franconeri/b2e9f35d60b00c7319a6763a477857e5215082f5/figure/0",
 	IngestedAt: "2026-04-20",
-	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest from ZIM)",
+	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest, source type varies per origin)",
 	Quote:      "\"A task-based taxonomy of 154 cognitive biases organized in 7 main categories is proposed that will help visualization researchers relate their design to the corresponding possible biases, and lead to new research that detects and addresses biased judgment and decision making in data visualization.\"",
 }
 
