@@ -644,39 +644,15 @@ var vladimirABronshtenAcceptsSource = Provenance{
 }
 
 var VladimirABronshten = Person{&Entity{
-	ID:    "vladimir-a-bronshten",
-	Name:  "Vladimir A. Bronshten",
-	Kind:  "person",
-	Brief: "Author who evaluated multiple competing hypotheses about the Tunguska cosmical body in 2000.",
+	ID:      "vladimir-a-bronshten",
+	Name:    "Vladimir A. Bronshten",
+	Kind:    "person",
+	Brief:   "Soviet-Russian astronomer (1918-2004) who evaluated multiple competing hypotheses about the Tunguska cosmical body in his 2000 review.",
+	Aliases: []string{"VA Bronshten", "V.A. Bronshten"},
 }}
 
 var VladimirABronshtenAcceptsHypothesisStonyAsteroidAirburst = Accepts{
 	Subject: VladimirABronshten,
 	Object:  HypothesisStonyAsteroidAirburst,
 	Prov:    vladimirABronshtenAcceptsSource,
-}
-
-// ---------------------------------------------------------------------------
-// Nature and destruction of the Tunguska cosmical body: VA Bronshten Accepts HypothesisStonyAsteroidAirburst
-// This claim documents Bronshten's consideration of the stony asteroid hypothesis as a viable model for explaining the Tunguska event, reflecting how scientific minds evaluate competing models of physical reality.
-// ---------------------------------------------------------------------------
-
-var vABronshtenAcceptsSource = Provenance{
-	Origin:     "Kagi web search result / https://ui.adsabs.harvard.edu/abs/2000P%26SS...48..855B/abstract",
-	IngestedAt: "2026-04-20",
-	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest, source type varies per origin)",
-	Quote:      "\"Three alternative hypotheses are considered here. They assume the TCB to be: (i) a fragment of a stony asteroid; (ii) a porous snowball; and (iii) a plasmoid ...\"",
-}
-
-var VABronshten = Person{&Entity{
-	ID:    "va-bronshten",
-	Name:  "VA Bronshten",
-	Kind:  "person",
-	Brief: "Researcher who examined alternative hypotheses about the Tunguska cosmical body",
-}}
-
-var VABronshtenAcceptsHypothesisStonyAsteroidAirburst = Accepts{
-	Subject: VABronshten,
-	Object:  HypothesisStonyAsteroidAirburst,
-	Prov:    vABronshtenAcceptsSource,
 }

@@ -251,26 +251,31 @@ var FEPBelongsToHumanCognition = BelongsTo{
 }
 
 // ---------------------------------------------------------------------------
-// Ontology-Aware Design Patterns for Clinical AI Systems: Translating Reification Theory into Software Architecture: reification feedback loop TheoryOf ReificationRisk
-// This directly instantiates the reification risk hypothesis by showing how AI systems can perpetuate false reifications—treating documentation artifacts as if they represent real clinical phenomena rather than recognizing them as byproducts of billing and workflow incentives.
+// Ontology-Aware Design Patterns for Clinical AI Systems: Translating Reification Theory into Software Architecture (arXiv:2604.01661v1)
+//
+// The source describes "the reification feedback loop" as a mechanism
+// within the broader reification-risk domain, not as a rival theory OF
+// reification risk. Typing it Concept + BelongsTo tracks the source's
+// actual commitment. Originally emitted as Hypothesis/TheoryOf by the
+// ingest LLM, demoted during post-audit.
 // ---------------------------------------------------------------------------
 
-var reificationFeedbackLoopTheoryOfSource = Provenance{
+var reificationFeedbackLoopBelongsToSource = Provenance{
 	Origin:     "arXiv abstract / http://arxiv.org/abs/2604.01661v1",
 	IngestedAt: "2026-04-20",
-	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest, source type varies per origin)",
+	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest, audit-retyped 2026-04-20)",
 	Quote:      "\"the reification feedback loop through which AI may amplify coding artefacts\"",
 }
 
-var ReificationFeedbackLoop = Hypothesis{&Entity{
+var ReificationFeedbackLoop = Concept{&Entity{
 	ID:    "reification-feedback-loop",
 	Name:  "reification feedback loop",
-	Kind:  "hypothesis",
-	Brief: "A mechanism through which AI systems may amplify coding artifacts and documentary distortions in health data.",
+	Kind:  "concept",
+	Brief: "A mechanism in clinical AI systems whereby documentation artifacts shaped by billing and workflow incentives get amplified when an AI trained on those artifacts treats them as real clinical phenomena.",
 }}
 
-var ReificationFeedbackLoopTheoryOfReificationRisk = TheoryOf{
+var ReificationFeedbackLoopBelongsToReificationRisk = BelongsTo{
 	Subject: ReificationFeedbackLoop,
 	Object:  ReificationRisk,
-	Prov:    reificationFeedbackLoopTheoryOfSource,
+	Prov:    reificationFeedbackLoopBelongsToSource,
 }
