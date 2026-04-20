@@ -5,6 +5,72 @@ import (
 	"testing"
 )
 
+func TestParsePhases(t *testing.T) {
+	cases := []struct {
+		name      string
+		in        string
+		wantNil   bool
+		wantHas   []string // phases the set should include
+		wantNot   []string // phases the set should NOT include
+		wantError bool
+	}{
+		{name: "empty is all", in: "", wantNil: true},
+		{name: "all alias", in: "all", wantNil: true},
+		{name: "all wins even mixed", in: "bias,all", wantNil: true},
+		{name: "single phase", in: "bias",
+			wantHas: []string{"bias"},
+			wantNot: []string{"sense", "resolve", "ingest", "trip", "dream", "calibrate"}},
+		{name: "cheap alias", in: "cheap",
+			wantHas: []string{"bias", "dream", "calibrate"},
+			wantNot: []string{"sense", "resolve", "ingest", "trip"}},
+		{name: "llm alias", in: "llm",
+			wantHas: []string{"resolve", "ingest", "trip", "dream"},
+			wantNot: []string{"bias", "sense", "calibrate"}},
+		{name: "comma list with whitespace", in: "bias, trip , calibrate",
+			wantHas: []string{"bias", "trip", "calibrate"},
+			wantNot: []string{"sense", "resolve", "ingest", "dream"}},
+		{name: "alias merged with phase", in: "cheap,trip",
+			wantHas: []string{"bias", "dream", "calibrate", "trip"},
+			wantNot: []string{"sense", "resolve", "ingest"}},
+		{name: "unknown phase errors", in: "bogus", wantError: true},
+		{name: "partial-valid still errors", in: "bias,bogus", wantError: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := parsePhases(c.in)
+			if c.wantError {
+				if err == nil {
+					t.Fatalf("parsePhases(%q) = nil err, want error", c.in)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parsePhases(%q) unexpected error: %v", c.in, err)
+			}
+			if c.wantNil && got != nil {
+				t.Fatalf("parsePhases(%q) = %v, want nil (all)", c.in, got)
+			}
+			for _, p := range c.wantHas {
+				if !got.has(p) {
+					t.Errorf("parsePhases(%q).has(%q) = false, want true", c.in, p)
+				}
+			}
+			for _, p := range c.wantNot {
+				if got.has(p) {
+					t.Errorf("parsePhases(%q).has(%q) = true, want false", c.in, p)
+				}
+			}
+		})
+	}
+	// nil phaseSet must always return true for .has (default = all)
+	var nilSet phaseSet
+	for _, p := range []string{"bias", "sense", "resolve", "ingest", "trip", "dream", "calibrate", "anything"} {
+		if !nilSet.has(p) {
+			t.Errorf("nil phaseSet.has(%q) = false, want true (nil = all)", p)
+		}
+	}
+}
+
 func TestStripInjection(t *testing.T) {
 	cases := []struct {
 		name        string

@@ -198,6 +198,57 @@ func loadSensorConfig(dir string) sensorConfig {
 	return cfg
 }
 
+// phaseSet is a membership set over the known --evolve phase keys.
+// Nil or empty = all phases run (matches pre-flag behavior).
+type phaseSet map[string]bool
+
+func (ps phaseSet) has(name string) bool {
+	if len(ps) == 0 {
+		return true // nil/empty = run everything
+	}
+	return ps[name]
+}
+
+// parsePhases parses a comma-separated --phases value into a phaseSet.
+// Aliases: "" / "all" = all phases; "cheap" = bias,dream,calibrate;
+// "llm" = resolve,ingest,trip,dream.
+// Returns an error if any phase key is unknown.
+func parsePhases(s string) (phaseSet, error) {
+	known := map[string]bool{
+		"bias": true, "sense": true, "resolve": true, "ingest": true,
+		"trip": true, "dream": true, "calibrate": true,
+	}
+	s = strings.TrimSpace(s)
+	if s == "" || s == "all" {
+		return nil, nil
+	}
+	out := phaseSet{}
+	for _, part := range strings.Split(s, ",") {
+		p := strings.TrimSpace(part)
+		switch p {
+		case "":
+			continue
+		case "all":
+			return nil, nil
+		case "cheap":
+			out["bias"] = true
+			out["dream"] = true
+			out["calibrate"] = true
+		case "llm":
+			out["resolve"] = true
+			out["ingest"] = true
+			out["trip"] = true
+			out["dream"] = true
+		default:
+			if !known[p] {
+				return nil, fmt.Errorf("unknown phase %q (known: bias, sense, resolve, ingest, trip, dream, calibrate; aliases: all, cheap, llm)", p)
+			}
+			out[p] = true
+		}
+	}
+	return out, nil
+}
+
 // isFlagSet returns true if the named flag was explicitly set on the command line.
 func isFlagSet(name string) bool {
 	found := false
@@ -255,6 +306,7 @@ func main() {
 	zimPath := flag.String("zim", "", "path to .zim file (required for zim backend)")
 	zimIndex := flag.String("zim-index", "", "path for Bleve index (default: <zimfile>.bleve/)")
 	rssFeeds := flag.String("rss-feeds", "", "comma-separated RSS/Atom feed URLs (overrides defaults)")
+	phasesFlag := flag.String("phases", "", "comma-separated phases to run under --evolve; default = all. Phase keys: bias, sense, resolve, ingest, trip, dream, calibrate. Aliases: 'all', 'cheap' (=bias,dream,calibrate), 'llm' (=resolve,ingest,trip,dream). Cheap phases produce telemetry even when expensive phases are skipped.")
 	flag.Parse()
 
 	// WINZE_ENTITY_CAP env var overrides flag default (but explicit --entity-cap wins)
@@ -306,7 +358,12 @@ func main() {
 	}()
 
 	if *cycle || *evolve {
-		runCycle(dir, *zimPath, *zimIndex, *llmBudget, *entityCap, *dryRun, *jsonOut)
+		sel, err := parsePhases(*phasesFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "metabolism: --phases: %v\n", err)
+			os.Exit(1)
+		}
+		runCycle(dir, *zimPath, *zimIndex, *llmBudget, *entityCap, *dryRun, *jsonOut, sel)
 		return
 	}
 
@@ -2058,8 +2115,20 @@ func runCalibrateNarrative(dir string) {
 // Each phase runs independently. If one fails, the others still execute.
 // This is the single entry point for autonomous KB evolution.
 // The KB grows and self-corrects on every run.
-func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, jsonOut bool) {
+//
+// The `sel` phaseSet filters which phases run. nil/empty = all phases
+// (pre-flag default behavior). When bias is skipped the downstream gates
+// still get zero-value biasGates — safe default (nothing is gated off).
+func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, jsonOut bool, sel phaseSet) {
 	fmt.Println("[cycle] starting full sleep cycle")
+	if len(sel) > 0 {
+		var phases []string
+		for k := range sel {
+			phases = append(phases, k)
+		}
+		sort.Strings(phases)
+		fmt.Printf("[cycle] phase filter: %s\n", strings.Join(phases, ","))
+	}
 	fmt.Println()
 
 	phases := 0
@@ -2070,12 +2139,18 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	// as a known problem — wiring it here closes that gap. At minimum
 	// the triggered set is surfaced; specific triggers can modify
 	// phase behavior (currently: availability_heuristic → skip ZIM).
-	biasGates := runBiasGates(dir)
-	phases++
-	fmt.Println()
+	var gates biasGates
+	if sel.has("bias") {
+		gates = runBiasGates(dir)
+		phases++
+		fmt.Println()
+	} else {
+		fmt.Println("=== Phase 0: Bias audit (skipped by --phases) ===")
+		fmt.Println()
+	}
 
 	// Phase 1: Metabolism (sensor queries + optional ingest)
-	{
+	if sel.has("sense") {
 		fmt.Println("=== Phase 1: Metabolism (wake) ===")
 		fmt.Println()
 
@@ -2109,11 +2184,11 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 					// i.e. the KB is already over-concentrated on one source.
 					// Querying ZIM (Wikipedia) while concentrated would deepen the
 					// concentration; skip it this cycle to diversify.
-					if zimPath != "" && !biasGates.skipZim {
+					if zimPath != "" && !gates.skipZim {
 						zimQ := t.queryFor("zim")
 						fmt.Printf("  querying (zim): %s → %q\n", t.Hypothesis, zimQ)
 						runSensorCycle(dir, zimPath, zimIndex, t, "zim", nil)
-					} else if zimPath != "" && biasGates.skipZim {
+					} else if zimPath != "" && gates.skipZim {
 						fmt.Printf("  skipping zim for %s (availability-heuristic bias gate)\n", t.Hypothesis)
 					}
 					// RSS is opt-in only (via --backend rss / --backend all).
@@ -2148,13 +2223,16 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 			}
 		}
 		fmt.Println()
+	} else {
+		fmt.Println("=== Phase 1: Sense (skipped by --phases) ===")
+		fmt.Println()
 	}
 
 	// Load API key for LLM phases (auto-resolve, dream-fix, trip)
 	loadDotEnv(dir)
 
 	// Phase 1b: Auto-resolve pending hypotheses with sufficient signal
-	if os.Getenv("ANTHROPIC_API_KEY") != "" && !dryRun {
+	if sel.has("resolve") && os.Getenv("ANTHROPIC_API_KEY") != "" && !dryRun {
 		fmt.Println("=== Phase 1b: Evaluate (auto-resolve pending hypotheses) ===")
 		fmt.Println()
 		results := autoResolve(dir)
@@ -2236,11 +2314,11 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	}
 
 	// Phase 2: Pipeline ingest (evolve the KB from corroborated findings)
-	if os.Getenv("ANTHROPIC_API_KEY") == "" && !dryRun {
+	if sel.has("resolve") && os.Getenv("ANTHROPIC_API_KEY") == "" && !dryRun {
 		fmt.Println("[cycle] skipping auto-resolve (no ANTHROPIC_API_KEY)")
 	}
 
-	if os.Getenv("ANTHROPIC_API_KEY") != "" && zimPath != "" && !dryRun {
+	if sel.has("ingest") && os.Getenv("ANTHROPIC_API_KEY") != "" && zimPath != "" && !dryRun {
 		fmt.Println("=== Phase 2: Ingest (evolve KB from corroborated findings) ===")
 		fmt.Println()
 
@@ -2254,13 +2332,16 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 			phases++
 		}
 		fmt.Println()
-	} else if !dryRun {
+	} else if sel.has("ingest") && !dryRun {
 		fmt.Println("[cycle] skipping ingest (no ANTHROPIC_API_KEY or --zim)")
+	} else if !sel.has("ingest") {
+		fmt.Println("=== Phase 2: Ingest (skipped by --phases) ===")
+		fmt.Println()
 	}
 
 	// Phase 3: Trip (speculative connections — runs BEFORE dream so dream can clean up)
 	var tripReport TripReport
-	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+	if sel.has("trip") && os.Getenv("ANTHROPIC_API_KEY") != "" {
 		fmt.Println("=== Phase 3: Trip (REM speculation) ===")
 		fmt.Println()
 		if dryRun {
@@ -2276,40 +2357,53 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 		}
 		phases++
 		fmt.Println()
-	} else {
+	} else if sel.has("trip") {
 		fmt.Println("=== Phase 3: Trip (skipped — no ANTHROPIC_API_KEY) ===")
+		fmt.Println()
+	} else {
+		fmt.Println("=== Phase 3: Trip (skipped by --phases) ===")
 		fmt.Println()
 	}
 
 	// Phase 4: Dream (consolidation + cleanup — runs AFTER ingest + trip to catch their noise)
-	fmt.Println("=== Phase 4: Dream (NREM consolidation) ===")
-	fmt.Println()
-	dreamReport := runDream(dir, true, jsonOut) // includeBias=true
-	phases++
-	_ = dreamReport
-
-	// Auto-fix overlong Briefs if API key is available
-	if os.Getenv("ANTHROPIC_API_KEY") != "" && !dryRun {
+	if sel.has("dream") {
+		fmt.Println("=== Phase 4: Dream (NREM consolidation) ===")
 		fmt.Println()
-		fmt.Println("[cycle] running Brief tightening...")
-		runDreamFix(dir, true, false, jsonOut) // tighten=true, dryRun=false
-		// Future: consolidateProvenance from dreamReport.ProvenanceSplits
-		// Future: fix framing effect from dreamReport.BiasAudit
-	} else if !dryRun {
-		fmt.Println("[cycle] skipping Brief tightening (no ANTHROPIC_API_KEY)")
+		dreamReport := runDream(dir, true, jsonOut) // includeBias=true
+		phases++
+		_ = dreamReport
+
+		// Auto-fix overlong Briefs if API key is available
+		if os.Getenv("ANTHROPIC_API_KEY") != "" && !dryRun {
+			fmt.Println()
+			fmt.Println("[cycle] running Brief tightening...")
+			runDreamFix(dir, true, false, jsonOut) // tighten=true, dryRun=false
+			// Future: consolidateProvenance from dreamReport.ProvenanceSplits
+			// Future: fix framing effect from dreamReport.BiasAudit
+		} else if !dryRun {
+			fmt.Println("[cycle] skipping Brief tightening (no ANTHROPIC_API_KEY)")
+		}
+		fmt.Println()
+	} else {
+		fmt.Println("=== Phase 4: Dream (skipped by --phases) ===")
+		fmt.Println()
 	}
-	fmt.Println()
 
 	// Phase 5: Calibrate + reify
-	fmt.Println("=== Phase 5: Calibrate ===")
-	fmt.Println()
-	runCalibrate(dir, false)
-	phases++
+	if sel.has("calibrate") {
+		fmt.Println("=== Phase 5: Calibrate ===")
+		fmt.Println()
+		runCalibrate(dir, false)
+		phases++
 
-	// Reify predictions
-	fmt.Println()
-	runReify(dir)
-	fmt.Println()
+		// Reify predictions
+		fmt.Println()
+		runReify(dir)
+		fmt.Println()
+	} else {
+		fmt.Println("=== Phase 5: Calibrate (skipped by --phases) ===")
+		fmt.Println()
+	}
 
 	// Summary
 	fmt.Printf("[cycle] complete: %d phases executed, %d failures\n", phases, failures)
