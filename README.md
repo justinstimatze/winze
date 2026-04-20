@@ -4,13 +4,13 @@
 
 A knowledge base that sleeps, dreams, and trips.
 
-Most agent memory systems solve retrieval: remembering what you said. None of the ones we've surveyed — [MemPalace](https://github.com/milla-jovovich/mempalace), [Hermes](https://github.com/nousresearch/hermes-agent), [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), [Monarch dismech](https://github.com/monarch-initiative/dismech), [Open Ontologies](https://github.com/fabio-rovai/open-ontologies), [Lean Mathlib](https://github.com/leanprover-community/mathlib4) — target *knowing where you're probably wrong*. Winze is a typed epistemic substrate where `go build` is the consistency checker, contested theories are first-class structure, and an automated metabolism loop evolves the KB while you're away — seeking disconfirming evidence, generating speculative connections, and auditing its own cognitive biases.
+The agent-memory systems we've surveyed — [Hermes](https://github.com/nousresearch/hermes-agent), [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), [Monarch dismech](https://github.com/monarch-initiative/dismech), [Open Ontologies](https://github.com/fabio-rovai/open-ontologies), [Lean Mathlib](https://github.com/leanprover-community/mathlib4) — all solve some form of retrieval: remembering what you said. None of them target *knowing where you're probably wrong*. Winze is a typed epistemic substrate where `go build` is the consistency checker, contested theories are first-class structure, and an automated metabolism loop evolves the KB while you're away — seeking disconfirming evidence, generating speculative connections, and auditing its own cognitive biases.
 
 Knowledge looks like code. Entities are typed constants, claims are variable declarations, predicates are generic types. Put the wrong entity type in a relationship slot and it doesn't compile. Standard tooling works unchanged: LSP, `go/ast`, CI, code review, `git blame`. Every improvement to Claude Code, OpenClaw, Cursor, or Devin directly benefits this knowledge base — no adapter required.
 
 ## Where this is headed
 
-The agent memory race is building filing cabinets. [MemPalace](https://github.com/milla-jovovich/mempalace) stores conversations verbatim. [Hermes](https://github.com/nousresearch/hermes-agent) writes reusable skills. [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) compiles markdown from raw sources. These three solve retrieval. None of the six systems in the comparison below target *epistemic self-awareness* — knowing which beliefs are load-bearing and which might break.
+The agent memory race is building filing cabinets. [Hermes](https://github.com/nousresearch/hermes-agent) writes reusable skills. [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) compiles markdown from raw sources. These solve retrieval. None of the systems in the comparison below target *epistemic self-awareness* — knowing which beliefs are load-bearing and which might break.
 
 Winze is the layer underneath. When an agent is backed by winze, it can be confidently precise on well-supported topics and naturally cautious on thin ones, without being told which is which. The topology tells it. The metabolism thinks ahead:
 
@@ -117,7 +117,6 @@ go run ./cmd/metabolism --dream --bias .         # contradictions + blind spots
 
 | Project | Substrate | Consistency | Contestation? | Self-calibrating? |
 |---------|-----------|-------------|--------------|-------------------|
-| [MemPalace](https://github.com/milla-jovovich/mempalace) | ChromaDB + SQLite | None (verbatim storage) | No | No |
 | [Hermes Agent](https://github.com/nousresearch/hermes-agent) | Skill documents | Behavioral testing | No | No |
 | [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | Markdown | String-level lint | No | No |
 | [Monarch dismech](https://github.com/monarch-initiative/dismech) | YAML + LinkML | Schema validation + CI | No | No |
