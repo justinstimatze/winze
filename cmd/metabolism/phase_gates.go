@@ -129,30 +129,31 @@ func shouldFireTrip(cfg phaseGateConfig, dir string, now time.Time) gateDecision
 // intentionally permissive — it mostly skips ingest when there's
 // nothing corroborated to ingest.
 //
-// Only ZIM-backed cycles are counted because runPipeline extracts
-// claims from full article text, which only ZIM provides; arXiv
-// abstracts and Kagi snippets are too thin for the current ingest
-// path. An earlier cross-backend count produced false-ALLOW gate
-// decisions followed by "[pipeline] nothing to ingest" no-ops.
+// Cycles from any pipeline-supported backend are counted: ZIM (full
+// article text), Kagi (search snippet), and arXiv (abstract). RSS and
+// legacy empty-backend cycles are excluded because runIngest won't
+// process them. This keeps the gate prediction in sync with the
+// phase's actual behavior — an earlier unconditional count let the
+// gate ALLOW cycles runIngest would silently drop.
 func shouldFireIngest(cfg phaseGateConfig, mlog MetabolismLog) gateDecision {
 	if cfg.IngestMinCorroborated <= 0 {
 		return gateDecision{Fire: true, Reason: "gate disabled (ingest-min-corroborated<=0)"}
 	}
+	supported := map[string]bool{"zim": true, "kagi": true, "arxiv": true}
 	n := 0
 	for _, c := range mlog.Cycles {
 		if c.Resolution != "corroborated" || c.Ingested || c.PapersFound == 0 {
 			continue
 		}
-		// Empty backend is legacy/arxiv; only literal "zim" gets ingested today.
-		if c.Backend != "zim" {
+		if !supported[c.Backend] {
 			continue
 		}
 		n++
 	}
 	if n >= cfg.IngestMinCorroborated {
-		return gateDecision{Fire: true, Reason: fmt.Sprintf("%d corroborated-but-uningested ZIM cycles (threshold: %d)", n, cfg.IngestMinCorroborated)}
+		return gateDecision{Fire: true, Reason: fmt.Sprintf("%d corroborated-but-uningested ingestable cycles (threshold: %d)", n, cfg.IngestMinCorroborated)}
 	}
-	return gateDecision{Fire: false, Reason: fmt.Sprintf("%d corroborated-but-uningested ZIM cycles < %d (set --ingest-min-corroborated=0 to force)", n, cfg.IngestMinCorroborated)}
+	return gateDecision{Fire: false, Reason: fmt.Sprintf("%d corroborated-but-uningested ingestable cycles < %d (set --ingest-min-corroborated=0 to force)", n, cfg.IngestMinCorroborated)}
 }
 
 // lastTripFileTime returns the mtime of the most-recent metabolism_cycle*.go

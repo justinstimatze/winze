@@ -2392,7 +2392,7 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	if !ingestAllow {
 		logGate("ingest-budget", gateDecision{Fire: false, Reason: ingestBudgetReason})
 	}
-	if sel.has("ingest") && ingestDecision.Fire && ingestAllow && os.Getenv("ANTHROPIC_API_KEY") != "" && zimPath != "" && !dryRun {
+	if sel.has("ingest") && ingestDecision.Fire && ingestAllow && os.Getenv("ANTHROPIC_API_KEY") != "" && !dryRun {
 		budget.charge("ingest", costIngestCents)
 		fmt.Println("=== Phase 2: Ingest (evolve KB from corroborated findings) ===")
 		fmt.Println()
@@ -2408,7 +2408,7 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 		}
 		fmt.Println()
 	} else if sel.has("ingest") && !dryRun {
-		fmt.Println("[cycle] skipping ingest (no ANTHROPIC_API_KEY or --zim)")
+		fmt.Println("[cycle] skipping ingest (no ANTHROPIC_API_KEY)")
 	} else if !sel.has("ingest") {
 		fmt.Println("=== Phase 2: Ingest (skipped by --phases) ===")
 		fmt.Println()

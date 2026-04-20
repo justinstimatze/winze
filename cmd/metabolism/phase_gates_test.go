@@ -174,19 +174,31 @@ func TestShouldFireIngest_HasCorroboratedZim_Fires(t *testing.T) {
 	}
 }
 
-func TestShouldFireIngest_NonZimBackends_Skip(t *testing.T) {
-	// Pipeline only ingests ZIM; arXiv abstracts and Kagi snippets are
-	// too thin. Corroborated cycles from those backends should NOT
-	// advance the gate.
-	cfg := phaseGateConfig{IngestMinCorroborated: 1}
+func TestShouldFireIngest_CountsAllIngestableBackends(t *testing.T) {
+	// Kagi and arXiv cycles are now ingestable (via snippet path in
+	// runIngest), so they should advance the gate alongside ZIM.
+	cfg := phaseGateConfig{IngestMinCorroborated: 2}
 	mlog := MetabolismLog{Cycles: []Cycle{
 		{Hypothesis: "A", Backend: "arxiv", Resolution: "corroborated", PapersFound: 1},
 		{Hypothesis: "B", Backend: "kagi", Resolution: "corroborated", PapersFound: 1},
-		{Hypothesis: "C", Backend: "", Resolution: "corroborated", PapersFound: 1}, // legacy empty
+	}}
+	d := shouldFireIngest(cfg, mlog)
+	if !d.Fire {
+		t.Errorf("2 ingestable cycles (arxiv+kagi) ≥ 2 threshold — should fire, got skip: %v", d)
+	}
+}
+
+func TestShouldFireIngest_ExcludesUnsupportedBackends(t *testing.T) {
+	// RSS and legacy empty-backend cycles are NOT ingestable — the
+	// gate should not count them even when they're corroborated.
+	cfg := phaseGateConfig{IngestMinCorroborated: 1}
+	mlog := MetabolismLog{Cycles: []Cycle{
+		{Hypothesis: "A", Backend: "rss", Resolution: "corroborated", PapersFound: 1},
+		{Hypothesis: "B", Backend: "", Resolution: "corroborated", PapersFound: 1},
 	}}
 	d := shouldFireIngest(cfg, mlog)
 	if d.Fire {
-		t.Errorf("non-ZIM corroborated cycles — should skip (pipeline won't ingest them), got fire: %v", d)
+		t.Errorf("rss/empty backends are not ingestable — should skip, got fire: %v", d)
 	}
 }
 
