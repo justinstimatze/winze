@@ -630,3 +630,53 @@ var LeonidKulikProposesHypothesisStonyAsteroidAirburst = Proposes{
 	Object:  HypothesisStonyAsteroidAirburst,
 	Prov:    leonidKulikProposesSource,
 }
+
+// ---------------------------------------------------------------------------
+// Nature and destruction of the Tunguska cosmical body: Vladimir A. Bronshten Accepts HypothesisStonyAsteroidAirburst
+// Bronshten's consideration of the stony asteroid hypothesis alongside alternatives demonstrates how scientific minds evaluate competing models of reality; treating multiple hypotheses as viable reveals the epistemological challenge of validating claims about rare, historical events with limited evidence.
+// ---------------------------------------------------------------------------
+
+var vladimirABronshtenAcceptsSource = Provenance{
+	Origin:     "Wikipedia (zim 2025-12) / https://www.sciencedirect.com/science/article/abs/pii/S0032063300000283",
+	IngestedAt: "2026-04-20",
+	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest from ZIM)",
+	Quote:      "\"They assume the TCB to be: (i) a fragment of a stony asteroid; (ii) a porous snowball; and (iii) a plasmoid\"",
+}
+
+var VladimirABronshten = Person{&Entity{
+	ID:    "vladimir-a-bronshten",
+	Name:  "Vladimir A. Bronshten",
+	Kind:  "person",
+	Brief: "Author who evaluated multiple competing hypotheses about the Tunguska cosmical body in 2000.",
+}}
+
+var VladimirABronshtenAcceptsHypothesisStonyAsteroidAirburst = Accepts{
+	Subject: VladimirABronshten,
+	Object:  HypothesisStonyAsteroidAirburst,
+	Prov:    vladimirABronshtenAcceptsSource,
+}
+
+// ---------------------------------------------------------------------------
+// Nature and destruction of the Tunguska cosmical body: VA Bronshten Accepts HypothesisStonyAsteroidAirburst
+// This claim documents Bronshten's consideration of the stony asteroid hypothesis as a viable model for explaining the Tunguska event, reflecting how scientific minds evaluate competing models of physical reality.
+// ---------------------------------------------------------------------------
+
+var vABronshtenAcceptsSource = Provenance{
+	Origin:     "Wikipedia (zim 2025-12) / https://ui.adsabs.harvard.edu/abs/2000P%26SS...48..855B/abstract",
+	IngestedAt: "2026-04-20",
+	IngestedBy: "winze metabolism cycle 8 (LLM-assisted ingest from ZIM)",
+	Quote:      "\"Three alternative hypotheses are considered here. They assume the TCB to be: (i) a fragment of a stony asteroid; (ii) a porous snowball; and (iii) a plasmoid ...\"",
+}
+
+var VABronshten = Person{&Entity{
+	ID:    "va-bronshten",
+	Name:  "VA Bronshten",
+	Kind:  "person",
+	Brief: "Researcher who examined alternative hypotheses about the Tunguska cosmical body",
+}}
+
+var VABronshtenAcceptsHypothesisStonyAsteroidAirburst = Accepts{
+	Subject: VABronshten,
+	Object:  HypothesisStonyAsteroidAirburst,
+	Prov:    vABronshtenAcceptsSource,
+}
