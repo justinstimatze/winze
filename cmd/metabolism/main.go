@@ -449,6 +449,11 @@ func main() {
 	}
 
 	if *calibrate {
+		// loadDotEnv before runCalibrate so .env-supplied
+		// METABOLISM_BUDGET_CENTS surfaces in the calibration row's
+		// budget_cap_cents (otherwise the cap shows as "—" in the trend
+		// reader even when set in .env).
+		loadDotEnv(dir)
 		if *narrative {
 			runCalibrateNarrative(dir)
 		} else {
@@ -1297,6 +1302,7 @@ State your final classification: irrelevant, corroborated, or challenged.`,
 	if err != nil {
 		return "", err
 	}
+	recordActualUsage(string(anthropic.ModelClaudeSonnet4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
 
 	raw := ""
 	for _, block := range resp.Content {
@@ -1992,6 +1998,9 @@ func runCalibrate(dir string, jsonOut bool) {
 	corrobTotal := resolutions["corroborated"]
 	challTotal := resolutions["challenged"]
 	row := computeCalibrationRow(mlog, biasReport.Auditors, corrobTotal, corrobNovel, challTotal, challNovel, backendTotals)
+	// Stamp month-to-date spend telemetry from .metabolism-budget.json so
+	// the trend reader can show $/week without a separate spend log.
+	row.EstSpentCents, row.BudgetCapCents, row.ActualSpentCents = loadBudgetSnapshot(dir)
 	if err := appendCalibrationRow(dir, row); err != nil {
 		fmt.Fprintf(os.Stderr, "[calibrate] timeseries append: %v\n", err)
 	}
@@ -2181,6 +2190,7 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	// Cap of 0 = unlimited (matches pre-budget behavior). When tracked,
 	// each expensive phase that fires also increments the persisted total.
 	budget := loadBudgetGuard(dir)
+	globalBudget = budget // expose to LLM call sites for per-response actual-spend accounting
 	fmt.Printf("[cycle] %s\n", budget.summary())
 	fmt.Println()
 

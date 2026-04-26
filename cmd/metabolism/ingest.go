@@ -854,6 +854,7 @@ func callIngestLLM(client anthropic.Client, prompt string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("API error: %w", err)
 	}
+	recordActualUsage(string(anthropic.ModelClaudeHaiku4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
 
 	for _, block := range resp.Content {
 		if block.Type == "text" {

@@ -63,34 +63,44 @@ func runCalibrateTrend(dir string, jsonOut bool) {
 	fmt.Printf("[trend] %s — %d rows\n\n", path, len(rows))
 	// Header. Columns chosen to match what the brief calls out as worth
 	// trending: useful-signal trajectory, HHI trajectory, challenge count
-	// trajectory, plus survivorship and time-since-sense for context.
-	fmt.Printf("%-19s  %-7s  %-5s  %-5s  %-7s  %-12s  %-7s  %s\n",
-		"timestamp", "useful%", "hhi", "chall", "corrob", "hrs_since_s", "surv", "bias_triggers")
-	fmt.Println(strings.Repeat("-", 100))
+	// trajectory, survivorship and time-since-sense, plus month-to-date
+	// actual spend so unattended runs are observable.
+	fmt.Printf("%-19s  %-7s  %-5s  %-5s  %-7s  %-9s  %-7s  %-15s  %s\n",
+		"timestamp", "useful%", "hhi", "chall", "corrob", "actual$", "surv", "spend(est/cap)", "bias_triggers")
+	fmt.Println(strings.Repeat("-", 115))
 	for _, r := range rows {
 		ts := r.Timestamp.Local().Format("2006-01-02 15:04")
 		triggers := strings.Join(shortenBiasNames(r.BiasTriggers), ",")
 		if triggers == "" {
 			triggers = "(none)"
 		}
-		fmt.Printf("%-19s  %6.1f%%  %5.2f  %5d  %6d  %12.1f  %6.1f  %s\n",
+		actualDollars := r.ActualSpentCents / 100.0
+		spendEstCap := "—"
+		if r.BudgetCapCents > 0 {
+			spendEstCap = fmt.Sprintf("%d¢/%d¢", r.EstSpentCents, r.BudgetCapCents)
+		} else if r.EstSpentCents > 0 {
+			spendEstCap = fmt.Sprintf("%d¢/—", r.EstSpentCents)
+		}
+		fmt.Printf("%-19s  %6.1f%%  %5.2f  %5d  %6d  $%8.4f  %6.1f  %-15s  %s\n",
 			ts, r.UsefulSignalPct, r.HHI, r.ChallengedCount, r.CorroboratedCount,
-			r.HoursSinceLastSense, r.SurvivorshipRatio, triggers)
+			actualDollars, r.SurvivorshipRatio, spendEstCap, triggers)
 	}
 
-	// Delta line: useful%, HHI, and survivorship change between first
-	// and last row. The whole point of the trajectory is "is this
-	// improving?" so make the answer visible without doing math by hand.
+	// Delta line: useful%, HHI, survivorship, and actual-spend change
+	// between first and last row. The whole point of the trajectory is
+	// "is this improving and what did it cost?" so make both visible
+	// without math by hand.
 	if len(rows) >= 2 {
 		first := rows[0]
 		last := rows[len(rows)-1]
 		fmt.Println()
-		fmt.Printf("[trend] delta first→last: useful %+.1fpp, HHI %+.2f, survivorship %+.1f, challenged %+d, corroborated %+d\n",
+		fmt.Printf("[trend] delta first→last: useful %+.1fpp, HHI %+.2f, survivorship %+.1f, challenged %+d, corroborated %+d, actual $%+.4f\n",
 			last.UsefulSignalPct-first.UsefulSignalPct,
 			last.HHI-first.HHI,
 			last.SurvivorshipRatio-first.SurvivorshipRatio,
 			last.ChallengedCount-first.ChallengedCount,
 			last.CorroboratedCount-first.CorroboratedCount,
+			(last.ActualSpentCents-first.ActualSpentCents)/100.0,
 		)
 	}
 }

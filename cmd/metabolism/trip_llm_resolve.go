@@ -269,6 +269,7 @@ Call check_contradiction with your verdict, the conflicting existing-claim var n
 	if err != nil {
 		return "", fmt.Sprintf("llm error: %v", err)
 	}
+	recordActualUsage(string(anthropic.ModelClaudeHaiku4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
 	for _, block := range resp.Content {
 		if block.Type == "tool_use" && block.Name == "check_contradiction" {
 			var out struct {

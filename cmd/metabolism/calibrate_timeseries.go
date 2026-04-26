@@ -36,6 +36,16 @@ type CalibrationRow struct {
 	BiasTriggers        []string           `json:"bias_triggers"`          // names of triggered auditors
 	SurvivorshipRatio   float64            `json:"survivorship_ratio"`     // irrelevant:challenged ratio; high = default-to-irrelevant overfit
 	HoursSinceLastSense float64            `json:"hours_since_last_sense"` // for phase self-gating: "no sense in > N hours" → fire sense
+
+	// Spend telemetry — month-to-date totals from .metabolism-budget.json
+	// at the moment this row was written. EstSpentCents is the conservative
+	// pre-gate estimate; ActualSpentCents is the measured spend from
+	// anthropic.Usage. The gap between them tells you whether the per-phase
+	// cost constants are still calibrated. BudgetCapCents is 0 when no cap
+	// was set. Fields added 2026-04-25; older rows decode as zero values.
+	EstSpentCents    int     `json:"est_spent_cents,omitempty"`
+	ActualSpentCents float64 `json:"actual_spent_cents,omitempty"`
+	BudgetCapCents   int     `json:"budget_cap_cents,omitempty"`
 }
 
 // appendCalibrationRow appends one JSONL line to .metabolism-calibration.jsonl.

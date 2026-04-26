@@ -361,6 +361,7 @@ Respond with ONLY the tightened Brief text. No quotes, no explanation, no prefix
 	if err != nil {
 		return "", fmt.Errorf("API error: %w", err)
 	}
+	recordActualUsage(string(anthropic.ModelClaudeHaiku4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
 
 	for _, block := range resp.Content {
 		if block.Type == "text" {
