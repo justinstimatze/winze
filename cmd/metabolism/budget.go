@@ -234,10 +234,23 @@ func (g *budgetGuard) chargeActual(model string, inputTokens, cachedReadTokens, 
 	}
 }
 
-// globalBudget is set by runCycle so per-call accounting at LLM call
-// sites doesn't have to thread the guard through every signature. nil
-// when not in an --evolve run (standalone tools, tests).
+// globalBudget is set by runCycle (and ensureBudgetGuard for standalone
+// CLI commands) so per-call accounting at LLM call sites doesn't have to
+// thread the guard through every signature. Standalone commands that
+// make LLM calls (reresolve-irrelevant, irrelevance-audit, autoresolve,
+// calibrate-narrative) must call ensureBudgetGuard at entry.
 var globalBudget *budgetGuard
+
+// ensureBudgetGuard initializes globalBudget for the given dir if it
+// hasn't been set yet. Idempotent — safe to call from any LLM-using
+// CLI subcommand. Won't override an existing globalBudget so --evolve's
+// guard isn't accidentally replaced from inside a sub-call.
+func ensureBudgetGuard(dir string) {
+	if globalBudget != nil {
+		return
+	}
+	globalBudget = loadBudgetGuard(dir)
+}
 
 // recordActualUsage is the call-site-friendly wrapper. Safe to call
 // when globalBudget is nil (no-op).

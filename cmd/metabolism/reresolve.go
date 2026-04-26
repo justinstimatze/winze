@@ -59,6 +59,7 @@ func countEligibleIrrelevant(cycles []Cycle, requireSnippet bool) int {
 // and reclassifies each through llmResolve. Verdicts that flip are
 // written back with an evidence marker so the change is self-describing.
 func runReresolveIrrelevant(dir string, n int, requireSnippet, dryRun, jsonOut bool) {
+	ensureBudgetGuard(dir) // record actual LLM spend even outside --evolve
 	logPath := filepath.Join(dir, ".metabolism-log.json")
 	mlog := loadLog(logPath)
 

@@ -1075,6 +1075,7 @@ type resolveResult struct {
 }
 
 func autoResolve(dir string) []resolveResult {
+	ensureBudgetGuard(dir) // record actual LLM spend even outside --evolve
 	logPath := filepath.Join(dir, ".metabolism-log.json")
 	mlog := loadLog(logPath)
 

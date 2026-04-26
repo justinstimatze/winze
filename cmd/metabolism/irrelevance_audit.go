@@ -65,6 +65,7 @@ type irrelevanceAuditReport struct {
 // at least one non-empty snippet — the prompt is only meaningful when
 // the LLM has paper content beyond titles.
 func runIrrelevanceAudit(dir string, n int, jsonOut bool, useHaiku, requireSnippet bool, mode string) {
+	ensureBudgetGuard(dir) // record actual LLM spend even outside --evolve
 	if n <= 0 {
 		n = 10
 	}
