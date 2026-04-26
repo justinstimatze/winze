@@ -92,12 +92,14 @@ if [ -f .env ]; then set -a; source .env; set +a
 elif [ -f "$RIG_ROOT/.env" ]; then set -a; source "$RIG_ROOT/.env"; set +a
 fi
 
+SLEEP_SECONDS="{{sleep_seconds}}"
 for i in $(seq 1 {{cycles}}); do
-  echo "=== Cycle $i of {{cycles}} ==="
+  echo "=== Cycle $i of {{cycles}} (sleep ${SLEEP_SECONDS}s between) ==="
   go run ./cmd/metabolism --evolve .
 
   # Surface the post-cycle spend + signal trend so the formula log makes
-  # unattended runs auditable.
+  # unattended runs auditable. Phase gates self-throttle the expensive
+  # work; the budget guard cuts off at METABOLISM_BUDGET_CENTS.
   go run ./cmd/metabolism --calibrate-trend . 2>&1 | tail -3
 
   # Commit all changes after each cycle
@@ -114,6 +116,12 @@ for i in $(seq 1 {{cycles}}); do
 
   echo "=== Cycle $i complete ==="
   echo
+
+  # Sleep before next iteration (skip after the last one).
+  if [ "$i" -lt "{{cycles}}" ]; then
+    echo "Sleeping ${SLEEP_SECONDS}s before next cycle..."
+    sleep "$SLEEP_SECONDS"
+  fi
 done
 ```
 
@@ -154,8 +162,12 @@ description = "The bead tracking this patrol run"
 required = true
 
 [vars.cycles]
-description = "Number of sleep cycles to run"
-default = "1"
+description = "Number of sleep cycles to run before exiting (with hourly sleeps the default 168 = ~1 week of unattended operation; polecat handoffs to a fresh session if context fills first)"
+default = "168"
+
+[vars.sleep_seconds]
+description = "Seconds to sleep between cycles. 3600 = hourly. Phase gates self-throttle so most ticks are mostly cheap; the budget guard caps total monthly spend."
+default = "3600"
 
 [vars.base_branch]
 description = "Branch to work on"
