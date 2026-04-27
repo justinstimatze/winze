@@ -28,10 +28,14 @@ Your job: run the cycle, commit any residual changes, push, `gt done`.
 This formula is designed to run autonomously between human work sessions.
 The human starts it, it runs N cycles, then suspends. The human resumes
 when ready. Key invariants:
-- Never modify corpus .go files (only predictions.go and .metabolism-log.json)
+- Never modify corpus .go files (only predictions.go and metabolism_cycle*.go)
 - Never exceed entity cap (250)
 - Always leave the repo in a buildable state
-- Push after each cycle so human sees results
+- Each cycle commits and pushes DIRECTLY to main (rebase on top of latest first).
+  Branch protection allows this; CI was dropped as a duplicate gate since
+  build/vet/lint run locally per cycle. Bad commits land on main but are
+  trivially revertable as single commits — that's the whole point of
+  per-cycle pushes vs. weeklong PRs.
 
 ## Variables
 
@@ -102,14 +106,24 @@ for i in $(seq 1 {{cycles}}); do
   # work; the budget guard cuts off at METABOLISM_BUDGET_CENTS.
   go run ./cmd/metabolism --calibrate-trend . 2>&1 | tail -3
 
-  # Commit all changes after each cycle
+  # Commit and push directly to main after each cycle.
   # NOTE: .metabolism-log.json, .metabolism-budget.json, and
   # .metabolism-calibration.jsonl are gitignored (runtime state).
   # predictions.go and metabolism_cycle*.go are the evolving corpus.
+  #
+  # Branch protection allows direct push: required_status_checks dropped
+  # 2026-04-26 because the formula already runs build/vet/lint locally
+  # and CI was a duplicate gate. Force-push and deletion still blocked.
+  # If push fails (race or rebase needed), retry once after fetch+rebase.
   git add predictions.go metabolism_cycle*.go 2>/dev/null
   if ! git diff --cached --quiet; then
     git commit -m "metabolism patrol: cycle $i/{{cycles}} — autonomous evolution"
-    git push
+    git fetch origin main
+    git rebase origin/main || { echo "rebase failed — leaving branch; will retry next cycle"; git rebase --abort; continue; }
+    if ! git push origin HEAD:main; then
+      echo "Direct push failed — fetching + retrying once"
+      git fetch origin main && git rebase origin/main && git push origin HEAD:main || echo "Push still failed; corpus changes left on local branch for next cycle"
+    fi
   else
     echo "No corpus changes this cycle"
   fi
