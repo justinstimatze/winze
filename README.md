@@ -25,12 +25,13 @@ The output isn't a status report. It's better answers the next time someone asks
 
 **Current sprint:** Growing the graph around contested theories of consciousness and cognition (IIT, Global Workspace Theory, Free Energy Principle). The KB also contains meta-claims about its own limitations — predictions the system can resolve about itself.
 
-**Next:** Winze as an MCP server. Any agent queries structured epistemic metadata — what's known, how confident, what's contested — without knowing the infrastructure. Z3-based lint rules for formal verification of ontological constraints.
+**Shipped:** MCP server (`cmd/mcp`) — any agent queries structured epistemic metadata (what's known, how confident, what's contested) via `mcp__winze__{claims,disputes,provenance,search,stats,theories}` without knowing the infrastructure. Laminar metabolism with phase-level self-gating, hard monthly spend cap, and per-call actual-spend telemetry.
 
-**Side project — blind field discovery:** Can the metabolism autonomously map a scientific field it doesn't know? Rediscover periodicity from raw NIST atomic data (calibration run), then map quantum computing from arXiv papers with Wikipedia blinders on.
+**Next:** Source reputation — per-domain corroborated/challenged/refuted rates computed from the calibration time-series, surfaced as a sensor down-weight (not deny-list). Z3-based lint rules for formal verification of ontological constraints.
 
 **Known problems:**
-- Wikipedia provenance concentration (HHI ~0.6). The availability-heuristic bias gate now skips ZIM when this fires; Kagi fills the resulting signal gap. Structural fix still requires diversified ingest.
+- Wikipedia provenance concentration (HHI 0.49, 65% Wikipedia). The availability-heuristic bias gate skips ZIM when this fires; Kagi fills the resulting signal gap. Structural fix still requires diversified ingest landing as actual cycles, not just plumbing.
+- Survivorship bias structural, not prompt-tightness (191:2 irrelevant-to-challenged). Search-based sensors return supports + topic noise, not contradictions. The recalibrated resolver prompt classifies correctly; growing the challenged-count requires a counter-evidence query path the metabolism doesn't have yet.
 - RSS feed curation unsolved — default topic feeds don't match entity-specific topology queries (0/131 signal historically). RSS still available via `--backend rss` for contributors who curate their own feeds.
 - Source reputation not yet tracked — no automated mechanism for down-weighting historically low-quality domains based on calibration outcomes.
 
@@ -143,17 +144,17 @@ LLM phases use the Anthropic API via `ANTHROPIC_API_KEY`. `.beads/formulas/` has
 
 ## Bias audit
 
-| Auditor | What it measures | Finding |
+| Auditor | What it measures | Finding (live, ~300-cycle corpus) |
 |---------|-----------------|---------|
-| Confirmation bias | Corroboration rate among signal cycles | 58% (PASS) |
-| Anchoring | File age vs. claim density correlation | rho = -0.02 (PASS) |
-| Clustering illusion | File grouping vs. topology cluster overlap | 44% Jaccard (PASS) |
-| Availability heuristic | Provenance source concentration | **0.70 HHI — 83% Wikipedia (TRIGGERED)** |
-| Survivorship bias | Irrelevant-to-challenged ratio | **8:0 — zero challenges (TRIGGERED)** |
-| Framing effect | Evaluative language in Briefs | 3% (PASS) |
-| Dunning-Kruger | Low-complexity entities escaping detection | 74% vs 37% gap (PASS) |
-| Base rate neglect | Predicate distribution entropy | 4.3 bits (PASS) |
-| Premature closure | Cliches + DAG leaf detection | 31 structural (PASS) |
+| Confirmation bias | Corroboration rate among signal cycles | 13% (PASS) |
+| Anchoring | File age vs. claim density correlation | rho = 0.32 (PASS) |
+| Clustering illusion | File grouping vs. topology cluster overlap | 17% Jaccard (PASS) |
+| Availability heuristic | Provenance source concentration | **0.49 HHI — 65% Wikipedia (TRIGGERED)** |
+| Survivorship bias | Irrelevant-to-challenged ratio | **191:2 — 95.5x ratio (TRIGGERED)** |
+| Framing effect | Evaluative language in Briefs | 2% (PASS) |
+| Dunning-Kruger | Low-complexity entities escaping detection | 85% vs 37% gap (PASS) |
+| Base rate neglect | Predicate distribution entropy | 4.06 bits (PASS) |
+| Premature closure | Cliches + DAG leaf detection | 34 info-level (PASS) |
 
 ## Schema
 
