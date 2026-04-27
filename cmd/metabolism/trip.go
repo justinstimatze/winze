@@ -318,7 +318,7 @@ func printTripReport(report TripReport, jsonOut bool) {
 		}
 	}
 	fmt.Printf("[trip] %d/%d connections scored >= 3 (interesting)\n", interesting, len(connections))
-	fmt.Println("  legend: ! score 5 (promote)  * score 3-4 (review only)  · score 1-2 (drop)")
+	fmt.Println("  legend: ! score 4-5 (promote, critic-gated)  * score 3 (review only)  · score 1-2 (drop)")
 }
 
 // predicateSlots encodes the Subject/Object role-type constraints for each
@@ -1381,17 +1381,19 @@ Connection type: %s
 Compatible predicates for this entity pair (Subject→Object):
 %s
 
-PREDICATE SEMANTICS — TYPE COMPATIBILITY IS NOT ENOUGH (added 2026-04-27 after adversarial review found ~55%% of trip-promotions misused predicates as "vaguely related" hedges):
+PREDICATE SEMANTICS (guidance, not censorship):
 
-- CommentaryOn: REQUIRES Subject to be a creative work (paper, book, essay, talk) that EXPLICITLY references Object work in its content. Structural analogy alone does NOT qualify. If neither entity is a creative work, do not pick CommentaryOn.
-- TheoryOf: REQUIRES Subject Hypothesis to be a structural account WHOSE EXPLANANS IS Object Concept. Pollutes the //winze:contested lint signal when misused. Analogy, "is related to", or "operates similarly" do NOT qualify.
-- HypothesisExplains: REQUIRES Subject Hypothesis to mechanistically explain Object phenomenon. Speculative resemblance is not explanation.
-- BelongsTo / DerivedFrom: Sub-classing or derivation, NOT analogy. If A is "like" B but not a sub-class, do not pick these.
-- IsCognitiveBias / IsPolyvalentTerm: unary structural tags. Do not use to assert relationships.
+The most useful predicate names a SPECIFIC structural relationship rather than a generic resemblance. Reference points (a downstream critic enforces these; you don't need to over-self-censor — generate honestly):
 
-DEFAULT TO NONE. The trip cycle's job is to find SUBSTANTIVE structural isomorphisms — specific shared mechanisms, failure modes, or epistemic structures. Generic "both extract patterns" / "both involve prediction" / "both reveal limits" framings score 1-2 and should use predicate=NONE. Picking the most committal-sounding predicate to dress up a thin connection is treated as a quality failure.
+- CommentaryOn: works best when Subject is a creative work (paper, book, essay, talk) that references Object's content. Pure analogy between non-works tends to fit weakly here.
+- TheoryOf: best for "Subject Hypothesis is a structural account WHOSE EXPLANANS IS Object Concept." Carries //winze:contested semantics, so reserve for genuinely theory-of relationships rather than vague kinships.
+- HypothesisExplains: mechanistic explanation, not just resemblance.
+- BelongsTo / DerivedFrom: sub-classing or derivation.
+- IsCognitiveBias / IsPolyvalentTerm: unary structural tags; do not use to encode binary relationships.
 
-Entity A is a %s. Entity B is a %s. Use only a predicate from the compatible list (or NONE). SUBJECT must match the predicate's Subject role. If no meaningful connection exists, OR if no predicate's semantic preconditions are met, set predicate=NONE and score=1.`,
+The trip cycle's job is to find SUBSTANTIVE structural isomorphisms — specific shared mechanisms, failure modes, or epistemic structures. Generic "both extract patterns" / "both involve prediction" / "both reveal limits" framings deserve low scores (1-2) — that's honest signal for the downstream critic to act on. Don't dress thin connections in committal predicates, but don't reflexively pick NONE for genuine analogies either; the critic is the final gate, not your self-doubt.
+
+Entity A is a %s. Entity B is a %s. Use only a predicate from the compatible list (or NONE). SUBJECT must match the predicate's Subject role. If you genuinely cannot identify a meaningful connection, set predicate=NONE and score=1.`,
 		pair.A.name, pair.A.roleType, briefA,
 		pair.B.name, pair.B.roleType, briefB,
 		promptType, promptInstruction,
