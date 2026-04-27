@@ -344,6 +344,106 @@ self-gating. If a Gas Town formula needs a different rhythm, change the
 formula or set the `--*-min-*` thresholds — never grow winze a
 scheduler.
 
+### Operating Gas Town from winze (recipe + gotchas)
+
+The mechanics of activating, monitoring, and stopping the
+`mol-metabolism-patrol` formula — recorded because every step has at
+least one non-obvious failure mode.
+
+**Activate.**
+
+```bash
+gt rig boot winze                                              # starts witness + refinery if stopped
+gt daemon status                                               # MUST be running, else polecat won't auto-start
+gt daemon start                                                # if not
+bd create --type task --title "..." -d "..."                   # tracking bead
+gt sling <bead> winze --formula mol-metabolism-patrol --create # auto-spawns / reuses idle polecat
+```
+
+Optional vars: `--var sleep_seconds=3600` (default), `--var cycles=168`
+(default = ~1 week of hourly ticks). Do NOT pass values that drop below
+the gate thresholds in spirit (e.g. `sleep_seconds=60`) without also
+overriding `--sense-min-hours`, `--ingest-min-corroborated`, etc — at
+fast cadence with default gates, every cycle hits "skip, you just did
+this," and the engine looks frozen even though it's working as
+designed.
+
+**Monitor live.**
+
+```bash
+tmux -L town-c94b8f capture-pane -t wi-<polecat> -p | tail -30  # what is the polecat doing right now
+gt polecat status winze/<polecat>                                # state: idle | working | stalled
+git log --oneline origin/main -5                                 # commits landing
+cat polecats/<polecat>/winze/.metabolism-budget.json             # spend (per-clone, NOT town-wide)
+```
+
+The town tmux socket is `town-c94b8f` and polecat sessions are named
+`wi-<polecat>`. Default tmux socket (`/tmp/tmux-1000/default`) is empty
+on Gas Town hosts — do not look there.
+
+**Stop cleanly.** All three are needed:
+
+```bash
+gt unsling winze/<polecat>     # removes the work from the hook (alone, leaves session running)
+gt session stop winze/<polecat># actually kills the tmux session
+bd close <bead>                # closes the tracking bead
+```
+
+`gt unsling` is necessary but not sufficient — the polecat session
+keeps cycling on whatever bash subprocess is in flight until you stop
+the session.
+
+**Gotchas the hard way.**
+
+1. **First-nudge model rejection.** A freshly-spawned polecat
+   sometimes refuses the first `gt prime --hook` (model judgment, not
+   a permissions issue — bypass-permissions can be on). Symptom:
+   `gt polecat status` reports `working`, the tmux session is
+   `running`, but the pane shows "You rejected gt prime --hook." with
+   no further activity. Recovery: type explicit instruction into the
+   pane (`tmux -L town-c94b8f send-keys -t wi-<polecat> "Run gt prime --hook and proceed with the formula on your hook." Enter`).
+2. **Long-running loop vs Bash tool timeout.** Claude Code's default
+   Bash timeout is 2 min; tools max out at 10 min. The patrol formula's
+   loop runs cycles back-to-back and a single iteration can take 3-5
+   min. Polecats adapt by batching cycles per Bash call (e.g. 3 per
+   call) — that's correct. They MUST NOT background the loop with
+   `nohup` or detach into a written shell script — that breaks the
+   formula lifecycle (the polecat's `gt done` would fire while the
+   bash kept cycling). If you see the polecat propose a backgrounded
+   approach, redirect it to the foreground.
+3. **Per-clone budget state.** `.metabolism-budget.json` lives in each
+   polecat clone independently (the file is gitignored, regenerated per
+   worktree). The `METABOLISM_BUDGET_CENTS` cap from `.env` is enforced
+   *per clone*, not town-wide. With one polecat this is fine; with N
+   concurrent polecats the effective cap is N × the env value.
+4. **`tmux send-keys` requires an idle pane.** If the polecat is
+   mid-thought (Claude Code's "Contemplating…" indicator), typed
+   instructions queue at "Press up to edit queued messages" and only
+   land when the model becomes idle. For a stuck session, this can be
+   many minutes.
+5. **Sling input quirks.** `gt sling <bead-or-formula> <target>` is
+   strict about positional ordering. If sling silently dumps `--help`
+   instead of executing, the args were rejected — usually because the
+   bead is already attached to a wisp. Create a fresh bead if the
+   previous run was closed; don't try to re-attach.
+6. **Branch protection on main is relaxed.** Required `test` status
+   check was dropped 2026-04-26 so polecats can push directly per
+   cycle. Force-push and deletion are still blocked. Don't re-add the
+   required check without re-thinking the formula's per-cycle push
+   strategy.
+7. **Daemon parentage.** `gt daemon`, `gt rig boot`'s witness/refinery,
+   and the town tmux server are all children of `systemd --user`, NOT
+   the shell that started them. A human Claude Code session can exit
+   without disturbing a running polecat.
+
+**Cost reasoning.** Per-cycle cost depends on which phases fire:
+- All gates skip (most cycles): ~$0.005
+- Trip + dream-fix only: ~$0.02
+- Full pipeline (sense → resolve → ingest → trip → dream): ~$0.10-0.30
+
+Smoke testing has shown estimates run ~10-20× higher than actuals; the
+conservative estimates are deliberate, since they protect the
+`METABOLISM_BUDGET_CENTS` cap.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker
