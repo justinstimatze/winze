@@ -104,8 +104,57 @@ id = "run-cycles"
 title = "Execute sleep cycles"
 needs = ["setup"]
 description = """
-Run the requested number of evolution cycles. Each cycle does everything:
-sense → evaluate → ingest → dream → trip → calibrate. The KB grows autonomously.
+## CRITICAL: this step is long-running by design
+
+The {{cycles}} target is BINDING, not advisory. Empirically (2026-04-27),
+polecats interpret "I ran some cycles" as "task complete" and call
+`gt done` after 2-3 iterations even with cycles=168 set. That defeats the
+purpose of using gt for long-running cycle work. Read the rules below
+before executing — they exist because past polecats got this wrong.
+
+### Rule 1: BATCHING IS REQUIRED, AND BATCHES MUST CHAIN
+
+Claude Code's Bash tool has a 10-minute hard timeout. A 168-cycle loop
+with hourly sleep is 7 days. You CANNOT run all cycles in one Bash call.
+Batch in groups of 3-4 cycles per Bash call, with timeout=600000.
+
+After each batch returns, you MUST IMMEDIATELY start another Bash call
+to run the next batch. Do not interpret a returning batch as "all
+cycles complete." Track `cycles_completed` in `.metabolism-tick-progress`
+(gitignored, polecat-clone-local) and read it at the top of each batch
+to know where to resume.
+
+### Rule 2: gt done IS NOT FOR EARLY EXIT
+
+`gt done` closes the bead, the convoy, and exits the polecat. Only
+call `gt done` when ALL OF THESE are true:
+
+- `cycles_completed >= {{cycles}}` (you actually finished), OR
+- The budget guard halted further phases (look for "[gate] *-budget:
+  SKIP: would cost N¢ but only K¢ remaining" in the trend log; verify
+  by reading `.metabolism-budget.json`'s `spent_cents >= cap`).
+
+If neither is true, you have remaining work. DO NOT call gt done.
+
+### Rule 3: HANDOFF, DON'T DONE, WHEN CONTEXT IS FILLING
+
+If your session context is approaching capacity (~80% full), DO NOT
+call gt done. Instead:
+
+```bash
+gt handoff -s "metabolism patrol handoff (cycle $cycles_completed/{{cycles}})" \
+  -m "Resume from .metabolism-tick-progress in polecat clone. Budget at $(cat .metabolism-budget.json | jq -r .spent_cents)¢. Next batch starts at cycle $((cycles_completed+1))."
+```
+
+This exits cleanly while keeping the bead hooked. The daemon will
+respawn a fresh polecat session; that session will see the same bead
+on its hook, re-enter this step, read `.metabolism-tick-progress`, and
+resume from where you left off.
+
+### The actual loop
+
+Each cycle does everything: sense → evaluate → ingest → dream → trip →
+calibrate. The KB grows autonomously.
 
 ```bash
 # Source .env with auto-export so the cap and Kagi key propagate too.
