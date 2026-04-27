@@ -2418,10 +2418,17 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 			phases++
 		}
 		fmt.Println()
-	} else if sel.has("ingest") && !dryRun {
-		fmt.Println("[cycle] skipping ingest (no ANTHROPIC_API_KEY)")
 	} else if !sel.has("ingest") {
 		fmt.Println("=== Phase 2: Ingest (skipped by --phases) ===")
+		fmt.Println()
+	} else if !dryRun && os.Getenv("ANTHROPIC_API_KEY") == "" {
+		fmt.Println("[cycle] skipping ingest (no ANTHROPIC_API_KEY)")
+	} else {
+		// Phase was included but the gate or budget guard rejected it. The
+		// specific reason was already emitted via logGate (ingest,
+		// ingest-budget); the banner just marks that Phase 2 did not run.
+		// Mirrors the trip phase's else-branch wording.
+		fmt.Println("=== Phase 2: Ingest (skipped — see [gate] lines above) ===")
 		fmt.Println()
 	}
 
