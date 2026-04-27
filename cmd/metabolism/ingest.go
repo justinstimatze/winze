@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -210,12 +211,17 @@ func runIngest(dir, zimPath, zimIndex string) ingestOutcome {
 	claimCtx := meta.Claims
 	knownVars := make(map[string]bool, len(kbVars))
 	entityTypes := make(map[string]string, len(kbVars))
+	var existingPersonOrgs []string
 	for k, v := range kbVars {
 		knownVars[k] = true
 		if v.RoleType != "" {
 			entityTypes[k] = v.RoleType
+			if v.RoleType == "Person" || v.RoleType == "Organization" {
+				existingPersonOrgs = append(existingPersonOrgs, k)
+			}
 		}
 	}
+	sort.Strings(existingPersonOrgs)
 	predicateSlots := collectPredicateSlots(dir)
 
 	fmt.Printf("[ingest] %d hypothesis targets\n", len(order))
@@ -296,7 +302,7 @@ func runIngest(dir, zimPath, zimIndex string) ingestOutcome {
 			fmt.Printf("    reading %s (%d chars)...\n", article.Title, len(artText))
 
 			// Build and send the LLM prompt (broad extraction)
-			prompt := buildIngestPrompt(hypName, hypBrief, needType, existingClaims, article, artText, backend)
+			prompt := buildIngestPrompt(hypName, hypBrief, needType, existingClaims, existingPersonOrgs, article, artText, backend)
 			resp, err := callIngestLLM(client, prompt)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "    LLM error: %v\n", err)
@@ -540,7 +546,14 @@ func readZimArticle(archive *zim.Archive, path string) (string, error) {
 
 // buildIngestPrompt constructs the LLM prompt for broad claim extraction.
 // Extracts ALL in-domain claims from an article, not just hypothesis-specific ones.
-func buildIngestPrompt(hypName, hypBrief, needType string, existingClaims []string, article PaperSummary, articleText, backend string) string {
+//
+// existingPersonOrgs is the list of canonical Person/Organization entity names
+// already in the KB. Used to suppress duplicate-with-renaming creations: an
+// adversarial review of the 2026-04-27 overnight polecat run found that the
+// LLM would happily create `ChybaEtAl` despite canonical `Chyba` already
+// existing, and `AytonFischer` collapsing two co-authors into one Person.
+// Surfacing the existing list lets the model dedup before slot-filling.
+func buildIngestPrompt(hypName, hypBrief, needType string, existingClaims []string, existingPersonOrgs []string, article PaperSummary, articleText, backend string) string {
 	var b strings.Builder
 
 	sourceKind := "article"
@@ -565,7 +578,10 @@ func buildIngestPrompt(hypName, hypBrief, needType string, existingClaims []stri
 	b.WriteString("4. Extract ALL in-domain claims you find, not just one. Each claim needs a person/organization who makes it.\n")
 	b.WriteString("5. THIN SOURCES: Snippet-based sources (Kagi, arXiv abstracts) support at most 1-2 claims. Do not pad.\n")
 	b.WriteString("6. ENTITY NAMES MUST BE LITERAL. The ENTITY_NAME field must be a real name as it appears in the source — NEVER include parenthetical commentary like \"(inferred from context)\", \"(unclear)\", \"(unknown author)\", \"(likely)\", or similar meta-annotations. If the source does not explicitly name the person or organization proposing the claim, return NO_CLAIMS instead of inventing an attribution.\n")
-	b.WriteString("7. \"X et al.\" IS NEVER AN ORGANIZATION. The pattern \"Author et al.\" refers to a collaboration of Persons (the first author plus co-authors). Use PREDICATE=Proposes and ENTITY_KIND=person. Do NOT pick ProposesOrg with ENTITY_KIND=organization to make a slot fit.\n\n")
+	b.WriteString("7. \"X et al.\" IS NEVER AN ORGANIZATION. The pattern \"Author et al.\" refers to a collaboration of Persons (the first author plus co-authors). Use PREDICATE=Proposes and ENTITY_KIND=person. Do NOT pick ProposesOrg with ENTITY_KIND=organization to make a slot fit.\n")
+	b.WriteString("8. SUBJECT MUST BE NAMED IN THE QUOTE AS THE AGENT. The QUOTE field must contain the Subject's name AND must explicitly attribute the predicate to them. \"Smith proposes X\" supports `Smith Proposes X`; \"X is well documented (Smith 2020)\" does NOT — that's a citation, not an attribution. If the quote doesn't show the Subject performing the predicate, return NO_CLAIMS rather than slot-filling with the most-prominent nearby noun.\n")
+	b.WriteString("9. PUBLISHING PLATFORMS / JOURNAL VENUES ARE NOT ORGANIZATIONS. AcceptsOrg / ProposesOrg / DisputesOrg / AuthoredOrg require an institutional body that takes positions (universities, scientific societies, research labs, government bodies). Cambridge Core, Springer, BBS-as-platform, arXiv, Wikipedia, etc. are venues — they host work, they do not endorse it. If your only candidate Organization is a venue, return NO_CLAIMS.\n")
+	b.WriteString("10. CHECK THE EXISTING-ENTITY LIST BELOW BEFORE CREATING A NEW PERSON OR ORGANIZATION. The KB already contains canonical entities for many people and organizations. If your candidate Subject matches a canonical name (under any spelling — \"Chyba\", \"C. Chyba\", \"Chyba et al.\" all collapse to the canonical `Chyba`), use the existing var name as ENTITY_NAME. Creating a duplicate-under-a-new-name fragments the entity neighborhood and is treated as a quality failure.\n\n")
 
 	b.WriteString("## Context\n\n")
 	b.WriteString(fmt.Sprintf("This article was found while investigating hypothesis: %s\n", hypName))
@@ -610,6 +626,19 @@ func buildIngestPrompt(hypName, hypBrief, needType string, existingClaims []stri
 			b.WriteString(fmt.Sprintf("  - %s\n", c))
 		}
 		b.WriteString("\n")
+	}
+
+	if len(existingPersonOrgs) > 0 {
+		b.WriteString("## Existing canonical Person/Organization entities — DEDUP HERE FIRST\n\n")
+		b.WriteString("If your candidate Subject matches any of these (under any spelling), reuse the existing var name. Do NOT create a new entity.\n\n")
+		// Wrap to keep prompt compact; one per comma-separated chunk.
+		for i, name := range existingPersonOrgs {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(name)
+		}
+		b.WriteString("\n\n")
 	}
 
 	b.WriteString(fmt.Sprintf("## Source: %s\n\n", article.Title))
