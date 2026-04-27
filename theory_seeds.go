@@ -279,3 +279,52 @@ var ReificationFeedbackLoopBelongsToReificationRisk = BelongsTo{
 	Object:  ReificationRisk,
 	Prov:    reificationFeedbackLoopBelongsToSource,
 }
+
+// ---------------------------------------------------------------------------
+// FINITE PHILOSOPHY: Bounded finitude TheoryOf FiniteOntologyIncompleteness
+// This claim directly addresses the core hypothesis by proposing a specific theoretical framework (bounded finitude) as the solution to achieving a finite ontology, which relates to how minds construct and validate finite type systems for modeling reality.
+// ---------------------------------------------------------------------------
+
+var boundedFinitudeTheoryOfSource = Provenance{
+	Origin:     "Kagi web search result / https://www.shakyfoundation.com/finite-philosophy.pdf",
+	IngestedAt: "2026-04-27",
+	IngestedBy: "winze metabolism cycle 9 (LLM-assisted ingest from Kagi snippet)",
+	Quote:      "\"Bounded finitude is the only position that produces a genuinely finite ontology.\"",
+}
+
+var BoundedFinitude = Hypothesis{&Entity{
+	ID:    "bounded-finitude",
+	Name:  "Bounded finitude",
+	Kind:  "hypothesis",
+	Brief: "The position that bounded finitude is the only approach capable of producing a genuinely finite ontology.",
+}}
+
+var BoundedFinitudeTheoryOfFiniteOntologyIncompleteness = TheoryOf{
+	Subject: BoundedFinitude,
+	Object:  FiniteOntologyIncompleteness,
+	Prov:    boundedFinitudeTheoryOfSource,
+}
+
+// ---------------------------------------------------------------------------
+// ADHD and reification: Four ways a psychiatric construct is portrayed as ...: reification IsCognitiveBias ReificationRisk
+// The source directly identifies reification as a mechanism that distorts epistemic processes by converting working models (heuristics) into false categorical entities, undermining valid knowledge-building about minds.
+// ---------------------------------------------------------------------------
+
+var reificationIsCognitiveBiasSource = Provenance{
+	Origin:     "Kagi web search result / https://pmc.ncbi.nlm.nih.gov/articles/PMC9794618/",
+	IngestedAt: "2026-04-27",
+	IngestedBy: "winze metabolism cycle 9 (LLM-assisted ingest from Kagi snippet)",
+	Quote:      "\"Reification is a necessary mechanism to address when countering discursive practices that result in epistemological violence. The misrepresentation of scientific knowledge, which arises when a heuristic such as ADHD is portrayed as a discrete entity, necessitates that authors who report their own research and the work of others do so with...\"",
+}
+
+var Reification = Concept{&Entity{
+	ID:    "reification",
+	Name:  "reification",
+	Kind:  "concept",
+	Brief: "The cognitive practice of treating heuristics or abstract constructs as discrete entities, which can result in epistemological violence.",
+}}
+
+var ReificationIsCognitiveBias = IsCognitiveBias{
+	Subject: Reification,
+	Prov:    reificationIsCognitiveBiasSource,
+}

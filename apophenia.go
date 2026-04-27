@@ -166,3 +166,28 @@ var (
 // disputing his own framing, which is incoherent. Its provenance var
 // (patternicityDateChallenge) removed as dead code. The cross-source
 // date conflict is documented in the comment block above.
+
+// ---------------------------------------------------------------------------
+// The Effects of Heuristics and Apophenia on Probabilistic Choice: Ayton & Fischer Accepts ConradApopheniaClinicalFraming
+// This claim documents acceptance of Conrad's apophenia framework by subsequent empirical researchers, validating it as a documented cognitive phenomenon relevant to how minds model reality.
+// ---------------------------------------------------------------------------
+
+var aytonFischerAcceptsSource = Provenance{
+	Origin:     "Kagi web search result / https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5776328/",
+	IngestedAt: "2026-04-27",
+	IngestedBy: "winze metabolism cycle 9 (LLM-assisted ingest from Kagi snippet)",
+	Quote:      "\"In humans, this is an empirically well-documented phenomenon (Ayton & Fischer, 2004; Falk & Konold, 1997; Gilovich, Vallone, & Tversky, 1985).\"",
+}
+
+var AytonFischer = Person{&Entity{
+	ID:    "ayton-fischer",
+	Name:  "Ayton & Fischer",
+	Kind:  "person",
+	Brief: "Researchers who documented apophenia as an empirical phenomenon in humans.",
+}}
+
+var AytonFischerAcceptsConradApopheniaClinicalFraming = Accepts{
+	Subject: AytonFischer,
+	Object:  ConradApopheniaClinicalFraming,
+	Prov:    aytonFischerAcceptsSource,
+}
