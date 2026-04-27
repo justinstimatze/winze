@@ -197,4 +197,3 @@ LLM phases use the Anthropic API via `ANTHROPIC_API_KEY`. `.beads/formulas/` has
 ## License
 
 MIT
-
