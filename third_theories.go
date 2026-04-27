@@ -279,3 +279,78 @@ var DopamineTheoryOfSchizophrenia = TheoryOf{
 // on the word "embodied" without distinguishing the concepts. Removed as
 // a fabrication/conflation violation.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// On distance and proximity between Dummett and Brouwer: Michael Dummett Disputes BrouwerIntuitionism
+// This claim identifies how a major philosopher challenges Brouwer's constructivist theory of mathematical knowledge, directly relevant to disputes over how minds model mathematical reality.
+// ---------------------------------------------------------------------------
+
+var michaelDummettDisputesSource = Provenance{
+	Origin:     "arXiv abstract / http://arxiv.org/abs/2604.00934v1",
+	IngestedAt: "2026-04-26",
+	IngestedBy: "winze metabolism cycle 9 (LLM-assisted ingest from arXiv abstract)",
+	Quote:      "\"Dummett's direct arguments against Brouwerian intuitionism do not settle the matter\"",
+}
+
+var MichaelDummett = Person{&Entity{
+	ID:    "michael-dummett",
+	Name:  "Michael Dummett",
+	Kind:  "person",
+	Brief: "Philosopher who developed an interpretation of intuitionism and critiqued Brouwerian positions.",
+}}
+
+var MichaelDummettDisputesBrouwerIntuitionism = Disputes{
+	Subject: MichaelDummett,
+	Object:  BrouwerIntuitionism,
+	Prov:    michaelDummettDisputesSource,
+}
+
+// ---------------------------------------------------------------------------
+// Naturalistic intuitionism for physics: Nicolas Gisin Proposes BrouwerIntuitionism
+// This claim shows how an alternative intuitionistic framework for physics extends Brouwerian intuitionism to physical modeling, relevant to how minds construct mathematical and physical models of reality.
+// ---------------------------------------------------------------------------
+
+var nicolasGisinProposesSource = Provenance{
+	Origin:     "arXiv abstract / http://arxiv.org/abs/2509.22528v1",
+	IngestedAt: "2026-04-26",
+	IngestedBy: "winze metabolism cycle 9 (LLM-assisted ingest from arXiv abstract)",
+	Quote:      "\"a novel intuitionistic reconstruction of the foundations of physics has been primarily developed by Nicolas Gisin and Flavio Del Santo drawing on naturalism\"",
+}
+
+var NicolasGisin = Person{&Entity{
+	ID:    "nicolas-gisin",
+	Name:  "Nicolas Gisin",
+	Kind:  "person",
+	Brief: "Physicist who has developed a naturalistic intuitionistic reconstruction of physics foundations.",
+}}
+
+var NicolasGisinProposesBrouwerIntuitionism = Proposes{
+	Subject: NicolasGisin,
+	Object:  BrouwerIntuitionism,
+	Prov:    nicolasGisinProposesSource,
+}
+
+// ---------------------------------------------------------------------------
+// Naturalistic intuitionism for physics: Flavio Del Santo Proposes BrouwerIntuitionism
+// This claim shows how an alternative intuitionistic framework for physics extends Brouwerian intuitionism to physical modeling, relevant to how minds construct mathematical and physical models of reality.
+// ---------------------------------------------------------------------------
+
+var flavioDelSantoProposesSource = Provenance{
+	Origin:     "arXiv abstract / http://arxiv.org/abs/2509.22528v1",
+	IngestedAt: "2026-04-26",
+	IngestedBy: "winze metabolism cycle 9 (LLM-assisted ingest from arXiv abstract)",
+	Quote:      "\"a novel intuitionistic reconstruction of the foundations of physics has been primarily developed by Nicolas Gisin and Flavio Del Santo drawing on naturalism\"",
+}
+
+var FlavioDelSanto = Person{&Entity{
+	ID:    "flavio-del-santo",
+	Name:  "Flavio Del Santo",
+	Kind:  "person",
+	Brief: "Philosopher who has developed a naturalistic intuitionistic reconstruction of physics foundations alongside Nicolas Gisin.",
+}}
+
+var FlavioDelSantoProposesBrouwerIntuitionism = Proposes{
+	Subject: FlavioDelSanto,
+	Object:  BrouwerIntuitionism,
+	Prov:    flavioDelSantoProposesSource,
+}
