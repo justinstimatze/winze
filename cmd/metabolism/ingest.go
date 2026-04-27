@@ -224,6 +224,12 @@ func runIngest(dir, zimPath, zimIndex string) ingestOutcome {
 	sort.Strings(existingPersonOrgs)
 	predicateSlots := collectPredicateSlots(dir)
 
+	// Sample existing high-quality claims as exemplars for the critic
+	// (Layer C). 5 exemplars × ~600-char quote = ~3KB injected into each
+	// critic call. Resampled per ingest run so successive cycles see
+	// different anchors. minQuoteChars=200 filters thin claims.
+	criticExemplars := sampleHighQualityClaims(dir, 5, 200)
+
 	fmt.Printf("[ingest] %d hypothesis targets\n", len(order))
 
 	// Group generated claim sections by target file (append to existing corpus files)
@@ -427,6 +433,22 @@ func runIngest(dir, zimPath, zimIndex string) ingestOutcome {
 					pipelineClaims = append(pipelineClaims, PipelineClaim{
 						EntityName: result.entityName, Predicate: predicate,
 						Target: targetName, Reason: "duplicate",
+					})
+					continue
+				}
+
+				// Adversarial post-extraction critic (Layer B + C). Runs
+				// AFTER all structural gates pass. Catches semantic drift
+				// the prompt rules + AST checks can't see (CommentaryOn
+				// abuse, slot-filler entities the LLM rationalises around,
+				// thin-quality claims that don't match exemplar bar).
+				// Errors fall through as ACCEPT — the critic is best-effort
+				// quality, not a hard gate.
+				if verdict := critiqueIngestClaim(client, result, predicate, targetName, criticExemplars); !verdict.Accept {
+					fmt.Printf("    → critic-reject %s (%s)\n", result.entityName, verdict.Reason)
+					pipelineClaims = append(pipelineClaims, PipelineClaim{
+						EntityName: result.entityName, Predicate: predicate,
+						Target: targetName, Reason: "critic_" + verdict.Reason,
 					})
 					continue
 				}

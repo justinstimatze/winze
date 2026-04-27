@@ -443,6 +443,19 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 	entityVars := collectEntityVarNames(dir)
 	entityRoles := collectEntityRoles(dir)
 
+	// Adversarial post-promotion critic (Layer B + C). Optional: only
+	// runs if ANTHROPIC_API_KEY is set. The structural gates above
+	// validate type fit; the critic validates SEMANTIC fit (predicate
+	// preconditions, substantive isomorphism, parity with exemplars).
+	// Errors fall through as ACCEPT — best-effort quality gate.
+	var criticClient *anthropic.Client
+	var criticExemplars []claimExemplar
+	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
+		c := anthropic.NewClient(option.WithAPIKey(apiKey))
+		criticClient = &c
+		criticExemplars = sampleHighQualityClaims(dir, 5, 200)
+	}
+
 	cycleNum := nextCycleNumber(dir)
 	outPath := filepath.Join(dir, fmt.Sprintf("metabolism_cycle%d.go", cycleNum))
 
@@ -516,6 +529,25 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 					Name:     attemptName,
 					Accepted: false,
 					Reason:   "type_mismatch",
+					Evidence: evidence,
+				})
+				continue
+			}
+		}
+
+		// Critic check — last gate before writing to disk. Sees the
+		// final Subject/Object orientation post-swap.
+		if criticClient != nil {
+			critic := c // copy with possibly-swapped subj/obj reflected
+			critic.EntityA = subj
+			critic.EntityB = obj
+			if verdict := critiqueTripConnection(*criticClient, critic, criticExemplars); !verdict.Accept {
+				evidence := fmt.Sprintf("%s %s %s: critic-reject (%s)", subj, c.Predicate, obj, verdict.Reason)
+				fmt.Printf("[trip-promote] skip %s\n", evidence)
+				attempts = append(attempts, tripPromotionAttempt{
+					Name:     attemptName,
+					Accepted: false,
+					Reason:   "critic_" + verdict.Reason,
 					Evidence: evidence,
 				})
 				continue
