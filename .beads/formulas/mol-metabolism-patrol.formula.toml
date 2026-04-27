@@ -165,6 +165,10 @@ fi
 
 SLEEP_SECONDS="{{sleep_seconds}}"
 GATE_OVERRIDES="{{gate_overrides}}"
+TARGET_CYCLES="{{cycles}}"
+BATCH_SIZE=3   # cycles per Bash invocation. Tuned to fit Claude Code's 10-min Bash timeout.
+PROGRESS_FILE=".metabolism-tick-progress"
+
 # Use the pre-built binary from the setup step (much smaller RSS than
 # `go run`, which compiles + links every invocation). Falls back to
 # `go run` if the binary isn't there for any reason.
@@ -173,8 +177,23 @@ if [ ! -x "$METABOLISM_BIN" ]; then
   echo "WARN: pre-built metabolism binary missing, falling back to 'go run' (higher memory pressure)"
   METABOLISM_BIN="go run ./cmd/metabolism"
 fi
-for i in $(seq 1 {{cycles}}); do
-  echo "=== Cycle $i of {{cycles}} (sleep ${SLEEP_SECONDS}s between) ==="
+
+# Resume from the progress file if a previous batch wrote one (handoff
+# survival path). Otherwise start at 0.
+if [ -f "$PROGRESS_FILE" ]; then
+  CYCLES_DONE=$(cat "$PROGRESS_FILE" | tr -d '[:space:]')
+else
+  CYCLES_DONE=0
+fi
+echo "[batch] resuming from cycles_completed=$CYCLES_DONE / $TARGET_CYCLES"
+
+BATCH_END=$((CYCLES_DONE + BATCH_SIZE))
+if [ "$BATCH_END" -gt "$TARGET_CYCLES" ]; then
+  BATCH_END=$TARGET_CYCLES
+fi
+
+for i in $(seq $((CYCLES_DONE+1)) $BATCH_END); do
+  echo "=== Cycle $i of $TARGET_CYCLES (sleep ${SLEEP_SECONDS}s between) ==="
   # shellcheck disable=SC2086 — GATE_OVERRIDES is a deliberate space-split flag list
   $METABOLISM_BIN --evolve $GATE_OVERRIDES .
 
@@ -194,9 +213,9 @@ for i in $(seq 1 {{cycles}}); do
   # If push fails (race or rebase needed), retry once after fetch+rebase.
   git add predictions.go metabolism_cycle*.go 2>/dev/null
   if ! git diff --cached --quiet; then
-    git commit -m "metabolism patrol: cycle $i/{{cycles}} — autonomous evolution"
+    git commit -m "metabolism patrol: cycle $i/$TARGET_CYCLES — autonomous evolution"
     git fetch origin main
-    git rebase origin/main || { echo "rebase failed — leaving branch; will retry next cycle"; git rebase --abort; continue; }
+    git rebase origin/main || { echo "rebase failed — leaving branch; will retry next cycle"; git rebase --abort; echo "$i" > "$PROGRESS_FILE"; continue; }
     if ! git push origin HEAD:main; then
       echo "Direct push failed — fetching + retrying once"
       git fetch origin main && git rebase origin/main && git push origin HEAD:main || echo "Push still failed; corpus changes left on local branch for next cycle"
@@ -205,16 +224,36 @@ for i in $(seq 1 {{cycles}}); do
     echo "No corpus changes this cycle"
   fi
 
+  # CRITICAL: persist progress AFTER each cycle, before the sleep.
+  # Handoff or interrupt during the sleep must not re-run cycle $i.
+  echo "$i" > "$PROGRESS_FILE"
+
   echo "=== Cycle $i complete ==="
   echo
 
-  # Sleep before next iteration (skip after the last one).
-  if [ "$i" -lt "{{cycles}}" ]; then
+  # Sleep before next iteration in this batch (skip after the last cycle of the batch).
+  if [ "$i" -lt "$BATCH_END" ]; then
     echo "Sleeping ${SLEEP_SECONDS}s before next cycle..."
     sleep "$SLEEP_SECONDS"
   fi
 done
+
+echo "[batch] complete: cycles $((CYCLES_DONE+1))..$BATCH_END of $TARGET_CYCLES"
+echo "[batch] cycles_completed now $BATCH_END / $TARGET_CYCLES"
+if [ "$BATCH_END" -lt "$TARGET_CYCLES" ]; then
+  echo "[batch] MORE BATCHES REQUIRED. Start another Bash call to run cycles $((BATCH_END+1)) through (next batch end)."
+else
+  echo "[batch] ALL CYCLES COMPLETE — proceed to submit step."
+fi
 ```
+
+After this Bash call returns, check the trailing log lines:
+
+- If you see "MORE BATCHES REQUIRED": **start another Bash call with the same loop body**. Do NOT proceed to submit. The progress file makes resumption automatic — just re-run the same Bash command.
+- If you see "ALL CYCLES COMPLETE": proceed to the submit step.
+- If you see "would cost N¢ but only K¢ remaining" (budget halted): also proceed to submit; that's a legitimate early exit.
+
+Decision check between batches: if your session context is approaching capacity, run `gt handoff -s "patrol handoff" -m "cycle X/Y, resume via progress file"` instead of starting another Bash call. The next session re-enters this step and continues from `.metabolism-tick-progress`.
 
 **If a cycle fails:** Note the error, skip to submit. Do not retry — the
 cycle is designed to be idempotent and the next patrol will pick up where
@@ -227,25 +266,55 @@ id = "submit"
 title = "Report and exit"
 needs = ["run-cycles"]
 description = """
-**1. Final state check:**
+## Verify completion BEFORE exiting
+
+This step is reachable only after run-cycles produced one of:
+- `[batch] ALL CYCLES COMPLETE` line in the loop log, OR
+- A budget-cap halt visible in the trend output, OR
+- An unrecoverable cycle failure.
+
+If none of those triggered, you should not be here. Go back to
+run-cycles and start another batch.
+
+**1. Verify cycles are actually complete:**
+```bash
+CYCLES_DONE=$(cat .metabolism-tick-progress 2>/dev/null || echo 0)
+SPENT=$(jq -r .spent_cents .metabolism-budget.json 2>/dev/null || echo 0)
+CAP="${METABOLISM_BUDGET_CENTS:-0}"
+echo "cycles: $CYCLES_DONE/{{cycles}}, spent: ${SPENT}¢, cap: ${CAP}¢"
+```
+
+If `CYCLES_DONE < {{cycles}}` AND `SPENT < CAP`, you have remaining
+work. **Use `gt handoff` instead of `gt done`** — fresh session will
+resume from the progress file.
+
+```bash
+# Only if there's remaining work the budget could still cover:
+gt handoff -s "metabolism patrol handoff" -m "cycle $CYCLES_DONE/{{cycles}}, ${SPENT}¢ spent of ${CAP}¢ cap. Resume via .metabolism-tick-progress."
+exit 0
+```
+
+**2. Final state check (only if cycles fully complete OR budget halted):**
 ```bash
 go build ./...
 go run ./cmd/query --stats .
 git log --oneline -5
 ```
 
-**2. Update bead with results:**
+**3. Update bead with results + clean up progress file:**
 ```bash
-bd update {{issue}} --notes "Completed {{cycles}} metabolism cycles"
+bd update {{issue}} --notes "Completed $CYCLES_DONE/{{cycles}} cycles. Spend: ${SPENT}¢/${CAP}¢."
+rm -f .metabolism-tick-progress
 ```
 
-**3. Push and exit:**
+**4. Push and exit:**
 ```bash
 git push
 gt done
 ```
 
-Done means gone."""
+Done means gone — but only when cycles actually completed or budget
+halted. Otherwise you handoff and the next session continues."""
 
 [vars]
 [vars.issue]

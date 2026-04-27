@@ -29,6 +29,9 @@
 # Metabolism budget state (per-checkout monthly accounting)
 .metabolism-budget.json
 
+# Metabolism patrol progress counter (handoff-survival state)
+.metabolism-tick-progress
+
 # Sensor config (contains local paths)
 .metabolism.json
 
