@@ -16,7 +16,7 @@ package winze
 
 var metabolismPredictionSource = Provenance{
 	Origin:     "winze metabolism log (.metabolism-log.json)",
-	IngestedAt: "2026-04-26",
+	IngestedAt: "2026-04-27",
 	IngestedBy: "winze metabolism --reify",
 	Quote:      "366 cycles logged from 2026-04-12 to 2026-04-26 across 42 hypotheses. 40 resolved.",
 }
@@ -37,7 +37,7 @@ var StructuralFragilityPredictsCurationGaps = Hypothesis{&Entity{
 // Evidence search: BaloneyDetectionKitThesis
 // Prediction: single-source AND uncontested — highest revision risk
 // 6 cycles (3 with signal), aggregate: corroborated
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   6 cycles total, 3 with signal
 //   Trajectory: corroborated ×2, no_signal ×3
 // ---------------------------------------------------------------------------
@@ -70,7 +70,7 @@ var BaloneyDetectionKitSearchResolution = ResolvedAs{
 // Evidence search: ChalmersHardProblemThesis
 // Prediction: single-source AND uncontested — highest revision risk
 // 6 cycles (2 with signal), aggregate: corroborated
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   6 cycles total, 2 with signal
 //   Trajectory: corroborated ×3, no_signal ×3
 // ---------------------------------------------------------------------------
@@ -103,7 +103,7 @@ var ChalmersHardProblemSearchResolution = ResolvedAs{
 // Evidence search: ConstructionistThesis
 // Prediction: single-source AND uncontested — highest revision risk
 // 6 cycles (3 with signal), aggregate: corroborated
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   6 cycles total, 3 with signal
 //   Trajectory: corroborated ×2, no_signal ×3
 // ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ var ConstructionistSearchResolution = ResolvedAs{
 // Evidence search: BrownHumanUniversalsThesis
 // Prediction: single-source AND uncontested — highest revision risk
 // 35 cycles (22 with signal), aggregate: irrelevant
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   35 cycles total, 22 with signal
 //   Trajectory: irrelevant ×24, no_signal ×11
 // ---------------------------------------------------------------------------
@@ -169,7 +169,7 @@ var BrownHumanUniversalsSearchResolution = ResolvedAs{
 // Evidence search: ConradApopheniaClinicalFraming
 // Prediction: single-source AND uncontested — highest revision risk
 // 51 cycles (24 with signal), aggregate: irrelevant
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   51 cycles total, 24 with signal
 //   Trajectory: irrelevant ×31, no_signal ×18
 // ---------------------------------------------------------------------------
@@ -202,7 +202,7 @@ var ConradApopheniaClinicalSearchResolution = ResolvedAs{
 // Evidence search: DimaraTaskBasedClassification
 // Prediction: single-source AND uncontested — highest revision risk
 // 45 cycles (19 with signal), aggregate: irrelevant
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   45 cycles total, 19 with signal
 //   Trajectory: irrelevant ×27, no_signal ×18
 // ---------------------------------------------------------------------------
@@ -235,7 +235,7 @@ var DimaraTaskBasedClassificationSearchResolution = ResolvedAs{
 // Evidence search: DragonInGarageArgument
 // Prediction: single-source AND uncontested — highest revision risk
 // 2 cycles (2 with signal), aggregate: corroborated
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   2 cycles total, 2 with signal
 //   Trajectory: corroborated ×1
 // ---------------------------------------------------------------------------
@@ -268,7 +268,7 @@ var DragonInGarageSearchResolution = ResolvedAs{
 // Evidence search: GigerenzerRationalDeviationReframing
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (1 with signal), aggregate: corroborated
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 1 with signal
 //   Trajectory: corroborated ×1
 // ---------------------------------------------------------------------------
@@ -301,7 +301,7 @@ var GigerenzerRationalDeviationReframingSearchResolution = ResolvedAs{
 // Evidence search: GodelFirstIncompletenessTheorem
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (1 with signal), aggregate: corroborated
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 1 with signal
 //   Trajectory: corroborated ×1
 // ---------------------------------------------------------------------------
@@ -334,7 +334,7 @@ var GodelFirstIncompletenessTheoremSearchResolution = ResolvedAs{
 // Evidence search: GodelSecondIncompletenessTheorem
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (1 with signal), aggregate: corroborated
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 1 with signal
 //   Trajectory: corroborated ×1
 // ---------------------------------------------------------------------------
@@ -367,7 +367,7 @@ var GodelSecondIncompletenessTheoremSearchResolution = ResolvedAs{
 // Evidence search: BrouwerIntuitionism
 // Prediction: single-source AND uncontested — highest revision risk
 // 28 cycles (18 with signal), aggregate: corroborated
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   28 cycles total, 18 with signal
 //   Trajectory: corroborated ×18, no_signal ×10
 // ---------------------------------------------------------------------------
@@ -400,7 +400,7 @@ var BrouwerIntuitionismSearchResolution = ResolvedAs{
 // Evidence search: EmbodiedMindThesis
 // Prediction: single-source AND uncontested — highest revision risk
 // 40 cycles (15 with signal), aggregate: irrelevant
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   40 cycles total, 15 with signal
 //   Trajectory: irrelevant ×21, no_signal ×19
 // ---------------------------------------------------------------------------
@@ -433,7 +433,7 @@ var EmbodiedMindSearchResolution = ResolvedAs{
 // Evidence search: ErrorManagementTheoryOfApophenia
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -466,7 +466,7 @@ var ErrorManagementTheoryOfApopheniaSearchResolution = ResolvedAs{
 // Evidence search: FormanPCEThesis
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -499,7 +499,7 @@ var FormanPCESearchResolution = ResolvedAs{
 // Evidence search: HierarchicalPredictionMachine
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -532,7 +532,7 @@ var HierarchicalPredictionMachineSearchResolution = ResolvedAs{
 // Evidence search: HilbertsProgram
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -565,7 +565,7 @@ var HilbertsProgramSearchResolution = ResolvedAs{
 // Evidence search: HypothesisCometEnckeFragment
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -598,7 +598,7 @@ var HypothesisCometEnckeFragmentSearchResolution = ResolvedAs{
 // Evidence search: HypothesisGlancingIronAsteroid
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -631,7 +631,7 @@ var HypothesisGlancingIronAsteroidSearchResolution = ResolvedAs{
 // Evidence search: HypothesisNaturalGasRelease
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -664,7 +664,7 @@ var HypothesisNaturalGasReleaseSearchResolution = ResolvedAs{
 // Evidence search: KahnemanDualProcessFraming
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -697,7 +697,7 @@ var KahnemanDualProcessSearchResolution = ResolvedAs{
 // Evidence search: MattsonSPPThesis
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -730,7 +730,7 @@ var MattsonSPPSearchResolution = ResolvedAs{
 // Evidence search: MattsonSchizophreniaSPPDysregulationFraming
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -763,7 +763,7 @@ var MattsonSchizophreniaSPPDysregulationSearchResolution = ResolvedAs{
 // Evidence search: MurtiAdvaitaVsAdvayaTypology
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -796,7 +796,7 @@ var MurtiAdvaitaVsAdvayaTypologySearchResolution = ResolvedAs{
 // Evidence search: PinkerHumanNatureThesis
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -829,7 +829,7 @@ var PinkerHumanNatureSearchResolution = ResolvedAs{
 // Evidence search: SearleBiologicalNaturalism
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -862,7 +862,7 @@ var SearleBiologicalNaturalismSearchResolution = ResolvedAs{
 // Evidence search: ShermerPatternicityFraming
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -895,7 +895,7 @@ var ShermerPatternicitySearchResolution = ResolvedAs{
 // Evidence search: TetlockCalibrationFraming
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -928,7 +928,7 @@ var TetlockCalibrationSearchResolution = ResolvedAs{
 // Evidence search: UDHRArticle1
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -961,7 +961,7 @@ var UDHRArticle1SearchResolution = ResolvedAs{
 // Evidence search: UDHRArticle18
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -994,7 +994,7 @@ var UDHRArticle18SearchResolution = ResolvedAs{
 // Evidence search: UDHRArticle3
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -1027,7 +1027,7 @@ var UDHRArticle3SearchResolution = ResolvedAs{
 // Evidence search: UDHRAsTheoryOfHumanRights
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -1060,7 +1060,7 @@ var UDHRAsTheoryOfHumanRightsSearchResolution = ResolvedAs{
 // Evidence search: VolkerThreeTypesTypology
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -1093,7 +1093,7 @@ var VolkerThreeTypesTypologySearchResolution = ResolvedAs{
 // Evidence search: WattsConsciousnessAsDeadEndThesis
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -1126,7 +1126,7 @@ var WattsConsciousnessAsDeadEndSearchResolution = ResolvedAs{
 // Evidence search: WhiteShergillReducedTopDownFraming
 // Prediction: single-source AND uncontested — highest revision risk
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -1159,7 +1159,7 @@ var WhiteShergillReducedTopDownSearchResolution = ResolvedAs{
 // Evidence search: AdvaitaAsMonismTranslation
 // Prediction: single-source
 // 1 cycles (0 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   1 cycles total, 0 with signal
 //   Trajectory: no_signal ×1
 // ---------------------------------------------------------------------------
@@ -1192,7 +1192,7 @@ var AdvaitaAsMonismTranslationSearchResolution = ResolvedAs{
 // Evidence search: HypothesisCometaryAirburst
 // Prediction: single-source
 // 37 cycles (18 with signal), aggregate: irrelevant
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   37 cycles total, 18 with signal
 //   Trajectory: irrelevant ×18, no_signal ×19
 // ---------------------------------------------------------------------------
@@ -1225,7 +1225,7 @@ var HypothesisCometaryAirburstSearchResolution = ResolvedAs{
 // Evidence search: HypothesisLakeChekoIsCrater
 // Prediction: single-source
 // 37 cycles (18 with signal), aggregate: challenged
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   37 cycles total, 18 with signal
 //   Trajectory: challenged ×18, no_signal ×19
 // ---------------------------------------------------------------------------
@@ -1258,7 +1258,7 @@ var HypothesisLakeChekoIsCraterSearchResolution = ResolvedAs{
 // Evidence search: HypothesisStonyAsteroidAirburst
 // Prediction: single-source
 // 37 cycles (18 with signal), aggregate: irrelevant
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   37 cycles total, 18 with signal
 //   Trajectory: irrelevant ×18, no_signal ×19
 // ---------------------------------------------------------------------------
@@ -1291,7 +1291,7 @@ var HypothesisStonyAsteroidAirburstSearchResolution = ResolvedAs{
 // Evidence search: LoyFiveFlavorsTypology
 // Prediction: single-source
 // 3 cycles (1 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   3 cycles total, 1 with signal
 //   Trajectory: no_signal ×2
 // ---------------------------------------------------------------------------
@@ -1324,7 +1324,7 @@ var LoyFiveFlavorsTypologySearchResolution = ResolvedAs{
 // Evidence search: PerennialistCommonCoreThesis
 // Prediction: single-source
 // 3 cycles (1 with signal), aggregate: no_signal
-// Resolution history (reified 2026-04-26):
+// Resolution history (reified 2026-04-27):
 //   3 cycles total, 1 with signal
 //   Trajectory: no_signal ×2
 // ---------------------------------------------------------------------------
