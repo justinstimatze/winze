@@ -97,9 +97,11 @@ elif [ -f "$RIG_ROOT/.env" ]; then set -a; source "$RIG_ROOT/.env"; set +a
 fi
 
 SLEEP_SECONDS="{{sleep_seconds}}"
+GATE_OVERRIDES="{{gate_overrides}}"
 for i in $(seq 1 {{cycles}}); do
   echo "=== Cycle $i of {{cycles}} (sleep ${SLEEP_SECONDS}s between) ==="
-  go run ./cmd/metabolism --evolve .
+  # shellcheck disable=SC2086 — GATE_OVERRIDES is a deliberate space-split flag list
+  go run ./cmd/metabolism --evolve $GATE_OVERRIDES .
 
   # Surface the post-cycle spend + signal trend so the formula log makes
   # unattended runs auditable. Phase gates self-throttle the expensive
@@ -182,6 +184,10 @@ default = "168"
 [vars.sleep_seconds]
 description = "Seconds to sleep between cycles. 3600 = hourly. Phase gates self-throttle so most ticks are mostly cheap; the budget guard caps total monthly spend."
 default = "3600"
+
+[vars.gate_overrides]
+description = "Extra flags appended to `--evolve` to override the default phase gates. Empty by default (use the cost-aware gates). For visible-flow demos, pass e.g. `--sense-min-hours=0 --resolve-min-unresolved=1 --trip-min-hours=0 --ingest-min-corroborated=1` so every cycle does real work. Costs ~$0.05-0.30/cycle; budget guard still caps the month."
+default = ""
 
 [vars.base_branch]
 description = "Branch to work on"
