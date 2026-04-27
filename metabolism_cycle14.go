@@ -6,6 +6,15 @@ package winze
 // entity pairs from different topology clusters and asks an LLM to
 // generate speculative relationships. Only connections scoring 4+/5
 // are promoted. Provenance is marked as speculative.
+//
+// 2026-04-27 audit: the second connection in this file
+// (ConfirmationBias CommentaryOn ClusteringIllusion) was deleted as
+// a same-cluster pseudo-analogy; both entities are cognitive biases
+// in the same neighborhood, so the connection failed the cross-
+// cluster test. The first connection (ReificationFeedbackLoop
+// CommentaryOn ClarkWhateverNextPaper) survived adversarial review
+// as a substantive structural isomorphism: closed-loop optimization
+// privileging internal coherence over external validity.
 
 // ---------------------------------------------------------------------------
 // Trip connection: ReificationFeedbackLoop ↔ ClarkWhateverNextPaper (score 4/5, analogy)
@@ -23,22 +32,4 @@ var TripCycle14ReificationFeedbackLoopCommentaryOnClarkWhateverNextPaper = Comme
 	Subject: ReificationFeedbackLoop,
 	Object:  ClarkWhateverNextPaper,
 	Prov:    tripCycle14ReificationFeedbackLoopClarkWhateverNextPaperSource,
-}
-
-// ---------------------------------------------------------------------------
-// Trip connection: ConfirmationBias ↔ ClusteringIllusion (score 4/5, analogy)
-// Both ConfirmationBias and ClusteringIllusion are post-hoc filtering mechanisms that impose coherence on ambiguous inputs by selectively elevating signal above noise.
-// ---------------------------------------------------------------------------
-
-var tripCycle14ConfirmationBiasClusteringIllusionSource = Provenance{
-	Origin:     "winze trip cycle 14 (speculative cross-cluster connection)",
-	IngestedAt: "2026-04-27",
-	IngestedBy: "winze metabolism trip (score 4/5, analogy, temp=1.0)",
-	Quote:      "Both ConfirmationBias and ClusteringIllusion are post-hoc filtering mechanisms that impose coherence on ambiguous inputs by selectively elevating signal above noise. ConfirmationBias operates as critical commentary on the failure modes of rational belief formation, revealing how minds actively distort evidence streams to match priors—a mechanism structurally parallel to how ClusteringIllusion reveals how minds detect patterns in noise, both exposing the same underlying vulnerability: selective attention to confirmatory signals.",
-}
-
-var TripCycle14ConfirmationBiasCommentaryOnClusteringIllusion = CommentaryOn{
-	Subject: ConfirmationBias,
-	Object:  ClusteringIllusion,
-	Prov:    tripCycle14ConfirmationBiasClusteringIllusionSource,
 }

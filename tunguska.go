@@ -657,27 +657,11 @@ var VladimirABronshtenAcceptsHypothesisStonyAsteroidAirburst = Accepts{
 	Prov:    vladimirABronshtenAcceptsSource,
 }
 
-// ---------------------------------------------------------------------------
-// Tunguska meteorite: fragment of a comet or an asteroid?: Chyba et al. Proposes HypothesisStonyAsteroidAirburst
-// This claim documents an explicit scientific hypothesis proposal relevant to how minds construct competing models of reality and validate them through evidence assessment.
-// ---------------------------------------------------------------------------
-
-var chybaEtAlProposesSource = Provenance{
-	Origin:     "Kagi web search result / https://ui.adsabs.harvard.edu/abs/1995SoSyR..29..241B/abstract",
-	IngestedAt: "2026-04-27",
-	IngestedBy: "winze metabolism cycle 12 (LLM-assisted ingest from Kagi snippet)",
-	Quote:      "\"In relation to the conjecture proposed by Chyba et al. (1993) about the asteroidal nature of the Tunguska meteoroid\"",
-}
-
-var ChybaEtAl = Person{&Entity{
-	ID:    "chyba-et-al",
-	Name:  "Chyba et al.",
-	Kind:  "person",
-	Brief: "Collaboration of researchers who proposed the asteroidal nature hypothesis for the Tunguska meteoroid in 1993.",
-}}
-
-var ChybaEtAlProposesHypothesisStonyAsteroidAirburst = Proposes{
-	Subject: ChybaEtAl,
-	Object:  HypothesisStonyAsteroidAirburst,
-	Prov:    chybaEtAlProposesSource,
-}
+// 2026-04-27 audit: A polecat ingest claim — `ChybaEtAl Proposes
+// HypothesisStonyAsteroidAirburst` — was deleted here. The canonical
+// entity `Chyba` already exists (this file, line 106 area) and the
+// canonical claim `ChybaProposesStonyAsteroid` (around line 353) already
+// encodes this exact attribution. The new `ChybaEtAl` was a duplicate
+// under a renamed key, with the additional schema violation of
+// representing a collaboration as a Person rather than the existing
+// canonical entity.

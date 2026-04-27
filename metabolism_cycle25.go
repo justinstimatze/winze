@@ -6,24 +6,14 @@ package winze
 // entity pairs from different topology clusters and asks an LLM to
 // generate speculative relationships. Only connections scoring 4+/5
 // are promoted. Provenance is marked as speculative.
-
-// ---------------------------------------------------------------------------
-// Trip connection: GreatWallNotUniquelyVisibleFromSpace ↔ Advaita (score 4/5, analogy)
-// Both Advaita and the Great Wall myth exemplify how intuitive, elegant claims about reality (non-duality or unique visibility) can obscure the actual structure of perception and evidence, revealing how minds construct false universals from limited epistemic perspectives.
-// ---------------------------------------------------------------------------
-
-var tripCycle25GreatWallNotUniquelyVisibleFromSpaceAdvaitaSource = Provenance{
-	Origin:     "winze trip cycle 25 (speculative cross-cluster connection)",
-	IngestedAt: "2026-04-27",
-	IngestedBy: "winze metabolism trip (score 4/5, analogy, temp=1.0)",
-	Quote:      "Both Advaita and the Great Wall myth exemplify how intuitive, elegant claims about reality (non-duality or unique visibility) can obscure the actual structure of perception and evidence, revealing how minds construct false universals from limited epistemic perspectives. The connection is defensible because both entities expose a common epistemological failure: the mind's tendency to validate neat, appealing narratives (monistic reality or a singular iconic truth) without rigorous phenomenological verification, making the Great Wall myth a practical case study in the theory of how minds fail to validate claims—a core concern of epistemology of minds.",
-}
-
-var TripCycle25GreatWallNotUniquelyVisibleFromSpaceTheoryOfAdvaita = TheoryOf{
-	Subject: GreatWallNotUniquelyVisibleFromSpace,
-	Object:  Advaita,
-	Prov:    tripCycle25GreatWallNotUniquelyVisibleFromSpaceAdvaitaSource,
-}
+//
+// 2026-04-27 audit: the first connection in this file
+// (GreatWallNotUniquelyVisibleFromSpace TheoryOf Advaita) was deleted
+// as a category-error TheoryOf misuse — a debunked-misconception entity
+// is not a "theory of" Advaita metaphysics. The surviving connection
+// (SurvivorshipBias CommentaryOn SuperiorPatternProcessing) was rated
+// substantive: identifies a specific mechanistic failure mode
+// (selective encoding of successes) within pattern-processing.
 
 // ---------------------------------------------------------------------------
 // Trip connection: SurvivorshipBias ↔ SuperiorPatternProcessing (score 4/5, analogy)

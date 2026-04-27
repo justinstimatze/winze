@@ -305,26 +305,11 @@ var BoundedFinitudeTheoryOfFiniteOntologyIncompleteness = TheoryOf{
 	Prov:    boundedFinitudeTheoryOfSource,
 }
 
-// ---------------------------------------------------------------------------
-// ADHD and reification: Four ways a psychiatric construct is portrayed as ...: reification IsCognitiveBias ReificationRisk
-// The source directly identifies reification as a mechanism that distorts epistemic processes by converting working models (heuristics) into false categorical entities, undermining valid knowledge-building about minds.
-// ---------------------------------------------------------------------------
-
-var reificationIsCognitiveBiasSource = Provenance{
-	Origin:     "Kagi web search result / https://pmc.ncbi.nlm.nih.gov/articles/PMC9794618/",
-	IngestedAt: "2026-04-27",
-	IngestedBy: "winze metabolism cycle 9 (LLM-assisted ingest from Kagi snippet)",
-	Quote:      "\"Reification is a necessary mechanism to address when countering discursive practices that result in epistemological violence. The misrepresentation of scientific knowledge, which arises when a heuristic such as ADHD is portrayed as a discrete entity, necessitates that authors who report their own research and the work of others do so with...\"",
-}
-
-var Reification = Concept{&Entity{
-	ID:    "reification",
-	Name:  "reification",
-	Kind:  "concept",
-	Brief: "The cognitive practice of treating heuristics or abstract constructs as discrete entities, which can result in epistemological violence.",
-}}
-
-var ReificationIsCognitiveBias = IsCognitiveBias{
-	Subject: Reification,
-	Prov:    reificationIsCognitiveBiasSource,
-}
+// 2026-04-27 audit: A polecat ingest claim — `Reification IsCognitiveBias`
+// — was deleted here. Two violations: (a) the new `Reification` Concept
+// duplicates the existing canonical `ReificationRisk` (line 111 above)
+// under a renamed key, fragmenting the entity neighborhood; (b) the
+// `IsCognitiveBias` predicate is reserved for documented biases in the
+// Tversky-Kahneman tradition. The source quote frames reification as a
+// "discursive practice" producing "epistemological violence" — that's a
+// philosophical category-error analysis, not a cognitive-psych bias.
