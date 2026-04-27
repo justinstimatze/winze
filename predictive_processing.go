@@ -108,3 +108,28 @@ var (
 		Prov:    clarkPredictiveBrainSource,
 	}
 )
+
+// ---------------------------------------------------------------------------
+// Behavioral and Brain Sciences: Volume 36 - Cambridge Core: Cambridge Core AcceptsOrg HierarchicalPredictionMachine
+// The source's characterization of Clark's case as "convincing" indicates editorial acceptance of the hypothesis as a viable framework for understanding brain function, relevant to how minds model reality through hierarchical prediction.
+// ---------------------------------------------------------------------------
+
+var cambridgeCoreAcceptsOrgSource = Provenance{
+	Origin:     "Kagi web search result / https://www.cambridge.org/core/journals/behavioral-and-brain-sciences/issue/012119F37B6516E2BF351B7A4C92B2D3",
+	IngestedAt: "2026-04-27",
+	IngestedBy: "winze metabolism cycle 21 (LLM-assisted ingest from Kagi snippet)",
+	Quote:      "\"Clark makes a convincing case for the merits of conceptualizing brains as hierarchical prediction machines.\"",
+}
+
+var CambridgeCore = Organization{&Entity{
+	ID:    "cambridge-core",
+	Name:  "Cambridge Core",
+	Kind:  "organization",
+	Brief: "Academic publishing platform that published commentary on hierarchical prediction theories in Behavioral and Brain Sciences.",
+}}
+
+var CambridgeCoreAcceptsOrgHierarchicalPredictionMachine = AcceptsOrg{
+	Subject: CambridgeCore,
+	Object:  HierarchicalPredictionMachine,
+	Prov:    cambridgeCoreAcceptsOrgSource,
+}
