@@ -2217,7 +2217,10 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	if !senseAllow {
 		logGate("sense-budget", gateDecision{Fire: false, Reason: senseBudgetReason})
 	}
-	if sel.has("sense") && senseDecision.Fire && senseAllow {
+	if gates.skipSense {
+		logGate("sense-bias", gateDecision{Fire: false, Reason: "confirmation_bias triggered — see Phase 0"})
+	}
+	if sel.has("sense") && senseDecision.Fire && senseAllow && !gates.skipSense {
 		fmt.Println("=== Phase 1: Metabolism (wake) ===")
 		fmt.Println()
 		budget.charge("sense", costSenseCents)
@@ -2293,6 +2296,9 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 		fmt.Println()
 	} else if !sel.has("sense") {
 		fmt.Println("=== Phase 1: Sense (skipped by --phases) ===")
+		fmt.Println()
+	} else if gates.skipSense {
+		fmt.Println("=== Phase 1: Sense (skipped by confirmation-bias gate) ===")
 		fmt.Println()
 	} else {
 		fmt.Println("=== Phase 1: Sense (skipped by gate) ===")

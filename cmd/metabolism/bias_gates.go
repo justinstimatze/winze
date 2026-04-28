@@ -12,6 +12,7 @@ import (
 // is enumerated in one place.
 type biasGates struct {
 	skipZim      bool     // availability_heuristic triggered: skip Wikipedia ZIM to avoid deepening concentration
+	skipSense    bool     // confirmation_bias triggered: skip sense phase to stop accumulating more corroboration-biased signal
 	triggered    []string // names of triggered auditors, in audit order
 	triggerNotes []string // human-readable per-trigger notes for cycle header
 }
@@ -52,6 +53,18 @@ func computeBiasGates(auditors []BiasAuditorResult) biasGates {
 			g.skipZim = true
 			g.triggerNotes = append(g.triggerNotes,
 				fmt.Sprintf("  availability_heuristic (HHI=%.2f > %.2f): ZIM backend skipped to diversify provenance",
+					a.Value, a.Threshold))
+		case "ConfirmationBias":
+			// Corroboration rate is suspiciously high — the resolver or
+			// query design is producing too much support and not enough
+			// challenge. Skip the sense phase this cycle so we stop adding
+			// more corroboration-biased signal. Mitigation, not cure: the
+			// rate persists until other phases (trip, ingest) shift the
+			// signal mix. The gate re-fires next cycle if the rate is
+			// still above threshold; eventually corpus changes break out.
+			g.skipSense = true
+			g.triggerNotes = append(g.triggerNotes,
+				fmt.Sprintf("  confirmation_bias (corroboration_rate=%.2f > %.2f): sense phase skipped to stop accumulating more corroborated signal",
 					a.Value, a.Threshold))
 		default:
 			g.triggerNotes = append(g.triggerNotes,
