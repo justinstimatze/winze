@@ -1165,37 +1165,50 @@ func pairCandidateScore(a, b tripEntity) int {
 
 // pairStructuralAffinity returns a secondary score used to break ties
 // among candidates with the same pairCandidateScore. The structural
-// affinity is computed from three cheap graph/text signals:
+// affinity is computed from three cheap graph/text signals, all
+// Jaccard-normalized so dense hub entities don't auto-win the
+// tie-breaker:
 //
-//   - 2-hop neighborhood overlap (capped at +3): non-zero overlap means
-//     the two cross-cluster entities share intermediate context, usually
-//     through a bridge — the analogy has a real route.
-//   - predicate-type complementarity (Jaccard, capped at +4): entities
-//     whose predicate signatures rhyme (e.g. both heavy in TheoryOf and
-//     CommentaryOn) have parallel epistemic shapes; categorical mismatches
-//     (LocatedIn vs Disputes) score zero.
-//   - brief-vocabulary overlap (capped at +3): shared content tokens
-//     between briefs is a cheap proxy for "would these two concepts
-//     naturally share vocabulary."
+//   - 2-hop neighborhood Jaccard (cap +3): |N²(a) ∩ N²(b)| / |N²(a) ∪ N²(b)|.
+//     Non-zero overlap means the two cross-cluster entities share
+//     intermediate context, usually through a bridge — the analogy has
+//     a real route. Jaccard rather than raw count so a hub like
+//     GigerenzerRationalDeviationReframing (huge 2-hop neighborhood)
+//     doesn't trivially overlap with everything.
+//   - predicate-type Jaccard (cap +4): entities whose predicate
+//     signatures rhyme (e.g. both heavy in TheoryOf and CommentaryOn)
+//     score above categorical mismatches (LocatedIn vs Disputes).
+//   - brief-vocabulary Jaccard (cap +3): shared content tokens between
+//     briefs as a cheap proxy for "would these concepts naturally share
+//     vocabulary," normalized so a verbose-brief entity doesn't pile up
+//     overlap by sheer surface area.
 //
 // Used as a secondary sort key only — never combined with the primary
 // score. This preserves the strict invariant from idea #1 that any
 // bridge-anchored pair outranks any pure brief-only pair, while
 // differentiating among the (often thousands of) tied bridge×bridge
 // candidates that idea #1 alone leaves randomly ordered.
+//
+// Hub-bias mitigation: the post-9ccf567 polecat run (wi-085, 4 cycles
+// × 5 pairs) showed GigerenzerRationalDeviationReframing dominating
+// 3 of 4 cycles because raw-count signals favored its dense
+// neighborhood. Switching to Jaccard normalizes for connectivity
+// degree without losing the "rhyming shape" intuition.
 func pairStructuralAffinity(a, b tripEntity) int {
 	s := 0
 
-	overlap := 0
-	for n := range a.twoHop {
-		if b.twoHop[n] {
-			overlap++
+	if len(a.twoHop) > 0 && len(b.twoHop) > 0 {
+		inter := 0
+		for n := range a.twoHop {
+			if b.twoHop[n] {
+				inter++
+			}
+		}
+		union := len(a.twoHop) + len(b.twoHop) - inter
+		if union > 0 {
+			s += (inter * 3) / union
 		}
 	}
-	if overlap > 3 {
-		overlap = 3
-	}
-	s += overlap
 
 	if len(a.predicates) > 0 && len(b.predicates) > 0 {
 		inter := 0
@@ -1206,21 +1219,22 @@ func pairStructuralAffinity(a, b tripEntity) int {
 		}
 		union := len(a.predicates) + len(b.predicates) - inter
 		if union > 0 {
-			pred := (inter * 4) / union
-			s += pred
+			s += (inter * 4) / union
 		}
 	}
 
-	tok := 0
-	for t := range a.briefTokens {
-		if b.briefTokens[t] {
-			tok++
+	if len(a.briefTokens) > 0 && len(b.briefTokens) > 0 {
+		inter := 0
+		for t := range a.briefTokens {
+			if b.briefTokens[t] {
+				inter++
+			}
+		}
+		union := len(a.briefTokens) + len(b.briefTokens) - inter
+		if union > 0 {
+			s += (inter * 3) / union
 		}
 	}
-	if tok > 3 {
-		tok = 3
-	}
-	s += tok
 
 	return s
 }

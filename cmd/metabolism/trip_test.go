@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -195,22 +196,42 @@ func TestPairStructuralAffinity(t *testing.T) {
 		}
 	})
 
-	t.Run("2-hop overlap only", func(t *testing.T) {
-		// Both reach the same intermediate node but share no predicates
-		// and no brief vocabulary.
+	t.Run("2-hop Jaccard partial overlap", func(t *testing.T) {
+		// A reaches {X, Y}, B reaches {X}. Jaccard = 1/2 = 0.5 → 1.
+		// Other signals zero (predicates and tokens nil).
 		a := tripEntity{name: "A", twoHop: map[string]bool{"X": true, "Y": true}}
 		b := tripEntity{name: "B", twoHop: map[string]bool{"X": true}}
 		if got := pairStructuralAffinity(a, b); got != 1 {
-			t.Errorf("expected 1 (single 2-hop overlap), got %d", got)
+			t.Errorf("expected 1 (Jaccard 0.5 × 3 = 1), got %d", got)
 		}
 	})
 
-	t.Run("2-hop overlap caps at 3", func(t *testing.T) {
+	t.Run("2-hop Jaccard full overlap caps at 3", func(t *testing.T) {
 		shared := map[string]bool{"X1": true, "X2": true, "X3": true, "X4": true, "X5": true}
 		a := tripEntity{name: "A", twoHop: shared}
 		b := tripEntity{name: "B", twoHop: shared}
+		// Identical sets → Jaccard 1.0 → cap at 3.
 		if got := pairStructuralAffinity(a, b); got != 3 {
 			t.Errorf("expected cap at 3, got %d", got)
+		}
+	})
+
+	t.Run("2-hop Jaccard rejects hub-bias", func(t *testing.T) {
+		// Hub entity A has a huge 2-hop neighborhood; partner B has a
+		// tiny one with one shared node. Raw count would score 1; with
+		// Jaccard normalization the small intersection over a large
+		// union scores zero. This is the post-wi-085 fix in action: the
+		// hub doesn't auto-win on neighborhood size.
+		hub := map[string]bool{}
+		for i := 0; i < 50; i++ {
+			hub[fmt.Sprintf("hub-neighbor-%d", i)] = true
+		}
+		hub["shared"] = true
+		a := tripEntity{name: "Hub", twoHop: hub}
+		b := tripEntity{name: "Tiny", twoHop: map[string]bool{"shared": true}}
+		// Jaccard = 1 / 51 ≈ 0.02. (0.02 * 3) = 0 in integer math.
+		if got := pairStructuralAffinity(a, b); got != 0 {
+			t.Errorf("expected 0 (hub dilutes single overlap), got %d", got)
 		}
 	})
 
@@ -233,27 +254,28 @@ func TestPairStructuralAffinity(t *testing.T) {
 		}
 	})
 
-	t.Run("brief vocab overlap only", func(t *testing.T) {
+	t.Run("brief vocab Jaccard partial", func(t *testing.T) {
+		// A: {consciousness, perception}, B: {consciousness}.
+		// Jaccard = 1/2 = 0.5 → 1.
 		a := tripEntity{name: "A", briefTokens: map[string]bool{"consciousness": true, "perception": true}}
 		b := tripEntity{name: "B", briefTokens: map[string]bool{"consciousness": true}}
 		if got := pairStructuralAffinity(a, b); got != 1 {
-			t.Errorf("expected 1, got %d", got)
+			t.Errorf("expected 1 (Jaccard 0.5 × 3 = 1), got %d", got)
 		}
 	})
 
-	t.Run("brief vocab caps at 3", func(t *testing.T) {
+	t.Run("brief vocab Jaccard full overlap caps at 3", func(t *testing.T) {
 		shared := map[string]bool{"a": true, "b": true, "c": true, "d": true, "e": true}
 		a := tripEntity{name: "A", briefTokens: shared}
 		b := tripEntity{name: "B", briefTokens: shared}
-		// 5 tokens overlap, but the brief-vocab signal caps at 3.
-		// (Other signals are zero because predicates/twoHop are nil.)
 		if got := pairStructuralAffinity(a, b); got != 3 {
 			t.Errorf("expected cap at 3, got %d", got)
 		}
 	})
 
-	t.Run("composite (all three signals)", func(t *testing.T) {
-		// 2-hop: 1 overlap (+1), predicates: identical (+4), tokens: 2 overlap (+2). Total: 7.
+	t.Run("composite (all three signals, Jaccard)", func(t *testing.T) {
+		// All three signals at Jaccard = 1.0: 2-hop +3, predicates +4,
+		// tokens +3. Total: 10.
 		a := tripEntity{
 			name:        "A",
 			twoHop:      map[string]bool{"X": true},
@@ -266,8 +288,8 @@ func TestPairStructuralAffinity(t *testing.T) {
 			predicates:  map[string]bool{"TheoryOf": true},
 			briefTokens: map[string]bool{"alpha": true, "beta": true},
 		}
-		if got := pairStructuralAffinity(a, b); got != 7 {
-			t.Errorf("expected 7 (1+4+2), got %d", got)
+		if got := pairStructuralAffinity(a, b); got != 10 {
+			t.Errorf("expected 10 (3+4+3 at Jaccard 1.0), got %d", got)
 		}
 	})
 }
