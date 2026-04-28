@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -40,6 +41,13 @@ type tripEntity struct {
 	file     string
 	cluster  int
 	bridge   bool // articulation point — removing it disconnects subgraphs
+
+	// Structural-affinity signals, populated by collectTripEntities and
+	// consumed by pairStructuralAffinity. Nil-safe: tests can construct
+	// tripEntity literals without these and the affinity score is zero.
+	predicates  map[string]bool // predicates this entity appears in (Subject or Object)
+	twoHop      map[string]bool // names reachable within 2 hops in the claim graph
+	briefTokens map[string]bool // normalized content-token bag from brief
 }
 
 type tripPair struct {
@@ -147,8 +155,9 @@ func runTrip(dir string, temperature float64, promptType string, nPairs int, dry
 				}
 				return " "
 			}
-			fmt.Printf("    [%d]%s%-30s ↔ [%d]%s%-30s  score=%d\n",
-				p.A.cluster, mark(p.A), p.A.name, p.B.cluster, mark(p.B), p.B.name, pairCandidateScore(p.A, p.B))
+			fmt.Printf("    [%d]%s%-30s ↔ [%d]%s%-30s  score=%d aff=%d\n",
+				p.A.cluster, mark(p.A), p.A.name, p.B.cluster, mark(p.B), p.B.name,
+				pairCandidateScore(p.A, p.B), pairStructuralAffinity(p.A, p.B))
 		}
 		return TripReport{Pairs: len(pairs), DrugProfile: profile, Temperature: temperature, PromptType: promptType}
 	}
@@ -162,11 +171,18 @@ func runTrip(dir string, temperature float64, promptType string, nPairs int, dry
 	}
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
 
+	// Sample anti-exemplars once for the whole cycle. Two is enough to
+	// teach the failure shape without bloating the per-pair prompt.
+	antiExemplars := sampleAntiExemplars(dir, 2)
+	if len(antiExemplars) > 0 {
+		fmt.Printf("[trip] anti-exemplars seeded: %d shapes\n", len(antiExemplars))
+	}
+
 	var connections []TripConnection
 	for i, p := range pairs {
 		fmt.Printf("  [%d/%d] %s ↔ %s ... ", i+1, len(pairs), p.A.name, p.B.name)
 
-		conn, err := generateConnection(client, p, promptType, temperature)
+		conn, err := generateConnection(client, p, promptType, temperature, antiExemplars)
 		if err != nil {
 			fmt.Printf("error: %v\n", err)
 			continue
@@ -731,6 +747,25 @@ func collectTripEntities(dir string) []tripEntity {
 		addEdge(c.subject, c.object)
 	}
 
+	// Per-entity predicate participation (Subject or Object). Drives the
+	// "predicate-type complementarity" signal: pairs whose epistemic
+	// shapes rhyme (both heavily TheoryOf/CommentaryOn, etc.) score above
+	// pairs that are categorically mismatched (LocatedIn vs Disputes).
+	predOf := map[string]map[string]bool{}
+	for _, c := range claims {
+		if c.predicate == "" {
+			continue
+		}
+		if predOf[c.subject] == nil {
+			predOf[c.subject] = map[string]bool{}
+		}
+		predOf[c.subject][c.predicate] = true
+		if predOf[c.object] == nil {
+			predOf[c.object] = map[string]bool{}
+		}
+		predOf[c.object][c.predicate] = true
+	}
+
 	// BFS cluster assignment
 	clusterOf := map[string]int{}
 	clusterID := 0
@@ -758,6 +793,24 @@ func collectTripEntities(dir string) []tripEntity {
 
 	bridgeSet := findBridgesFromAdj(adj)
 
+	// Two-hop neighborhood per entity. Cross-cluster pairs by definition
+	// have disjoint immediate neighborhoods, but pairs sharing
+	// second-degree contacts (typically through bridges) have a real
+	// "route" between them — informative tie-breaker among bridge-anchored
+	// candidates. Computed once, kept on tripEntity.twoHop.
+	twoHopOf := map[string]map[string]bool{}
+	for name := range adj {
+		seen := map[string]bool{name: true}
+		for n1 := range adj[name] {
+			seen[n1] = true
+			for n2 := range adj[n1] {
+				seen[n2] = true
+			}
+		}
+		delete(seen, name)
+		twoHopOf[name] = seen
+	}
+
 	// Build output, excluding reified meta-hypotheses. Reified entities
 	// (TripPromotionSurvivesLint, EvidenceSearchXxx, etc., declared in
 	// predictions.go) are loop artifacts of the metabolism's own
@@ -776,15 +829,140 @@ func collectTripEntities(dir string) []tripEntity {
 			cid = -1 // isolated
 		}
 		result = append(result, tripEntity{
-			name:     e.name,
-			roleType: e.roleType,
-			brief:    e.brief,
-			file:     e.file,
-			cluster:  cid,
-			bridge:   bridgeSet[e.name],
+			name:        e.name,
+			roleType:    e.roleType,
+			brief:       e.brief,
+			file:        e.file,
+			cluster:     cid,
+			bridge:      bridgeSet[e.name],
+			predicates:  predOf[e.name],
+			twoHop:      twoHopOf[e.name],
+			briefTokens: tokenizeBrief(e.brief),
 		})
 	}
 	return result
+}
+
+// antiExemplar is one human-rejected polecat output, reconstructed from
+// inline `// YYYY-MM-DD audit:` comments that flag deleted claims. Used
+// as negative-shape guidance in buildTripPrompt — the inverse of the
+// critic's positive-exemplar pattern (see sampleHighQualityClaims in
+// critic.go). Mining the same comments at prompt time means the corpus
+// itself stays the source of truth: when a future audit deletes more
+// claims it just adds more anti-exemplars without code changes.
+type antiExemplar struct {
+	Shape  string // e.g., "AytonFischer Accepts ConradApopheniaClinicalFraming"
+	Reason string // condensed rejection reason from the audit comment block
+}
+
+// auditCommentPrefix matches the leading line of an audit comment block,
+// e.g. `// 2026-04-27 audit:`. Date is loose so future audits don't need
+// a code change; the only requirement is the YYYY-MM-DD prefix and the
+// literal "audit:" tag.
+var auditCommentPrefix = regexp.MustCompile(`^\s*//\s*\d{4}-\d{2}-\d{2}\s+audit:`)
+
+// auditShapePattern extracts the deleted claim shape from an audit
+// comment. Convention: the first backtick-quoted phrase in the block
+// names the (Subject Predicate Object) tuple.
+var auditShapePattern = regexp.MustCompile("`([^`]+)`")
+
+// sampleAntiExemplars walks the corpus and returns up to n
+// human-rejected claim shapes mined from `// YYYY-MM-DD audit:` comment
+// blocks. Each block opens with the deleted claim in backticks, then
+// the rejection reason. Sampled fresh per call so the trip prompt sees
+// varying anti-exemplars across cycles.
+func sampleAntiExemplars(dir string, n int) []antiExemplar {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var pool []antiExemplar
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(data), "\n")
+		for i := 0; i < len(lines); i++ {
+			if !auditCommentPrefix.MatchString(lines[i]) {
+				continue
+			}
+			// Accumulate the contiguous comment block.
+			var block strings.Builder
+			j := i
+			for ; j < len(lines); j++ {
+				t := strings.TrimSpace(lines[j])
+				if !strings.HasPrefix(t, "//") {
+					break
+				}
+				body := strings.TrimSpace(strings.TrimPrefix(t, "//"))
+				if block.Len() > 0 {
+					block.WriteByte(' ')
+				}
+				block.WriteString(body)
+			}
+			i = j // skip past consumed lines
+			text := block.String()
+			shape := auditShapePattern.FindStringSubmatch(text)
+			if len(shape) < 2 {
+				continue
+			}
+			// Strip the boilerplate first sentence ("...was deleted here.")
+			// and keep the rest as the rejection reason.
+			reason := text
+			if idx := strings.Index(text, "deleted here."); idx >= 0 {
+				reason = strings.TrimSpace(text[idx+len("deleted here."):])
+			}
+			pool = append(pool, antiExemplar{Shape: shape[1], Reason: reason})
+		}
+	}
+	if len(pool) == 0 {
+		return nil
+	}
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
+	if n > len(pool) {
+		n = len(pool)
+	}
+	return pool[:n]
+}
+
+// tokenizeBrief reduces a Brief string to a content-token bag for the
+// brief-vocabulary cosine signal. Cheap normalization: lowercase, split
+// on non-alphanumerics, drop tokens shorter than 4 chars (catches most
+// English stopwords without a curated list, keeps domain words).
+func tokenizeBrief(brief string) map[string]bool {
+	if brief == "" {
+		return nil
+	}
+	out := map[string]bool{}
+	var cur strings.Builder
+	flush := func() {
+		if cur.Len() == 0 {
+			return
+		}
+		tok := strings.ToLower(cur.String())
+		cur.Reset()
+		if len(tok) >= 4 {
+			out[tok] = true
+		}
+	}
+	for _, r := range brief {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			cur.WriteRune(r)
+		default:
+			flush()
+		}
+	}
+	flush()
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // isReifiedEntityFile reports whether a corpus file holds reify-output
@@ -804,8 +982,9 @@ type tripRawEntity = struct {
 }
 
 type tripRawClaim = struct {
-	subject string
-	object  string
+	subject   string
+	object    string
+	predicate string // composite-literal type name (e.g., "Proposes", "TheoryOf")
 }
 
 func collectTripDataDefn(client *defndb.Client) ([]tripRawEntity, []tripRawClaim, error) {
@@ -865,7 +1044,7 @@ func collectTripDataDefn(client *defndb.Client) ([]tripRawEntity, []tripRawClaim
 		return nil, nil, err
 	}
 	type cBuild struct {
-		subject, object string
+		subject, object, predicate string
 	}
 	cm := map[string]*cBuild{}
 	for _, f := range cFields {
@@ -873,6 +1052,9 @@ func collectTripDataDefn(client *defndb.Client) ([]tripRawEntity, []tripRawClaim
 		if !ok {
 			c = &cBuild{}
 			cm[f.DefName] = c
+		}
+		if c.predicate == "" {
+			c.predicate = f.TypeName
 		}
 		val := strings.Trim(f.FieldValue, "\"")
 		switch f.FieldName {
@@ -885,7 +1067,7 @@ func collectTripDataDefn(client *defndb.Client) ([]tripRawEntity, []tripRawClaim
 	var claims []tripRawClaim
 	for _, c := range cm {
 		if c.subject != "" && c.object != "" {
-			claims = append(claims, tripRawClaim{subject: c.subject, object: c.object})
+			claims = append(claims, tripRawClaim{subject: c.subject, object: c.object, predicate: c.predicate})
 		}
 	}
 
@@ -981,6 +1163,68 @@ func pairCandidateScore(a, b tripEntity) int {
 	return s
 }
 
+// pairStructuralAffinity returns a secondary score used to break ties
+// among candidates with the same pairCandidateScore. The structural
+// affinity is computed from three cheap graph/text signals:
+//
+//   - 2-hop neighborhood overlap (capped at +3): non-zero overlap means
+//     the two cross-cluster entities share intermediate context, usually
+//     through a bridge — the analogy has a real route.
+//   - predicate-type complementarity (Jaccard, capped at +4): entities
+//     whose predicate signatures rhyme (e.g. both heavy in TheoryOf and
+//     CommentaryOn) have parallel epistemic shapes; categorical mismatches
+//     (LocatedIn vs Disputes) score zero.
+//   - brief-vocabulary overlap (capped at +3): shared content tokens
+//     between briefs is a cheap proxy for "would these two concepts
+//     naturally share vocabulary."
+//
+// Used as a secondary sort key only — never combined with the primary
+// score. This preserves the strict invariant from idea #1 that any
+// bridge-anchored pair outranks any pure brief-only pair, while
+// differentiating among the (often thousands of) tied bridge×bridge
+// candidates that idea #1 alone leaves randomly ordered.
+func pairStructuralAffinity(a, b tripEntity) int {
+	s := 0
+
+	overlap := 0
+	for n := range a.twoHop {
+		if b.twoHop[n] {
+			overlap++
+		}
+	}
+	if overlap > 3 {
+		overlap = 3
+	}
+	s += overlap
+
+	if len(a.predicates) > 0 && len(b.predicates) > 0 {
+		inter := 0
+		for p := range a.predicates {
+			if b.predicates[p] {
+				inter++
+			}
+		}
+		union := len(a.predicates) + len(b.predicates) - inter
+		if union > 0 {
+			pred := (inter * 4) / union
+			s += pred
+		}
+	}
+
+	tok := 0
+	for t := range a.briefTokens {
+		if b.briefTokens[t] {
+			tok++
+		}
+	}
+	if tok > 3 {
+		tok = 3
+	}
+	s += tok
+
+	return s
+}
+
 func pickCrossClusterPairs(entities []tripEntity, n int) []tripPair {
 	// Group by cluster
 	byCluster := map[int][]tripEntity{}
@@ -1002,8 +1246,9 @@ func pickCrossClusterPairs(entities []tripEntity, n int) []tripPair {
 
 	// Generate candidate pairs from different clusters
 	type candidate struct {
-		pair  tripPair
-		score int
+		pair     tripPair
+		score    int
+		affinity int
 	}
 	var candidates []candidate
 
@@ -1012,20 +1257,26 @@ func pickCrossClusterPairs(entities []tripEntity, n int) []tripPair {
 			for _, a := range byCluster[cidA] {
 				for _, b := range byCluster[cidB] {
 					candidates = append(candidates, candidate{
-						pair:  tripPair{A: a, B: b},
-						score: pairCandidateScore(a, b),
+						pair:     tripPair{A: a, B: b},
+						score:    pairCandidateScore(a, b),
+						affinity: pairStructuralAffinity(a, b),
 					})
 				}
 			}
 		}
 	}
 
-	// Shuffle, then sort by score (highest first)
+	// Shuffle, then stable-sort by primary score then affinity. Random
+	// shuffle survives within the (score, affinity) tie class so the
+	// trip cycle keeps exploration variance even after ranking.
 	rand.Shuffle(len(candidates), func(i, j int) {
 		candidates[i], candidates[j] = candidates[j], candidates[i]
 	})
 	sort.SliceStable(candidates, func(i, j int) bool {
-		return candidates[i].score > candidates[j].score
+		if candidates[i].score != candidates[j].score {
+			return candidates[i].score > candidates[j].score
+		}
+		return candidates[i].affinity > candidates[j].affinity
 	})
 
 	// Take top n
@@ -1344,8 +1595,8 @@ func callToolUse(client anthropic.Client, prompt string, tool anthropic.ToolUnio
 // Uses tool_use with a dynamically-scoped predicate enum: only predicates whose
 // Subject/Object slots could accept this entity pair are offered. Invalid
 // predicates are impossible by schema.
-func generateConnection(client anthropic.Client, pair tripPair, promptType string, temperature float64) (TripConnection, error) {
-	prompt := buildTripPrompt(pair, promptType)
+func generateConnection(client anthropic.Client, pair tripPair, promptType string, temperature float64, antiExemplars []antiExemplar) (TripConnection, error) {
+	prompt := buildTripPrompt(pair, promptType, antiExemplars)
 
 	apiTemp := temperature
 	if apiTemp > 1.0 {
@@ -1422,7 +1673,7 @@ func generateConnection(client anthropic.Client, pair tripPair, promptType strin
 	return conn, nil
 }
 
-func buildTripPrompt(pair tripPair, promptType string) string {
+func buildTripPrompt(pair tripPair, promptType string, antiExemplars []antiExemplar) string {
 	var promptInstruction string
 	switch promptType {
 	case "analogy":
@@ -1460,6 +1711,23 @@ func buildTripPrompt(pair tripPair, promptType string) string {
 		predicateList = b.String()
 	}
 
+	// Anti-exemplars: 2026-04-27 audit deleted four polecat outputs whose
+	// failure shapes (citation-as-attribution, publishing-platform-as-org,
+	// predicate misuse, duplicate-of-canonical) are now mined back into
+	// the prompt as negative guidance. Mirrors critic.go's
+	// sampleHighQualityClaims; instead of "good looks like X" the
+	// generator gets "these specific shapes were rejected — don't repeat."
+	var antiExemplarSection string
+	if len(antiExemplars) > 0 {
+		var b strings.Builder
+		b.WriteString("\nFAILURE-MODE ANTI-EXEMPLARS (past polecat outputs that human review rejected — illustrative, not exhaustive):\n")
+		for _, a := range antiExemplars {
+			b.WriteString(fmt.Sprintf("  - `%s` — %s\n", a.Shape, a.Reason))
+		}
+		b.WriteString("Do not produce connections shaped like these. Use them as guides for what specific failure modes to avoid (predicate misuse, citation-as-attribution, duplicate-of-canonical, etc.), not as a checklist that exhausts the rejection space.\n")
+		antiExemplarSection = b.String()
+	}
+
 	return fmt.Sprintf(`You are generating speculative cross-domain connections for a knowledge base about the epistemology of minds — how minds build, validate, and fail at modeling reality.
 
 These two entities are in DIFFERENT clusters (no existing connection). Your job: find a non-obvious but defensible connection.
@@ -1475,7 +1743,7 @@ Connection type: %s
 
 Compatible predicates for this entity pair (Subject→Object):
 %s
-
+%s
 PREDICATE SEMANTICS (guidance, not censorship):
 
 The most useful predicate names a SPECIFIC structural relationship rather than a generic resemblance. Reference points (a downstream critic enforces these; you don't need to over-self-censor — generate honestly):
@@ -1493,6 +1761,7 @@ Entity A is a %s. Entity B is a %s. Use only a predicate from the compatible lis
 		pair.B.name, pair.B.roleType, briefB,
 		promptType, promptInstruction,
 		predicateList,
+		antiExemplarSection,
 		pair.A.roleType, pair.B.roleType)
 }
 
