@@ -605,7 +605,7 @@ func runAsk(kb *kbIndex, dir, question string) {
 		os.Exit(1)
 	}
 
-	answer, err := askLLM(kb, apiKey, question)
+	answer, err := askLLM(kb, dir, apiKey, question)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "query: ask: %v\n", err)
 		os.Exit(1)
@@ -625,7 +625,7 @@ func runAskInteractive(kb *kbIndex, dir string) {
 	}
 
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
-	kbContext := buildKBContext(kb)
+	kbContext := buildKBContext(kb, dir)
 
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("winze query (type 'quit' to exit)")
@@ -652,7 +652,49 @@ func runAskInteractive(kb *kbIndex, dir string) {
 	}
 }
 
-func buildKBContext(kb *kbIndex) string {
+// tripIsolatedConn mirrors the row format written by
+// cmd/metabolism/trip.go appendIsolatedConnections. Loaded by
+// buildKBContext so the LLM sees what the trip cycle dreamed up but
+// couldn't fit a canonical predicate to. These are the strongest signal
+// of cross-cluster isomorphisms the corpus's typed claims don't
+// capture; including them lets --ask anticipate rather than only
+// recite.
+type tripIsolatedConn struct {
+	Timestamp   string  `json:"timestamp"`
+	EntityA     string  `json:"entity_a"`
+	EntityB     string  `json:"entity_b"`
+	Connection  string  `json:"connection"`
+	Rationale   string  `json:"rationale"`
+	Score       int     `json:"score"`
+	PromptType  string  `json:"prompt_type"`
+	Temperature float64 `json:"temperature"`
+}
+
+func loadTripIsolatedConns(dir string) []tripIsolatedConn {
+	path := filepath.Join(dir, ".metabolism-trip-isolated.jsonl")
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var out []tripIsolatedConn
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var c tripIsolatedConn
+		if err := json.Unmarshal([]byte(line), &c); err != nil {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+func buildKBContext(kb *kbIndex, dir string) string {
 	var b strings.Builder
 	b.WriteString("You are answering questions about the winze knowledge base.\n")
 	b.WriteString("The KB tracks the epistemology of minds — how minds build, validate, and fail at modeling reality.\n\n")
@@ -690,6 +732,25 @@ func buildKBContext(kb *kbIndex) string {
 			b.WriteString(fmt.Sprintf("- %s disputes %s (prov: %s)\n", c.Subject, c.Object, c.ProvRef))
 		}
 	}
+
+	// Speculative cross-cluster connections from the trip cycle that did
+	// not fit any canonical KB predicate (predicate=NONE). These are the
+	// metabolism's dream-state output — pattern matches the typed claim
+	// graph couldn't write down, but which often capture real structural
+	// isomorphisms (limits-of-formalization, two-tier hierarchical
+	// correction, reframe-failure-as-function archetypes per the wi-085
+	// clustering review). Including them lets --ask reach for a
+	// genuinely-discovered-but-unwritable connection rather than only
+	// reciting curated claims.
+	if conns := loadTripIsolatedConns(dir); len(conns) > 0 {
+		b.WriteString("\n## Speculative Cross-Cluster Connections (trip-cycle dream-state, no canonical predicate)\n\n")
+		b.WriteString("These are connections the trip cycle judged structurally interesting (score 3-5) but could not fit any canonical KB predicate. Use them as suggestive evidence of latent structure in the KB, not as authoritative claims; they have not been critic-cleared for promotion.\n\n")
+		for _, c := range conns {
+			b.WriteString(fmt.Sprintf("- %s ↔ %s [score %d/5, %s]: %s\n",
+				c.EntityA, c.EntityB, c.Score, c.PromptType, c.Connection))
+		}
+	}
+
 	return b.String()
 }
 
@@ -697,9 +758,9 @@ func buildKBContext(kb *kbIndex) string {
 // Haiku's context is ~200k tokens; at ~4 chars/token, 400k chars is safe.
 const maxKBContextChars = 400_000
 
-func askLLM(kb *kbIndex, apiKey, question string) (string, error) {
+func askLLM(kb *kbIndex, dir, apiKey, question string) (string, error) {
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
-	kbCtx := buildKBContext(kb)
+	kbCtx := buildKBContext(kb, dir)
 	return askWithClient(client, kbCtx, question)
 }
 
