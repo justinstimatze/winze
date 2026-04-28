@@ -32,6 +32,9 @@
 # Metabolism patrol progress counter (handoff-survival state)
 .metabolism-tick-progress
 
+# Trip-cycle NONE-predicate connections (predicate-ontology gap log)
+.metabolism-trip-isolated.jsonl
+
 # Sensor config (contains local paths)
 .metabolism.json
 

@@ -206,8 +206,78 @@ func runTrip(dir string, temperature float64, promptType string, nPairs int, dry
 		PromptType:  promptType,
 	}
 
+	if n := appendIsolatedConnections(dir, connections, profile, temperature, promptType); n > 0 {
+		fmt.Printf("[trip] %d NONE-predicate connections appended to .metabolism-trip-isolated.jsonl\n", n)
+	}
+
 	printTripReport(report, jsonOut)
 	return report
+}
+
+// appendIsolatedConnections persists NONE-predicate trip connections to
+// .metabolism-trip-isolated.jsonl in the corpus dir. These are
+// connections where the LLM identified a structural isomorphism but no
+// canonical KB predicate fit — the wi-085 polecat run found that 18 of
+// 20 generations carried predicate=NONE, signaling a predicate-ontology
+// gap rather than a sampler problem. The JSONL accretes one row per
+// NONE-shape connection so a future review (human or schema-accretion
+// pass) can cluster the recurring patterns into named predicate
+// candidates instead of re-discovering the gap each cycle.
+//
+// The file is gitignore-able like other .metabolism-*.json artifacts.
+// Returns the count appended (zero if no NONE connections).
+func appendIsolatedConnections(dir string, conns []TripConnection, profile string, temperature float64, promptType string) int {
+	var none []TripConnection
+	for _, c := range conns {
+		if c.Predicate == "" || c.Predicate == "NONE" {
+			none = append(none, c)
+		}
+	}
+	if len(none) == 0 {
+		return 0
+	}
+	path := filepath.Join(dir, ".metabolism-trip-isolated.jsonl")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[trip] could not open %s: %v\n", path, err)
+		return 0
+	}
+	defer f.Close()
+	enc := json.NewEncoder(f)
+	ts := time.Now().UTC().Format(time.RFC3339)
+	type isolatedRow struct {
+		Timestamp   string  `json:"timestamp"`
+		EntityA     string  `json:"entity_a"`
+		EntityB     string  `json:"entity_b"`
+		ClusterA    int     `json:"cluster_a"`
+		ClusterB    int     `json:"cluster_b"`
+		Connection  string  `json:"connection"`
+		Rationale   string  `json:"rationale"`
+		Score       int     `json:"score"`
+		PromptType  string  `json:"prompt_type"`
+		Temperature float64 `json:"temperature"`
+		DrugProfile string  `json:"drug_profile"`
+	}
+	for _, c := range none {
+		row := isolatedRow{
+			Timestamp:   ts,
+			EntityA:     c.EntityA,
+			EntityB:     c.EntityB,
+			ClusterA:    c.ClusterA,
+			ClusterB:    c.ClusterB,
+			Connection:  c.Connection,
+			Rationale:   c.Rationale,
+			Score:       c.Score,
+			PromptType:  promptType,
+			Temperature: temperature,
+			DrugProfile: profile,
+		}
+		if err := enc.Encode(row); err != nil {
+			fmt.Fprintf(os.Stderr, "[trip] write isolated row: %v\n", err)
+			return 0
+		}
+	}
+	return len(none)
 }
 
 // runGroupTrip handles confluence and synthesis prompt types, which operate

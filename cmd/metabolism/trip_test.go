@@ -462,6 +462,51 @@ func TestBuildTripPrompt_NoAntiExemplars(t *testing.T) {
 	}
 }
 
+// TestAppendIsolatedConnections pins the NONE-predicate JSONL sink:
+// connections with no canonical predicate are persisted so a future
+// review can cluster the recurring shapes; named-predicate connections
+// are skipped (they go through the normal promotion funnel).
+func TestAppendIsolatedConnections(t *testing.T) {
+	dir := t.TempDir()
+	conns := []TripConnection{
+		{EntityA: "ConceptA", EntityB: "ConceptB", Connection: "isomorphism w/o predicate", Score: 4, Predicate: "NONE"},
+		{EntityA: "PersonX", EntityB: "HypoY", Connection: "X proposes Y", Score: 4, Predicate: "Proposes"},
+		{EntityA: "Hypo1", EntityB: "Hypo2", Connection: "another structural shape", Score: 3, Predicate: ""},
+	}
+	n := appendIsolatedConnections(dir, conns, "psychedelic/pattern-matching", 0.9, "analogy")
+	if n != 2 {
+		t.Errorf("expected 2 NONE connections persisted, got %d", n)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".metabolism-trip-isolated.jsonl"))
+	if err != nil {
+		t.Fatalf("expected JSONL file written: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Errorf("expected 2 lines, got %d", len(lines))
+	}
+	if !strings.Contains(string(data), "isomorphism w/o predicate") {
+		t.Error("expected first NONE connection in JSONL")
+	}
+	if !strings.Contains(string(data), "another structural shape") {
+		t.Error("expected empty-predicate connection treated as NONE")
+	}
+	if strings.Contains(string(data), "X proposes Y") {
+		t.Error("named-predicate connection leaked into NONE log")
+	}
+
+	// Append idempotency: a second call should add 2 more rows, not
+	// rewrite the file.
+	if n2 := appendIsolatedConnections(dir, conns, "psychedelic/pattern-matching", 0.9, "analogy"); n2 != 2 {
+		t.Errorf("second call: expected 2, got %d", n2)
+	}
+	data2, _ := os.ReadFile(filepath.Join(dir, ".metabolism-trip-isolated.jsonl"))
+	lines2 := strings.Split(strings.TrimSpace(string(data2)), "\n")
+	if len(lines2) != 4 {
+		t.Errorf("expected 4 lines after second append, got %d", len(lines2))
+	}
+}
+
 // TestTokenizeBrief pins the brief-vocabulary tokenizer behavior. The
 // signal is sensitive to which tokens survive — an over-aggressive
 // stopword filter would zero out the brief-vocab affinity component.
