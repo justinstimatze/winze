@@ -39,6 +39,7 @@ type tripEntity struct {
 	brief    string
 	file     string
 	cluster  int
+	bridge   bool // articulation point — removing it disconnects subgraphs
 }
 
 type tripPair struct {
@@ -132,10 +133,22 @@ func runTrip(dir string, temperature float64, promptType string, nPairs int, dry
 	fmt.Printf("[trip] selected %d cross-cluster pairs\n", len(pairs))
 
 	if dryRun {
-		fmt.Println("\n  dry run — would evaluate:")
+		nBridges := 0
+		for _, e := range entities {
+			if e.bridge {
+				nBridges++
+			}
+		}
+		fmt.Printf("\n  dry run — would evaluate (%d/%d entities are bridges):\n", nBridges, len(entities))
 		for _, p := range pairs {
-			fmt.Printf("    [%d] %-30s ↔ [%d] %-30s\n",
-				p.A.cluster, p.A.name, p.B.cluster, p.B.name)
+			mark := func(e tripEntity) string {
+				if e.bridge {
+					return "*"
+				}
+				return " "
+			}
+			fmt.Printf("    [%d]%s%-30s ↔ [%d]%s%-30s  score=%d\n",
+				p.A.cluster, mark(p.A), p.A.name, p.B.cluster, mark(p.B), p.B.name, pairCandidateScore(p.A, p.B))
 		}
 		return TripReport{Pairs: len(pairs), DrugProfile: profile, Temperature: temperature, PromptType: promptType}
 	}
@@ -743,6 +756,8 @@ func collectTripEntities(dir string) []tripEntity {
 		clusterID++
 	}
 
+	bridgeSet := findBridgesFromAdj(adj)
+
 	// Build output, excluding reified meta-hypotheses. Reified entities
 	// (TripPromotionSurvivesLint, EvidenceSearchXxx, etc., declared in
 	// predictions.go) are loop artifacts of the metabolism's own
@@ -766,6 +781,7 @@ func collectTripEntities(dir string) []tripEntity {
 			brief:    e.brief,
 			file:     e.file,
 			cluster:  cid,
+			bridge:   bridgeSet[e.name],
 		})
 	}
 	return result
@@ -879,6 +895,92 @@ func collectTripDataDefn(client *defndb.Client) ([]tripRawEntity, []tripRawClaim
 
 // pickCrossClusterPairs selects entity pairs from different clusters.
 // Prioritizes pairs where both entities have Briefs (for better LLM context).
+// findBridgesFromAdj returns the set of articulation-point entity names:
+// nodes whose removal increases the connected-component count. Brute-force
+// implementation mirrors cmd/topology/main.go:findBridgeEntities so trip
+// and topology agree on which entities are "bridges." For ~350 nodes this
+// is sub-second; switch to Tarjan if the corpus crosses ~10k.
+func findBridgesFromAdj(adj map[string]map[string]bool) map[string]bool {
+	if len(adj) < 4 {
+		return nil
+	}
+	baseline := countClustersInAdj(adj)
+	out := map[string]bool{}
+	for name := range adj {
+		if len(adj[name]) < 2 {
+			continue
+		}
+		removed := adj[name]
+		delete(adj, name)
+		for neighbor := range removed {
+			delete(adj[neighbor], name)
+		}
+		after := countClustersInAdj(adj)
+		adj[name] = removed
+		for neighbor := range removed {
+			if adj[neighbor] == nil {
+				adj[neighbor] = map[string]bool{}
+			}
+			adj[neighbor][name] = true
+		}
+		if after > baseline {
+			out[name] = true
+		}
+	}
+	return out
+}
+
+func countClustersInAdj(adj map[string]map[string]bool) int {
+	visited := map[string]bool{}
+	clusters := 0
+	for start := range adj {
+		if visited[start] {
+			continue
+		}
+		clusters++
+		queue := []string{start}
+		visited[start] = true
+		for len(queue) > 0 {
+			cur := queue[0]
+			queue = queue[1:]
+			for n := range adj[cur] {
+				if !visited[n] {
+					visited[n] = true
+					queue = append(queue, n)
+				}
+			}
+		}
+	}
+	return clusters
+}
+
+// pairCandidateScore is exposed for tests; in production it ranks
+// cross-cluster candidates so that bridge-anchored, brief-complete pairs
+// surface first. Bridges already proved they support multiple cluster
+// connections (topology verified articulation), so they are stronger
+// anchors for cross-cluster analogies than uniformly-random nodes.
+func pairCandidateScore(a, b tripEntity) int {
+	s := 0
+	if a.brief != "" {
+		s++
+	}
+	if b.brief != "" {
+		s++
+	}
+	// Bridge bias: each bridge endpoint adds 3 points. Weight chosen so
+	// any bridge-anchored pair (min score 3) strictly outranks any pure
+	// brief-only pair (max score 2), and bridge×bridge (6) outranks
+	// bridge×brief (4). Tied bridges still shuffle randomly within their
+	// score class.
+	if a.bridge {
+		s += 3
+	}
+	if b.bridge {
+		s += 3
+	}
+	return s
+}
+
 func pickCrossClusterPairs(entities []tripEntity, n int) []tripPair {
 	// Group by cluster
 	byCluster := map[int][]tripEntity{}
@@ -901,7 +1003,7 @@ func pickCrossClusterPairs(entities []tripEntity, n int) []tripPair {
 	// Generate candidate pairs from different clusters
 	type candidate struct {
 		pair  tripPair
-		score int // both have briefs = 2, one has = 1, neither = 0
+		score int
 	}
 	var candidates []candidate
 
@@ -909,23 +1011,16 @@ func pickCrossClusterPairs(entities []tripEntity, n int) []tripPair {
 		for _, cidB := range clusterIDs[i+1:] {
 			for _, a := range byCluster[cidA] {
 				for _, b := range byCluster[cidB] {
-					s := 0
-					if a.brief != "" {
-						s++
-					}
-					if b.brief != "" {
-						s++
-					}
 					candidates = append(candidates, candidate{
 						pair:  tripPair{A: a, B: b},
-						score: s,
+						score: pairCandidateScore(a, b),
 					})
 				}
 			}
 		}
 	}
 
-	// Shuffle, then sort by score (both-have-briefs first)
+	// Shuffle, then sort by score (highest first)
 	rand.Shuffle(len(candidates), func(i, j int) {
 		candidates[i], candidates[j] = candidates[j], candidates[i]
 	})

@@ -70,6 +70,116 @@ func TestPickCrossClusterPairs(t *testing.T) {
 	})
 }
 
+// TestPairCandidateScore pins the bridge-bias scoring: bridge endpoints
+// add 2 points each, brief presence adds 1. Weights chosen so any
+// bridge-anchored pair outranks any non-bridge pair, even one with both
+// briefs filled.
+func TestPairCandidateScore(t *testing.T) {
+	cases := []struct {
+		name string
+		a, b tripEntity
+		want int
+	}{
+		{"both bridges, both briefs", tripEntity{bridge: true, brief: "x"}, tripEntity{bridge: true, brief: "y"}, 8},
+		{"both bridges, no briefs", tripEntity{bridge: true}, tripEntity{bridge: true}, 6},
+		{"one bridge, both briefs", tripEntity{bridge: true, brief: "x"}, tripEntity{brief: "y"}, 5},
+		{"one bridge alone", tripEntity{bridge: true}, tripEntity{}, 3},
+		{"both briefs, no bridges", tripEntity{brief: "x"}, tripEntity{brief: "y"}, 2},
+		{"one brief", tripEntity{brief: "x"}, tripEntity{}, 1},
+		{"empty", tripEntity{}, tripEntity{}, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := pairCandidateScore(tc.a, tc.b); got != tc.want {
+				t.Errorf("pairCandidateScore = %d, want %d", got, tc.want)
+			}
+		})
+	}
+
+	// Invariant: any pair with at least one bridge endpoint outscores any
+	// pair with no bridge endpoint, regardless of brief completeness.
+	worstBridge := pairCandidateScore(tripEntity{bridge: true}, tripEntity{})
+	bestNonBridge := pairCandidateScore(tripEntity{brief: "x"}, tripEntity{brief: "y"})
+	if worstBridge <= bestNonBridge {
+		t.Errorf("invariant broken: worst-bridge (%d) must outrank best-non-bridge (%d)", worstBridge, bestNonBridge)
+	}
+}
+
+// TestPickCrossClusterPairs_BridgeBias verifies the sampler surfaces
+// bridge-anchored pairs first when bridges exist. Without this bias the
+// sampler picks uniformly across cross-cluster pairs and most candidates
+// are weak-analogy random concept pairs (the 2026-04-27 demo failure
+// mode).
+func TestPickCrossClusterPairs_BridgeBias(t *testing.T) {
+	entities := []tripEntity{
+		{name: "BridgeA", cluster: 0, brief: "anchor", bridge: true},
+		{name: "PlainA", cluster: 0, brief: "plain"},
+		{name: "BridgeB", cluster: 1, brief: "anchor", bridge: true},
+		{name: "PlainB", cluster: 1, brief: "plain"},
+	}
+	pairs := pickCrossClusterPairs(entities, 1)
+	if len(pairs) == 0 {
+		t.Fatal("expected at least 1 pair")
+	}
+	p := pairs[0]
+	if !p.A.bridge || !p.B.bridge {
+		t.Errorf("expected bridge×bridge to surface first, got %s(bridge=%v) ↔ %s(bridge=%v)",
+			p.A.name, p.A.bridge, p.B.name, p.B.bridge)
+	}
+}
+
+// TestFindBridgesFromAdj covers the articulation-point detector inlined
+// from cmd/topology. A path graph A-B-C-D has B and C as bridges;
+// removing either splits the graph. Endpoints (A, D) are not bridges
+// (they have <2 neighbors).
+func TestFindBridgesFromAdj(t *testing.T) {
+	t.Run("path graph", func(t *testing.T) {
+		adj := map[string]map[string]bool{
+			"A": {"B": true},
+			"B": {"A": true, "C": true},
+			"C": {"B": true, "D": true},
+			"D": {"C": true},
+		}
+		got := findBridgesFromAdj(adj)
+		if !got["B"] || !got["C"] {
+			t.Errorf("expected B and C to be bridges, got %v", got)
+		}
+		if got["A"] || got["D"] {
+			t.Errorf("expected endpoints A, D to NOT be bridges, got %v", got)
+		}
+	})
+
+	t.Run("triangle has no bridges", func(t *testing.T) {
+		// In a 3-cycle, no node's removal disconnects the rest.
+		// Algorithm requires len(adj) >= 4, so add a pendant.
+		adj := map[string]map[string]bool{
+			"A": {"B": true, "C": true},
+			"B": {"A": true, "C": true},
+			"C": {"A": true, "B": true, "D": true},
+			"D": {"C": true},
+		}
+		got := findBridgesFromAdj(adj)
+		// C is a bridge (removing it isolates D); A, B, D are not.
+		if !got["C"] {
+			t.Error("expected C to be bridge (cuts pendant D)")
+		}
+		if got["A"] || got["B"] {
+			t.Errorf("expected triangle nodes A, B to NOT be bridges, got %v", got)
+		}
+	})
+
+	t.Run("tiny graph returns nil", func(t *testing.T) {
+		// Algorithm short-circuits below threshold.
+		adj := map[string]map[string]bool{
+			"A": {"B": true},
+			"B": {"A": true},
+		}
+		if got := findBridgesFromAdj(adj); got != nil {
+			t.Errorf("expected nil for tiny graph, got %v", got)
+		}
+	})
+}
+
 func TestValidatePredicate(t *testing.T) {
 	cases := []struct {
 		pred     string
