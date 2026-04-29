@@ -65,7 +65,18 @@ type BiasAuditorResult struct {
 }
 
 func runDreamBias(dir string, jsonOut bool) {
-	collectBiasResults(dir, nil, jsonOut, true)
+	report := collectBiasResults(dir, nil, jsonOut, true)
+	writeBiasState(dir, report)
+}
+
+// writeBiasState persists the bias audit snapshot to .metabolism-bias-state.json
+// so cmd/query --ask can inject current epistemic health into LLM context.
+func writeBiasState(dir string, report BiasReport) {
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(dir, ".metabolism-bias-state.json"), data, 0644)
 }
 
 // collectBiasResults runs all bias auditors. If topoReport is non-nil,

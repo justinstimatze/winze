@@ -24,6 +24,7 @@ type biasGates struct {
 func runBiasGates(dir string) biasGates {
 	fmt.Println("=== Phase 0: Bias audit ===")
 	report := collectBiasResults(dir, nil, false, false)
+	writeBiasState(dir, report)
 	g := computeBiasGates(report.Auditors)
 	if len(g.triggered) == 0 {
 		fmt.Printf("[cycle] bias audit: all clear (0/%d auditors triggered)\n", len(report.Auditors))

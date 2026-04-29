@@ -654,6 +654,40 @@ func runAskInteractive(kb *kbIndex, dir string) {
 
 // tripIsolatedConn mirrors the row format written by
 // cmd/metabolism/trip.go appendIsolatedConnections. Loaded by
+// biasAuditResult mirrors metabolism's BiasAuditorResult for reading
+// .metabolism-bias-state.json at query time without importing that package.
+type biasAuditResult struct {
+	BiasName   string  `json:"bias_name"`
+	Metric     string  `json:"metric"`
+	Value      float64 `json:"value"`
+	Threshold  float64 `json:"threshold"`
+	Triggered  bool    `json:"triggered"`
+	Severity   string  `json:"severity"`
+	Conclusion string  `json:"conclusion"`
+}
+
+type biasState struct {
+	Auditors []biasAuditResult `json:"auditors"`
+}
+
+func loadBiasState(dir string) []biasAuditResult {
+	data, err := os.ReadFile(filepath.Join(dir, ".metabolism-bias-state.json"))
+	if err != nil {
+		return nil
+	}
+	var s biasState
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil
+	}
+	var triggered []biasAuditResult
+	for _, a := range s.Auditors {
+		if a.Triggered {
+			triggered = append(triggered, a)
+		}
+	}
+	return triggered
+}
+
 // buildKBContext so the LLM sees what the trip cycle dreamed up but
 // couldn't fit a canonical predicate to. These are the strongest signal
 // of cross-cluster isomorphisms the corpus's typed claims don't
@@ -748,6 +782,21 @@ func buildKBContext(kb *kbIndex, dir string) string {
 		for _, c := range conns {
 			b.WriteString(fmt.Sprintf("- %s ↔ %s [score %d/5, %s]: %s\n",
 				c.EntityA, c.EntityB, c.Score, c.PromptType, c.Connection))
+		}
+	}
+
+	// Current bias audit state: active epistemic alerts about the KB's own
+	// structure. Only triggered auditors are injected — if none triggered, the
+	// section is omitted to avoid noise. These are live signals (updated each
+	// --evolve or --bias run) that should modulate confidence in KB answers:
+	// e.g. AvailabilityHeuristic triggered means Wikipedia-sourced claims may
+	// be overrepresented, so answers leaning on those sources warrant extra hedging.
+	if triggered := loadBiasState(dir); len(triggered) > 0 {
+		b.WriteString("\n## Current KB Epistemic Health (from last bias audit)\n\n")
+		b.WriteString("Active alerts about the KB's own structural biases. Apply as confidence modifiers: if a triggered bias is relevant to the question, hedge the answer accordingly.\n\n")
+		for _, a := range triggered {
+			b.WriteString(fmt.Sprintf("- %s [%s]: %s=%.2f (threshold %.2f) — %s\n",
+				a.BiasName, a.Severity, a.Metric, a.Value, a.Threshold, a.Conclusion))
 		}
 	}
 
