@@ -38,6 +38,9 @@
 # Bias audit snapshot (injected into --ask context at query time)
 .metabolism-bias-state.json
 
+# Calibration novelty snapshot (injected into --ask context at query time)
+.metabolism-calibration-state.json
+
 # Sensor config (contains local paths)
 .metabolism.json
 

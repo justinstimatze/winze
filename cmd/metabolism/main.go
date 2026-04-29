@@ -1739,6 +1739,8 @@ func runCalibrate(dir string, jsonOut bool) {
 		}
 	}
 
+	writeCalibrationState(dir, scores, resolutions, gapCounts)
+
 	if jsonOut {
 		type VulnTypeScore struct {
 			VulnType   string  `json:"vuln_type"`

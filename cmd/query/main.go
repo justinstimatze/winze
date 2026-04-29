@@ -670,6 +670,37 @@ type biasState struct {
 	Auditors []biasAuditResult `json:"auditors"`
 }
 
+// calibrationEntry mirrors metabolism's calibrationStateEntry for reading
+// .metabolism-calibration-state.json at query time.
+type calibrationEntry struct {
+	Name         string `json:"name"`
+	Verdict      string `json:"verdict"`
+	Corroborated int    `json:"corroborated"`
+	Challenged   int    `json:"challenged"`
+	TotalCycles  int    `json:"total_cycles"`
+}
+
+type calibrationStateFile struct {
+	TotalCycles  int                `json:"total_cycles"`
+	Corroborated int                `json:"corroborated"`
+	Challenged   int                `json:"challenged"`
+	GapConfirmed int                `json:"gap_confirmed"`
+	NoGap        int                `json:"no_gap"`
+	Hypotheses   []calibrationEntry `json:"hypotheses"`
+}
+
+func loadCalibrationState(dir string) *calibrationStateFile {
+	data, err := os.ReadFile(filepath.Join(dir, ".metabolism-calibration-state.json"))
+	if err != nil {
+		return nil
+	}
+	var s calibrationStateFile
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil
+	}
+	return &s
+}
+
 func loadBiasState(dir string) []biasAuditResult {
 	data, err := os.ReadFile(filepath.Join(dir, ".metabolism-bias-state.json"))
 	if err != nil {
@@ -782,6 +813,47 @@ func buildKBContext(kb *kbIndex, dir string) string {
 		for _, c := range conns {
 			b.WriteString(fmt.Sprintf("- %s ↔ %s [score %d/5, %s]: %s\n",
 				c.EntityA, c.EntityB, c.Score, c.PromptType, c.Connection))
+		}
+	}
+
+	// Calibration novelty markers: per-hypothesis external validation signal.
+	// Only hypotheses with at least one corroborated or challenged cycle are
+	// included — absent entries are untested (no signal either way). Challenged
+	// entries are the highest-value signal: external sources dispute KB claims,
+	// so the LLM should hedge answers that rely on those hypotheses.
+	// Gap counts distinguish novel external signal (gap_confirmed) from
+	// tautological corroboration (no_gap = sources already in corpus).
+	if cal := loadCalibrationState(dir); cal != nil && (cal.Challenged > 0 || cal.Corroborated > 0) {
+		novelNote := ""
+		if cal.GapConfirmed+cal.NoGap > 0 {
+			novelNote = fmt.Sprintf(" (%d with novel external sources, %d tautological)", cal.GapConfirmed, cal.NoGap)
+		}
+		b.WriteString(fmt.Sprintf("\n## External Validation (from %d sensor cycles)\n\n", cal.TotalCycles))
+		b.WriteString(fmt.Sprintf("%d corroborated%s, %d challenged by external signal.\n\n", cal.Corroborated, novelNote, cal.Challenged))
+
+		var challenged, corroborated []calibrationEntry
+		for _, h := range cal.Hypotheses {
+			if h.Challenged > 0 {
+				challenged = append(challenged, h)
+			} else if h.Corroborated > 0 {
+				corroborated = append(corroborated, h)
+			}
+		}
+		if len(challenged) > 0 {
+			b.WriteString("**Challenged** (external signal disputes these — hedge answers that rely on them):\n")
+			for _, h := range challenged {
+				b.WriteString(fmt.Sprintf("- %s: %d challenge(s), %d corroboration(s) across %d cycles\n",
+					h.Name, h.Challenged, h.Corroborated, h.TotalCycles))
+			}
+			b.WriteString("\n")
+		}
+		if len(corroborated) > 0 {
+			b.WriteString("**Corroborated** (external signal supports these — higher confidence):\n")
+			for _, h := range corroborated {
+				b.WriteString(fmt.Sprintf("- %s: %d corroboration(s) across %d cycles\n",
+					h.Name, h.Corroborated, h.TotalCycles))
+			}
+			b.WriteString("\n")
 		}
 	}
 

@@ -79,6 +79,58 @@ func writeBiasState(dir string, report BiasReport) {
 	_ = os.WriteFile(filepath.Join(dir, ".metabolism-bias-state.json"), data, 0644)
 }
 
+// calibrationStateEntry is a minimal per-hypothesis record for query-time injection.
+type calibrationStateEntry struct {
+	Name         string `json:"name"`
+	Verdict      string `json:"verdict"`
+	Corroborated int    `json:"corroborated"`
+	Challenged   int    `json:"challenged"`
+	TotalCycles  int    `json:"total_cycles"`
+}
+
+// calibrationState is the snapshot written by --calibrate for --ask context.
+type calibrationState struct {
+	TotalCycles  int                      `json:"total_cycles"`
+	Corroborated int                      `json:"corroborated"`
+	Challenged   int                      `json:"challenged"`
+	NoSignal     int                      `json:"no_signal"`
+	GapConfirmed int                      `json:"gap_confirmed"`
+	NoGap        int                      `json:"no_gap"`
+	Hypotheses   []calibrationStateEntry  `json:"hypotheses"`
+}
+
+// writeCalibrationState persists a per-hypothesis calibration snapshot to
+// .metabolism-calibration-state.json for --ask context injection.
+func writeCalibrationState(dir string, scores []hypothesisScore, resolutions, gapCounts map[string]int) {
+	var entries []calibrationStateEntry
+	for _, s := range scores {
+		if s.Corroborated == 0 && s.Challenged == 0 {
+			continue // skip unchallenged/uncorroborated — not useful signal for query hedging
+		}
+		entries = append(entries, calibrationStateEntry{
+			Name:         s.Name,
+			Verdict:      s.Verdict,
+			Corroborated: s.Corroborated,
+			Challenged:   s.Challenged,
+			TotalCycles:  s.TotalCycles,
+		})
+	}
+	state := calibrationState{
+		TotalCycles:  resolutions["corroborated"] + resolutions["challenged"] + resolutions["irrelevant"] + resolutions["no_signal"],
+		Corroborated: resolutions["corroborated"],
+		Challenged:   resolutions["challenged"],
+		NoSignal:     resolutions["no_signal"],
+		GapConfirmed: gapCounts["gap_confirmed"],
+		NoGap:        gapCounts["no_gap"],
+		Hypotheses:   entries,
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(dir, ".metabolism-calibration-state.json"), data, 0644)
+}
+
 // collectBiasResults runs all bias auditors. If topoReport is non-nil,
 // reuses it instead of re-running topology (expensive).
 // Set printOutput to false when called from dream mode (dream handles display).
