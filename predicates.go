@@ -423,6 +423,20 @@ type CorrectsCommonMisconception UnaryClaim[Hypothesis]
 //winze:contested
 type TheoryOf BinaryRelation[Hypothesis, Concept]
 
+// StructurallyAnalogousTo: two hypotheses from different epistemic
+// domains exhibit the same internal structure — neither explains nor
+// causes the other, but their mechanisms are formally parallel.
+// Symmetric in meaning (A analogous to B implies B analogous to A);
+// the convention is Subject = the entity with the more constrained
+// or earlier-formulated framing, Object = the entity the analogy is
+// drawn toward. Use only when a source explicitly compares the two.
+// Not a substitute for TheoryOf, HypothesisExplains, or DerivedFrom —
+// those require causal or derivational relationships this predicate
+// explicitly lacks. Forcing function: 53 analogy-mode trip cycles
+// reached NONE because no predicate captured cross-cluster
+// structural isomorphisms between hypotheses.
+type StructurallyAnalogousTo BinaryRelation[Hypothesis, Hypothesis]
+
 // DerivedFrom: one concept is etymologically or technically derived
 // from another. Not functional — a concept can descend from multiple
 // roots (English "nondualism" is derived from both Sanskrit advaita

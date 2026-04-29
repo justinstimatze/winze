@@ -56,6 +56,7 @@ below `--entity-cap` (default 250).
 **Attribution:** Proposes, Disputes, ProposesOrg, DisputesOrg
 **Acceptance:** Accepts, AcceptsOrg, EarlyFormulationOf
 **Theory:** TheoryOf (//winze:contested), HypothesisExplains
+**Cross-domain analogy:** StructurallyAnalogousTo — two hypotheses from different clusters with the same epistemic structure (neither explains nor causes the other); symmetric; source-required
 **Taxonomy:** BelongsTo, DerivedFrom, IsCognitiveBias, IsPolyvalentTerm, CorrectsCommonMisconception
 **Authorship:** Authored, AuthoredOrg, CommentaryOn, AppearsIn
 **Fiction:** IsFictionalWork, IsFictional
