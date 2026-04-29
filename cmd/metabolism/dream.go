@@ -112,6 +112,8 @@ func runDream(dir string, includeBias bool, jsonOut bool) DreamReport {
 		len(dream.FileBalance) + len(dream.ProvenanceSplits) +
 		len(dream.BriefQuality) + len(dream.AditScores)
 
+	writeTopologyState(dir, report.Vulnerabilities, dream)
+
 	if jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")

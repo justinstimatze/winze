@@ -41,6 +41,9 @@
 # Calibration novelty snapshot (injected into --ask context at query time)
 .metabolism-calibration-state.json
 
+# Topology fragility snapshot (written by --dream for debugging; not injected into --ask)
+.metabolism-topology-state.json
+
 # Sensor config (contains local paths)
 .metabolism.json
 

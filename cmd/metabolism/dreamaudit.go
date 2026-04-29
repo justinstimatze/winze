@@ -79,6 +79,47 @@ func writeBiasState(dir string, report BiasReport) {
 	_ = os.WriteFile(filepath.Join(dir, ".metabolism-bias-state.json"), data, 0644)
 }
 
+// topologyState is the snapshot written by --dream for --ask context injection.
+type topologyState struct {
+	BridgeEntities    []string `json:"bridge_entities"`
+	ConcentrationRisk []string `json:"concentration_risk"`
+	SingleSource      []string `json:"single_source"`
+	ThinProvenance    []string `json:"thin_provenance"`
+}
+
+// writeTopologyState persists topology fragility markers to
+// .metabolism-topology-state.json for --ask context injection.
+func writeTopologyState(dir string, vulns []TopologyVuln, dream DreamReport) {
+	var state topologyState
+	seen := map[string]bool{}
+	for _, b := range dream.BridgeEntities {
+		if !seen[b.Entity] {
+			state.BridgeEntities = append(state.BridgeEntities, b.Entity)
+			seen[b.Entity] = true
+		}
+	}
+	seen = map[string]bool{}
+	for _, c := range dream.ConcentrationRisk {
+		if !seen[c.Entity] {
+			state.ConcentrationRisk = append(state.ConcentrationRisk, c.Entity)
+			seen[c.Entity] = true
+		}
+	}
+	for _, v := range vulns {
+		switch v.Type {
+		case "single_source":
+			state.SingleSource = append(state.SingleSource, v.Entity)
+		case "thin_provenance":
+			state.ThinProvenance = append(state.ThinProvenance, v.Entity)
+		}
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(dir, ".metabolism-topology-state.json"), data, 0644)
+}
+
 // calibrationStateEntry is a minimal per-hypothesis record for query-time injection.
 type calibrationStateEntry struct {
 	Name         string `json:"name"`
