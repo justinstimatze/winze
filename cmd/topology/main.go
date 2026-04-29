@@ -1289,6 +1289,8 @@ type KBClaim struct {
 	Object        string `json:"object"`
 	HasQuote      bool   `json:"has_quote"`
 	ProvenanceURL string `json:"provenance_url,omitempty"`
+	Contested     bool   `json:"contested,omitempty"`
+	Functional    bool   `json:"functional,omitempty"`
 }
 
 // KBExportPayload is the full slimemold MCP request for analyze_kb.
@@ -1799,6 +1801,64 @@ func dotLabel(e entityInfo) string {
 	return name + "\n(" + e.roleType + ")"
 }
 
+// collectPredicatePragmas walks AST type declarations to find which predicate
+// types carry //winze:contested or //winze:functional pragma annotations.
+// Returns maps from predicate type name → true.
+func collectPredicatePragmas(dir string) (contested, functional map[string]bool, err error) {
+	contested = map[string]bool{}
+	functional = map[string]bool{}
+	fset := token.NewFileSet()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		f, parseErr := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.ParseComments)
+		if parseErr != nil {
+			continue
+		}
+		for _, decl := range f.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.TYPE {
+				continue
+			}
+			isContested := hasPragmaComment(gen.Doc, "winze:contested")
+			isFunctional := hasPragmaComment(gen.Doc, "winze:functional")
+			if !isContested && !isFunctional {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				if ts, ok := spec.(*ast.TypeSpec); ok {
+					if isContested {
+						contested[ts.Name.Name] = true
+					}
+					if isFunctional {
+						functional[ts.Name.Name] = true
+					}
+				}
+			}
+		}
+	}
+	return contested, functional, nil
+}
+
+// hasPragmaComment returns true if any line in doc ends with the named pragma.
+func hasPragmaComment(doc *ast.CommentGroup, pragma string) bool {
+	if doc == nil {
+		return false
+	}
+	want := "//" + pragma
+	for _, c := range doc.List {
+		if strings.TrimSpace(c.Text) == want {
+			return true
+		}
+	}
+	return false
+}
+
 func runExportKB(dir string) error {
 	claims, err := collectClaims(dir)
 	if err != nil {
@@ -1808,6 +1868,11 @@ func runExportKB(dir string) error {
 	provenance, err := collectProvenance(dir)
 	if err != nil {
 		return fmt.Errorf("collect provenance: %w", err)
+	}
+
+	contested, functional, err := collectPredicatePragmas(dir)
+	if err != nil {
+		return fmt.Errorf("collect pragmas: %w", err)
 	}
 
 	var kbClaims []KBClaim
@@ -1820,6 +1885,8 @@ func runExportKB(dir string) error {
 			Object:        c.object,
 			HasQuote:      prov.hasQuote,
 			ProvenanceURL: prov.origin,
+			Contested:     contested[c.predicateType],
+			Functional:    functional[c.predicateType],
 		})
 	}
 
