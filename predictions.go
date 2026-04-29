@@ -178,7 +178,7 @@ var EvidenceSearchConradApopheniaClinical = Event{&Entity{
 	ID:    "evidence-search-conrad-apophenia-clinical-framing",
 	Name:  "Evidence search for Conrad Apophenia Clinical Framing",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across arxiv, kagi, rss, zim for external sources on Conrad Apophenia Clinical Framing. Found: Unlocking Cognitive Capabilities and Analyzing the Perception-Logic Trade-off; DataCrumb: A Physical Probe for Reflections on Background Web Tracking; Guiding Perception-Reasoning Closer to Human in Blind Image Quality Assessment (+18 more).",
+	Brief: "Search across multiple sources retrieving 21 papers on cognitive capabilities, perception-logic relationships, and image quality assessment related to Conrad Apophenia Clinical Framing.",
 }}
 
 var TopologyPredictsConradApopheniaClinicalSearch = Predicts{
@@ -442,7 +442,7 @@ var EvidenceSearchErrorManagementTheoryOfApophenia = Event{&Entity{
 	ID:    "evidence-search-error-management-theory-of-apophenia",
 	Name:  "Evidence search for Error Management Theory Of Apophenia",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across arxiv, kagi, rss for external sources on Error Management Theory Of Apophenia. Found: Perceptual Implications of Automatic Anonymization in Pathological Speech; Towards P$\ne$NP from Extended Frege lower bounds; Enumerating Error Bounded Polytime Algorithms Through Arithmetical Theories (+8 more).",
+	Brief: "Event documenting a search across academic sources (arXiv, Kagi, RSS) for literature on Error Management Theory of Apophenia, returning results on perception, computational complexity, and algorithmic analysis.",
 }}
 
 var TopologyPredictsErrorManagementTheoryOfApopheniaSearch = Predicts{
@@ -508,7 +508,7 @@ var EvidenceSearchHierarchicalPredictionMachine = Event{&Entity{
 	ID:    "evidence-search-hierarchical-prediction-machine",
 	Name:  "Evidence search for Hierarchical Prediction Machine",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across arxiv, kagi, rss for external sources on Hierarchical Prediction Machine. Found: Multi-dimensional Mortality (MDMx): Sex-Age-Specific Model Life Tables, Fitting, Prediction from Summary Mortality Indicators, and Forecasting; GWTC-4.0: Tests of General Relativity. III. Tests of the Remnants; More Than A Shortcut: A Hyperbolic Approach To Early-Exit Networks (+10 more).",
+	Brief: "Event documenting a multi-source search across arxiv, kagi, and RSS for research on hierarchical prediction machines, surfacing papers on mortality modeling, gravitational wave analysis, and neural network optimization.",
 }}
 
 var TopologyPredictsHierarchicalPredictionMachineSearch = Predicts{
@@ -574,7 +574,7 @@ var EvidenceSearchHypothesisCometEnckeFragment = Event{&Entity{
 	ID:    "evidence-search-hypothesis-comet-encke-fragment",
 	Name:  "Evidence search for Hypothesis Comet Encke Fragment",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across arxiv, kagi, rss for external sources on Hypothesis Comet Encke Fragment. Found: In a First, an Astronomer May Have Witnessed a Comet Stop Its Spin ...; NASA’s Hubble Detects First-Ever Spin Reversal of Tiny Comet; [2602.06403] Reversal of Spin: Comet 41P/Tuttle-Giacobini-Kresak (+4 more).",
+	Brief: "Event documenting the discovery that Comet 41P/Tuttle-Giacobini-Kresak reversed its spin, confirmed by NASA's Hubble observations and multiple scientific sources.",
 }}
 
 var TopologyPredictsHypothesisCometEnckeFragmentSearch = Predicts{
@@ -1366,7 +1366,7 @@ var EvidenceSearchFiniteOntologyIncompleteness = Event{&Entity{
 	ID:    "evidence-search-finite-ontology-incompleteness",
 	Name:  "Evidence search for Finite Ontology Incompleteness",
 	Kind:  "event",
-	Brief: "Metabolism sensor query across arxiv, kagi for external sources on Finite Ontology Incompleteness. Found: Prime--Zero Duality: Fractal Geometry, Renormalization-Group Flow, and an Information-Ontological Framework for Number Theory; Ontological Trajectory Forecasting via Finite Semigroup Iteration and Lie Algebra Approximation in Geopolitical Knowledge Graphs; Transfer Learning with Network Embeddings under Structured Missingness (+15 more).",
+	Brief: "Research investigation across arxiv and Kagi identifying papers on finite ontology incompleteness, including works on fractal geometry, renormalization flows, semigroup iteration, and structured missingness in knowledge graphs.",
 }}
 
 var TopologyPredictsFiniteOntologyIncompletenessSearch = Predicts{
