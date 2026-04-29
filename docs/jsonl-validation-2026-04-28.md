@@ -71,10 +71,10 @@ scoring; not a JSONL-related failure.
 ## Implications
 
 The brief's interpretation table maps this outcome to:
-- **Package as sophotech demo** — this report is the seed. The with/without
-  comparison is externally-shareable evidence that winze's typed-claim +
-  speculative-residue architecture beats vector-DB filing-cabinet on
-  synthesis questions
+- **Package as commonplace-book demo** — this report is the seed. The
+  with/without comparison is externally-shareable evidence that winze's
+  typed-claim + speculative-residue architecture beats vector-DB
+  filing-cabinet on synthesis questions
 - **Expand demand-side surface** — topology fragility flags, calibration
   novelty markers, current bias-state at query time are the natural next
   injections (the "bigger Step 2"). Wiring more bias auditors to behavior
