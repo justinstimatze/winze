@@ -12,6 +12,7 @@
 /query
 /add
 /rot-probe
+/predicates-suggest
 
 # Generated configs (contain absolute paths)
 .mcp.json
@@ -36,6 +37,9 @@
 
 # Rot-probe time series (append-only; one row per probe invocation)
 .metabolism-rot-probe.jsonl
+
+# Predicate-candidate proposals (overwritten each predicates-suggest run)
+.metabolism-predicate-candidates.json
 
 # Trip-cycle NONE-predicate connections (predicate-ontology gap log)
 .metabolism-trip-isolated.jsonl
