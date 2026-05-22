@@ -25,6 +25,27 @@ go run ./cmd/lint . --llm --llm-max-calls=5 # + LLM contradiction check
 Lint rules: naming-oracle, orphan-report, value-conflict, contested-concept,
 brief-check, provenance-split, llm-contradiction.
 
+### Authoring helper
+
+```bash
+go run ./cmd/add \
+  --to apophenia.go \
+  --name MyNewClaim \
+  --predicate Proposes \
+  --subject KlausConrad \
+  --object ConradApopheniaClinicalFraming \
+  --quote "exact source text" \
+  --origin "Wikipedia (zim 2025-12) / Apophenia"
+```
+
+Appends a typed claim declaration with inline provenance, runs `gofmt -w`,
+then `go build . && go vet .` as the gate. Reverts the file on failure.
+Use `--unary` for `UnaryClaim` predicates (omit `--object`); `--dry-run` to
+preview the render without touching the file. The tool does no slot-type
+checking of its own — the build gate is what validates the claim, which is
+the load-bearing discipline this project was built around. Do NOT relax
+that path.
+
 ### Mirror-source-commitments
 
 Only encode claims the source explicitly commits to. Use `Provenance.Quote`

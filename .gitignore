@@ -10,6 +10,7 @@
 /topology
 /metabolism
 /query
+/add
 
 # Generated configs (contain absolute paths)
 .mcp.json
