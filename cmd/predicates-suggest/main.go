@@ -27,6 +27,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/justinstimatze/winze/internal/dotenv"
 )
 
 func filterValidCandidates(in []predicateCandidate, minCluster int) []predicateCandidate {
@@ -134,8 +136,8 @@ func main() {
 		return
 	}
 
-	loadDotEnv(*dir)
-	loadDotEnv(".")
+	dotenv.Load(*dir)
+	dotenv.Load(".")
 
 	candidates, err := proposeCandidates(filtered, existing, *minCluster, *model)
 	if err != nil {

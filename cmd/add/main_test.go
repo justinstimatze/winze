@@ -13,13 +13,14 @@ func TestValidateFlags(t *testing.T) {
 		object    string
 		quote     string
 		origin    string
+		provVar   string
 		target    string
 		claim     string
 		unary     bool
 		wantErr   string // substring; "" means must succeed
 	}{
 		{
-			name:      "binary happy path",
+			name:      "binary inline-source happy path",
 			predicate: "Proposes",
 			subject:   "KlausConrad",
 			object:    "ConradFraming",
@@ -27,10 +28,18 @@ func TestValidateFlags(t *testing.T) {
 			origin:    "o",
 			target:    "apophenia.go",
 			claim:     "MyClaim",
-			wantErr:   "",
 		},
 		{
-			name:      "unary happy path",
+			name:      "binary provenance-var happy path",
+			predicate: "Proposes",
+			subject:   "KlausConrad",
+			object:    "ConradFraming",
+			provVar:   "apopheniaSource",
+			target:    "apophenia.go",
+			claim:     "MyClaim",
+		},
+		{
+			name:      "unary inline happy path",
 			predicate: "IsCognitiveBias",
 			subject:   "ClusteringIllusion",
 			quote:     "q",
@@ -38,7 +47,27 @@ func TestValidateFlags(t *testing.T) {
 			target:    "apophenia.go",
 			claim:     "MyTag",
 			unary:     true,
-			wantErr:   "",
+		},
+		{
+			name:      "provenance-var with inline quote should reject",
+			predicate: "Proposes",
+			subject:   "X",
+			object:    "Y",
+			quote:     "q",
+			provVar:   "src",
+			target:    "f.go",
+			claim:     "C",
+			wantErr:   "mutually exclusive",
+		},
+		{
+			name:      "provenance-var with bad identifier",
+			predicate: "Proposes",
+			subject:   "X",
+			object:    "Y",
+			provVar:   "1bad",
+			target:    "f.go",
+			claim:     "C",
+			wantErr:   "not a valid Go identifier",
 		},
 		{
 			name:      "binary missing object",
@@ -67,6 +96,16 @@ func TestValidateFlags(t *testing.T) {
 			wantErr: "missing required flags",
 		},
 		{
+			name:      "inline mode missing quote",
+			predicate: "Proposes",
+			subject:   "X",
+			object:    "Y",
+			origin:    "o",
+			target:    "f.go",
+			claim:     "C",
+			wantErr:   "--quote",
+		},
+		{
 			name:      "bad claim name",
 			predicate: "Proposes",
 			subject:   "X",
@@ -80,7 +119,7 @@ func TestValidateFlags(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateFlags(tc.predicate, tc.subject, tc.object, tc.quote, tc.origin, tc.target, tc.claim, tc.unary)
+			err := validateFlags(tc.predicate, tc.subject, tc.object, tc.quote, tc.origin, tc.provVar, tc.target, tc.claim, tc.unary)
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected err: %v", err)
@@ -131,7 +170,7 @@ func TestQuoteLiteral(t *testing.T) {
 
 func TestRenderClaimBinary(t *testing.T) {
 	out := renderClaim("Proposes", "KlausConrad", "ConradFraming",
-		"the quote", "src/Apophenia", "winze-add", "MyClaim", false)
+		"the quote", "src/Apophenia", "winze-add", "", "MyClaim", false)
 	want := []string{
 		"var MyClaim = Proposes{",
 		"Subject: KlausConrad,",
@@ -152,9 +191,29 @@ func TestRenderClaimBinary(t *testing.T) {
 	}
 }
 
+func TestRenderClaimBinaryWithProvVar(t *testing.T) {
+	out := renderClaim("Proposes", "KlausConrad", "ConradFraming",
+		"", "", "", "apopheniaSource", "MyClaim", false)
+	want := []string{
+		"var MyClaim = Proposes{",
+		"Subject: KlausConrad,",
+		"Object:  ConradFraming,",
+		"Prov:    apopheniaSource,",
+	}
+	for _, w := range want {
+		if !strings.Contains(out, w) {
+			t.Errorf("output missing %q:\n%s", w, out)
+		}
+	}
+	// Must NOT emit the inline Provenance block when reusing a named var.
+	if strings.Contains(out, "Provenance{") {
+		t.Errorf("provenance-var mode must not emit inline Provenance{}: %s", out)
+	}
+}
+
 func TestRenderClaimUnary(t *testing.T) {
 	out := renderClaim("IsCognitiveBias", "ClusteringIllusion", "",
-		"the quote", "src", "winze-add", "MyTag", true)
+		"the quote", "src", "winze-add", "", "MyTag", true)
 	if !strings.Contains(out, "var MyTag = IsCognitiveBias{") {
 		t.Errorf("missing var decl: %s", out)
 	}

@@ -1,0 +1,190 @@
+package corpusparse
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+const fixtureEntities = `package winze
+
+var (
+	Apophenia = Concept{&Entity{
+		ID:    "concept-apophenia",
+		Name:  "Apophenia",
+		Kind:  "concept",
+		Aliases: []string{"apophany", "patternicity"},
+		Brief: "Pattern perception in unrelated data.",
+	}}
+
+	KlausConrad = Person{&Entity{
+		ID:    "klaus-conrad",
+		Name:  "Klaus Conrad",
+		Kind:  "person",
+		Brief: "German psychiatrist.",
+	}}
+)
+`
+
+const fixtureClaims = `package winze
+
+var (
+	src = Provenance{Origin: "test", Quote: "q", IngestedAt: "2026-05-21", IngestedBy: "test"}
+
+	ConradFraming = Hypothesis{&Entity{ID: "h", Name: "h", Kind: "hypothesis", Brief: "b"}}
+
+	NormalClaim = Proposes{
+		Subject: KlausConrad,
+		Object:  ConradFraming,
+		Prov:    src,
+	}
+
+	TripCycle99FooCommentaryOnBar = CommentaryOn{
+		Subject: Foo,
+		Object:  Bar,
+		Prov:    src,
+	}
+
+	UnaryTag = IsCognitiveBias{
+		Subject: Apophenia,
+		Prov:    src,
+	}
+)
+`
+
+const fixturePredicates = `package winze
+
+type Foo BinaryRelation[Person, Hypothesis]
+type Bar UnaryClaim[Concept]
+type NotPred struct{ X int }
+type Baz BinaryRelation[Place, Place]
+`
+
+func writeFixtures(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	return dir
+}
+
+func TestParseEntities(t *testing.T) {
+	dir := writeFixtures(t, map[string]string{"e.go": fixtureEntities})
+	ents, _, err := ParseCorpus(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ents) != 2 {
+		t.Fatalf("want 2 entities, got %d", len(ents))
+	}
+	byName := map[string]Entity{}
+	for _, e := range ents {
+		byName[e.VarName] = e
+	}
+	apo, ok := byName["Apophenia"]
+	if !ok {
+		t.Fatal("Apophenia missing")
+	}
+	if apo.RoleType != "Concept" || apo.Brief == "" || len(apo.Aliases) != 2 {
+		t.Errorf("apo wrong: %+v", apo)
+	}
+}
+
+func TestParseClaimsAndTripMark(t *testing.T) {
+	dir := writeFixtures(t, map[string]string{
+		"e.go": fixtureEntities,
+		"c.go": fixtureClaims,
+	})
+	_, claims, err := ParseCorpus(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(claims) != 3 {
+		t.Fatalf("want 3 claims, got %d: %+v", len(claims), claims)
+	}
+	byName := map[string]Claim{}
+	for _, c := range claims {
+		byName[c.VarName] = c
+	}
+	if byName["NormalClaim"].TripGenerated {
+		t.Error("NormalClaim should not be TripGenerated")
+	}
+	if !byName["TripCycle99FooCommentaryOnBar"].TripGenerated {
+		t.Error("TripCycle99 should be TripGenerated")
+	}
+	if byName["UnaryTag"].ObjectVar != "" {
+		t.Error("UnaryTag should have empty ObjectVar")
+	}
+}
+
+func TestLoadPredicates(t *testing.T) {
+	dir := writeFixtures(t, map[string]string{"predicates.go": fixturePredicates})
+	names, err := LoadPredicates(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, n := range names {
+		got[n] = true
+	}
+	for _, want := range []string{"Foo", "Bar", "Baz"} {
+		if !got[want] {
+			t.Errorf("want %s, got %v", want, names)
+		}
+	}
+	if got["NotPred"] {
+		t.Errorf("NotPred should be excluded, got %v", names)
+	}
+}
+
+func TestIsTripGenerated(t *testing.T) {
+	for _, name := range []string{
+		"TripCycle25SurvivorshipBiasCommentaryOnSPP",
+		"TripCycle1Foo",
+		"TripCycle10ABC",
+	} {
+		if !IsTripGenerated(name) {
+			t.Errorf("expected %q trip-generated", name)
+		}
+	}
+	for _, name := range []string{
+		"TripLintTripCycle25Check",
+		"TripBuildXCheck",
+		"TripLLMYCheck",
+		"TripFunctionalZCheck",
+		"NormalClaim",
+		"Apophenia",
+		"Trip", // bare prefix no digit
+	} {
+		if IsTripGenerated(name) {
+			t.Errorf("expected %q NOT trip-generated", name)
+		}
+	}
+}
+
+func TestIsReifyMachinery(t *testing.T) {
+	for _, name := range []string{
+		"TripLintTripCycle25Check",
+		"TripBuildAnythingCheck",
+		"TripLLMHypothesisXCheck",
+		"TripFunctionalABCCheck",
+		"EvidenceSearchUDHRArticle3",
+	} {
+		if !IsReifyMachinery(name) {
+			t.Errorf("expected %q reify machinery", name)
+		}
+	}
+	for _, name := range []string{
+		"TripCycle25Real", // real trip promotion, not reify
+		"NormalClaim",
+		"Apophenia",
+		"KlausConrad",
+	} {
+		if IsReifyMachinery(name) {
+			t.Errorf("expected %q NOT reify machinery", name)
+		}
+	}
+}

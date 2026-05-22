@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -17,6 +16,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/justinstimatze/winze/internal/astutil"
+	"github.com/justinstimatze/winze/internal/dotenv"
 )
 
 type llmBudget struct {
@@ -340,39 +340,14 @@ func callLLMForContradictions(prompt string, budget llmBudget) ([]llmFinding, er
 	return nil, fmt.Errorf("no tool_use block in response")
 }
 
-func loadDotEnv(dir string) {
-	path := filepath.Join(dir, ".env")
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close() //nolint:errcheck
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		val := strings.TrimSpace(parts[1])
-		if os.Getenv(key) == "" {
-			_ = os.Setenv(key, val)
-		}
-	}
-}
-
 func llmContradictionRule(dir string, budget llmBudget) int {
 	if !budget.enabled {
 		fmt.Println("[llm-contradiction] skipped (use --llm to enable)")
 		return 0
 	}
 
-	loadDotEnv(dir)
-	loadDotEnv(".")
+	dotenv.Load(dir)
+	dotenv.Load(".")
 
 	if os.Getenv("ANTHROPIC_API_KEY") == "" {
 		fmt.Println("[llm-contradiction] error: ANTHROPIC_API_KEY not set")

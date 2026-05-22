@@ -43,27 +43,28 @@ import (
 
 func main() {
 	var (
-		predicate  = flag.String("predicate", "", "predicate type name (e.g. Proposes, TheoryOf)")
-		subject    = flag.String("subject", "", "subject entity var name (e.g. KlausConrad)")
-		object     = flag.String("object", "", "object entity var name (omit for --unary predicates)")
-		quote      = flag.String("quote", "", "exact source quote (mandatory; post-2026-04-13 corpus discipline)")
-		origin     = flag.String("origin", "", "free-form provenance origin hint (mandatory)")
-		ingestedBy = flag.String("ingested-by", "winze-add", "ingestor tag for Provenance.IngestedBy")
-		target     = flag.String("to", "", "target corpus file (relative to --root, e.g. apophenia.go)")
-		claimName  = flag.String("name", "", "Go var name for the new claim")
-		repoRoot   = flag.String("root", ".", "winze repo root (the directory containing predicates.go)")
-		unary      = flag.Bool("unary", false, "set for UnaryClaim predicates (omit --object)")
-		dryRun     = flag.Bool("dry-run", false, "print what would be written; do not modify files or build")
+		predicate   = flag.String("predicate", "", "predicate type name (e.g. Proposes, TheoryOf)")
+		subject     = flag.String("subject", "", "subject entity var name (e.g. KlausConrad)")
+		object      = flag.String("object", "", "object entity var name (omit for --unary predicates)")
+		quote       = flag.String("quote", "", "exact source quote (required unless --provenance-var is set)")
+		origin      = flag.String("origin", "", "free-form provenance origin hint (required unless --provenance-var is set)")
+		ingestedBy  = flag.String("ingested-by", "winze-add", "ingestor tag for inline Provenance.IngestedBy (ignored when --provenance-var is set)")
+		provVar     = flag.String("provenance-var", "", "name of an existing Provenance var to reuse (e.g. apopheniaSource); mutually exclusive with --quote/--origin/--ingested-by")
+		target      = flag.String("to", "", "target corpus file (relative to --root, e.g. apophenia.go)")
+		claimName   = flag.String("name", "", "Go var name for the new claim")
+		repoRoot    = flag.String("root", ".", "winze repo root (the directory containing predicates.go)")
+		unary       = flag.Bool("unary", false, "set for UnaryClaim predicates (omit --object)")
+		dryRun      = flag.Bool("dry-run", false, "print what would be written; do not modify files or build")
 	)
 	flag.Parse()
 
-	if err := validateFlags(*predicate, *subject, *object, *quote, *origin, *target, *claimName, *unary); err != nil {
+	if err := validateFlags(*predicate, *subject, *object, *quote, *origin, *provVar, *target, *claimName, *unary); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		flag.Usage()
 		os.Exit(2)
 	}
 
-	decl := renderClaim(*predicate, *subject, *object, *quote, *origin, *ingestedBy, *claimName, *unary)
+	decl := renderClaim(*predicate, *subject, *object, *quote, *origin, *ingestedBy, *provVar, *claimName, *unary)
 
 	if *dryRun {
 		fmt.Printf("--- would append to %s ---\n", *target)
@@ -104,7 +105,16 @@ func main() {
 	fmt.Fprintf(os.Stderr, "added %s to %s (build gate passed)\n", *claimName, *target)
 }
 
-func validateFlags(predicate, subject, object, quote, origin, target, claimName string, unary bool) error {
+func validateFlags(predicate, subject, object, quote, origin, provVar, target, claimName string, unary bool) error {
+	if provVar != "" {
+		// Reusing a named Provenance var — inline-source flags must NOT be set.
+		if quote != "" || origin != "" {
+			return fmt.Errorf("--provenance-var is mutually exclusive with --quote / --origin (pick one source mode)")
+		}
+		if !isValidGoIdent(provVar) {
+			return fmt.Errorf("--provenance-var %q is not a valid Go identifier", provVar)
+		}
+	}
 	missing := []string{}
 	if predicate == "" {
 		missing = append(missing, "--predicate")
@@ -112,11 +122,14 @@ func validateFlags(predicate, subject, object, quote, origin, target, claimName 
 	if subject == "" {
 		missing = append(missing, "--subject")
 	}
-	if quote == "" {
-		missing = append(missing, "--quote")
-	}
-	if origin == "" {
-		missing = append(missing, "--origin")
+	if provVar == "" {
+		// Inline-source mode — quote and origin are mandatory.
+		if quote == "" {
+			missing = append(missing, "--quote")
+		}
+		if origin == "" {
+			missing = append(missing, "--origin")
+		}
 	}
 	if target == "" {
 		missing = append(missing, "--to")
@@ -155,20 +168,27 @@ func isValidGoIdent(s string) bool {
 	return true
 }
 
-func renderClaim(predicate, subject, object, quote, origin, ingestedBy, claimName string, unary bool) string {
-	today := time.Now().UTC().Format("2006-01-02")
+func renderClaim(predicate, subject, object, quote, origin, ingestedBy, provVar, claimName string, unary bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\nvar %s = %s{\n", claimName, predicate)
 	fmt.Fprintf(&b, "\tSubject: %s,\n", subject)
 	if !unary {
 		fmt.Fprintf(&b, "\tObject:  %s,\n", object)
 	}
-	fmt.Fprintf(&b, "\tProv: Provenance{\n")
-	fmt.Fprintf(&b, "\t\tOrigin:     %s,\n", strconv.Quote(origin))
-	fmt.Fprintf(&b, "\t\tIngestedAt: %s,\n", strconv.Quote(today))
-	fmt.Fprintf(&b, "\t\tIngestedBy: %s,\n", strconv.Quote(ingestedBy))
-	fmt.Fprintf(&b, "\t\tQuote:      %s,\n", quoteLiteral(quote))
-	fmt.Fprintf(&b, "\t},\n")
+	if provVar != "" {
+		// Reuse-mode: the named Provenance var is referenced directly. If
+		// it doesn't exist in scope, the build gate will catch it and the
+		// file will be reverted — no special validation here.
+		fmt.Fprintf(&b, "\tProv:    %s,\n", provVar)
+	} else {
+		today := time.Now().UTC().Format("2006-01-02")
+		fmt.Fprintf(&b, "\tProv: Provenance{\n")
+		fmt.Fprintf(&b, "\t\tOrigin:     %s,\n", strconv.Quote(origin))
+		fmt.Fprintf(&b, "\t\tIngestedAt: %s,\n", strconv.Quote(today))
+		fmt.Fprintf(&b, "\t\tIngestedBy: %s,\n", strconv.Quote(ingestedBy))
+		fmt.Fprintf(&b, "\t\tQuote:      %s,\n", quoteLiteral(quote))
+		fmt.Fprintf(&b, "\t},\n")
+	}
 	fmt.Fprintf(&b, "}\n")
 	return b.String()
 }

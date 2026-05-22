@@ -28,6 +28,7 @@ brief-check, provenance-split, llm-contradiction.
 ### Authoring helper
 
 ```bash
+# Inline-source mode (one-off claim from a freshly-quoted source):
 go run ./cmd/add \
   --to apophenia.go \
   --name MyNewClaim \
@@ -36,15 +37,27 @@ go run ./cmd/add \
   --object ConradApopheniaClinicalFraming \
   --quote "exact source text" \
   --origin "Wikipedia (zim 2025-12) / Apophenia"
+
+# Reuse-named-source mode (preferred when adding multiple claims from
+# the same source — keeps provenance unfragmented):
+go run ./cmd/add \
+  --to apophenia.go \
+  --name AnotherClaim \
+  --predicate Accepts \
+  --subject MichaelShermer \
+  --object ShermerPatternicityFraming \
+  --provenance-var apopheniaSource
 ```
 
-Appends a typed claim declaration with inline provenance, runs `gofmt -w`,
-then `go build . && go vet .` as the gate. Reverts the file on failure.
-Use `--unary` for `UnaryClaim` predicates (omit `--object`); `--dry-run` to
-preview the render without touching the file. The tool does no slot-type
-checking of its own — the build gate is what validates the claim, which is
-the load-bearing discipline this project was built around. Do NOT relax
-that path.
+Appends a typed claim declaration, runs `gofmt -w`, then `go build . && go vet .`
+as the gate. Reverts the file on failure. Use `--unary` for `UnaryClaim`
+predicates (omit `--object`); `--dry-run` to preview the render without
+touching the file. `--provenance-var <name>` reuses an existing `Provenance`
+var instead of inlining one (mutually exclusive with `--quote`/`--origin`);
+the build gate validates that the named var exists. The tool does no
+slot-type checking of its own — the build gate is what validates the
+claim, which is the load-bearing discipline this project was built around.
+Do NOT relax that path.
 
 ### Rot probe
 

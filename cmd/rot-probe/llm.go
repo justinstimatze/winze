@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -149,21 +147,21 @@ type neighborhood struct {
 
 func serializeNeighborhood(n neighborhood) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "--- %s (var: %s, role: %s) ---\n", n.ent.name, n.ent.varName, n.ent.roleType)
-	if n.ent.brief != "" {
-		fmt.Fprintf(&b, "Brief: %s\n", n.ent.brief)
+	fmt.Fprintf(&b, "--- %s (var: %s, role: %s) ---\n", n.ent.Name, n.ent.VarName, n.ent.RoleType)
+	if n.ent.Brief != "" {
+		fmt.Fprintf(&b, "Brief: %s\n", n.ent.Brief)
 	}
-	if len(n.ent.aliases) > 0 {
-		fmt.Fprintf(&b, "Aliases: %s\n", strings.Join(n.ent.aliases, ", "))
+	if len(n.ent.Aliases) > 0 {
+		fmt.Fprintf(&b, "Aliases: %s\n", strings.Join(n.ent.Aliases, ", "))
 	}
 	if len(n.asSubj) > 0 {
 		b.WriteString("As subject:\n")
 		for _, c := range n.asSubj {
 			tag := claimTag(c)
-			if c.objectVar != "" {
-				fmt.Fprintf(&b, "  %s --%s--> %s   (claim: %s%s)\n", c.subjectVar, c.predicateType, c.objectVar, c.varName, tag)
+			if c.ObjectVar != "" {
+				fmt.Fprintf(&b, "  %s --%s--> %s   (claim: %s%s)\n", c.SubjectVar, c.PredicateType, c.ObjectVar, c.VarName, tag)
 			} else {
-				fmt.Fprintf(&b, "  %s is %s   (claim: %s%s)\n", c.subjectVar, c.predicateType, c.varName, tag)
+				fmt.Fprintf(&b, "  %s is %s   (claim: %s%s)\n", c.SubjectVar, c.PredicateType, c.VarName, tag)
 			}
 		}
 	}
@@ -171,7 +169,7 @@ func serializeNeighborhood(n neighborhood) string {
 		b.WriteString("As object:\n")
 		for _, c := range n.asObj {
 			tag := claimTag(c)
-			fmt.Fprintf(&b, "  %s --%s--> %s   (claim: %s%s)\n", c.subjectVar, c.predicateType, c.objectVar, c.varName, tag)
+			fmt.Fprintf(&b, "  %s --%s--> %s   (claim: %s%s)\n", c.SubjectVar, c.PredicateType, c.ObjectVar, c.VarName, tag)
 		}
 	}
 	return b.String()
@@ -181,35 +179,8 @@ func serializeNeighborhood(n neighborhood) string {
 // prompt's WHAT-TO-FLAG description of trip_attractor can be evaluated by
 // the LLM against the actual claim provenance.
 func claimTag(c claim) string {
-	if c.tripGenerated {
+	if c.TripGenerated {
 		return " [trip]"
 	}
 	return ""
-}
-
-// loadDotEnv mirrors cmd/lint's behaviour: read .env at the corpus root so
-// ANTHROPIC_API_KEY can be picked up without exporting it.
-func loadDotEnv(dir string) {
-	path := filepath.Join(dir, ".env")
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close() //nolint:errcheck
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		k := strings.TrimSpace(parts[0])
-		v := strings.TrimSpace(parts[1])
-		if os.Getenv(k) == "" {
-			_ = os.Setenv(k, v)
-		}
-	}
 }

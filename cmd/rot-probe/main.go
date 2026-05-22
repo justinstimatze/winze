@@ -25,6 +25,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/justinstimatze/winze/internal/dotenv"
 )
 
 // rotProbeRun is one full invocation written as a single JSONL row.
@@ -67,6 +69,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Drop auto-generated metabolism-reify entities before building
+	// neighborhoods. They have templated Briefs and auto-promotion claim
+	// chains — no human-actionable rot to surface, and they consume LLM
+	// budget. wi-1lnt: previously ~57% of probe samples were these.
+	entities = excludeReifyMachinery(entities)
+
 	hoods := buildNeighborhoods(entities, claims)
 
 	// Only sample entities that have at least one claim connection — naked
@@ -85,7 +93,7 @@ func main() {
 
 	sampledNames := make([]string, 0, len(samples))
 	for _, s := range samples {
-		sampledNames = append(sampledNames, s.ent.varName)
+		sampledNames = append(sampledNames, s.ent.VarName)
 	}
 
 	if *dryRun {
@@ -97,8 +105,8 @@ func main() {
 		return
 	}
 
-	loadDotEnv(*dir)
-	loadDotEnv(".")
+	dotenv.Load(*dir)
+	dotenv.Load(".")
 
 	findings, err := runProbe(samples, *model)
 	if err != nil {
@@ -151,17 +159,17 @@ func buildNeighborhoods(entities []entity, claims []claim) []neighborhood {
 	subjMap := map[string][]claim{}
 	objMap := map[string][]claim{}
 	for _, c := range claims {
-		subjMap[c.subjectVar] = append(subjMap[c.subjectVar], c)
-		if c.objectVar != "" {
-			objMap[c.objectVar] = append(objMap[c.objectVar], c)
+		subjMap[c.SubjectVar] = append(subjMap[c.SubjectVar], c)
+		if c.ObjectVar != "" {
+			objMap[c.ObjectVar] = append(objMap[c.ObjectVar], c)
 		}
 	}
 	out := make([]neighborhood, 0, len(entities))
 	for _, e := range entities {
 		out = append(out, neighborhood{
 			ent:    e,
-			asSubj: subjMap[e.varName],
-			asObj:  objMap[e.varName],
+			asSubj: subjMap[e.VarName],
+			asObj:  objMap[e.VarName],
 		})
 	}
 	return out

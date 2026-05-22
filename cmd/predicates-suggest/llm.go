@@ -1,21 +1,17 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/justinstimatze/winze/internal/corpusparse"
 )
 
 // predicateCandidate is one promotable predicate the LLM proposes after
@@ -179,78 +175,12 @@ EMPTY IS A FIRST-CLASS ANSWER. If every cluster you can identify is already abso
 	return b.String()
 }
 
-// loadExistingPredicates walks predicates.go and returns all top-level type
-// names that are derived from BinaryRelation or UnaryClaim. Used to keep
-// proposals from duplicating the existing vocabulary.
+// loadExistingPredicates wraps internal/corpusparse so the rest of this
+// command can stay unchanged. Keeping the wrapper (instead of inlining
+// the call site) makes it easier to add cmd-local filtering later if a
+// specific predicate family should be excluded from suggestion prompts.
 func loadExistingPredicates(dir string) ([]string, error) {
-	path := filepath.Join(dir, "predicates.go")
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-	if err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, decl := range f.Decls {
-		gen, ok := decl.(*ast.GenDecl)
-		if !ok || gen.Tok != token.TYPE {
-			continue
-		}
-		for _, spec := range gen.Specs {
-			ts, ok := spec.(*ast.TypeSpec)
-			if !ok {
-				continue
-			}
-			if isPredicateType(ts.Type) {
-				out = append(out, ts.Name.Name)
-			}
-		}
-	}
-	sort.Strings(out)
-	return out, nil
-}
-
-func isPredicateType(e ast.Expr) bool {
-	// Predicate types are: BinaryRelation[X, Y] or UnaryClaim[X]
-	idx, ok := e.(*ast.IndexExpr)
-	if ok {
-		return identNameIs(idx.X, "BinaryRelation") || identNameIs(idx.X, "UnaryClaim")
-	}
-	list, ok := e.(*ast.IndexListExpr)
-	if ok {
-		return identNameIs(list.X, "BinaryRelation") || identNameIs(list.X, "UnaryClaim")
-	}
-	return false
-}
-
-func identNameIs(e ast.Expr, want string) bool {
-	id, ok := e.(*ast.Ident)
-	return ok && id.Name == want
-}
-
-// loadDotEnv mirrors cmd/lint and cmd/rot-probe behaviour.
-func loadDotEnv(dir string) {
-	path := filepath.Join(dir, ".env")
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close() //nolint:errcheck
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		k := strings.TrimSpace(parts[0])
-		v := strings.TrimSpace(parts[1])
-		if os.Getenv(k) == "" {
-			_ = os.Setenv(k, v)
-		}
-	}
+	return corpusparse.LoadPredicates(dir)
 }
 
 func nowRFC3339() string {
