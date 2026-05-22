@@ -46,6 +46,27 @@ checking of its own — the build gate is what validates the claim, which is
 the load-bearing discipline this project was built around. Do NOT relax
 that path.
 
+### Rot probe
+
+```bash
+go run ./cmd/rot-probe --n 10 --model haiku .              # default: 10 entities, Haiku
+go run ./cmd/rot-probe --n 20 --model sonnet .             # deeper sample, deeper model
+go run ./cmd/rot-probe --n 5 --seed 42 --dry-run .         # preview prompt, no API call
+```
+
+Samples a random subset of corpus entities and asks an LLM to flag potential
+rot signals: `duplicate` (two entities likely the same thing), `contradiction`
+(claims that can't all be true), `brief_drift` (Brief text no longer matches
+the entity's claims). Findings are surfaced for human review only — the tool
+NEVER auto-fixes. Output appends to `.metabolism-rot-probe.jsonl` (gitignored)
+for time-series. Empty findings on a small sample is a valid answer; not a
+green light to skip the next probe.
+
+The whole point of the typed substrate is to surface what inspection misses.
+Until rot surfacing actually surfaces things, the "is the typed gate worth
+its friction" question lives on faith. Periodic rot-probe runs convert that
+question into evidence.
+
 ### Mirror-source-commitments
 
 Only encode claims the source explicitly commits to. Use `Provenance.Quote`

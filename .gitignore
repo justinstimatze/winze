@@ -11,6 +11,7 @@
 /metabolism
 /query
 /add
+/rot-probe
 
 # Generated configs (contain absolute paths)
 .mcp.json
@@ -32,6 +33,9 @@
 
 # Metabolism patrol progress counter (handoff-survival state)
 .metabolism-tick-progress
+
+# Rot-probe time series (append-only; one row per probe invocation)
+.metabolism-rot-probe.jsonl
 
 # Trip-cycle NONE-predicate connections (predicate-ontology gap log)
 .metabolism-trip-isolated.jsonl
