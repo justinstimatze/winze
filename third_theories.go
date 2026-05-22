@@ -88,7 +88,7 @@ var HaseltonBuss = Organization{&Entity{
 	ID:    "haselton-buss",
 	Name:  "Haselton & Buss",
 	Kind:  "organization",
-	Brief: "Martie Haselton and David Buss, evolutionary psychologists who coined error management theory (EMT), explaining cognitive biases as adaptive responses to asymmetric error costs.",
+	Brief: "Martie Haselton and David Buss, evolutionary psychologists who coined error management theory (EMT) — biases as adaptive responses to asymmetric error costs. Currently encoded in this corpus only via their apophenia-specific EMT application; broader EMT scope is not yet ingested.",
 }}
 
 var ErrorManagementTheoryOfApophenia = Hypothesis{&Entity{

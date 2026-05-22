@@ -6,8 +6,21 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+// tripCycleClaimRE matches var names of trip-cycle-promoted claims:
+// TripCycleNN<...> (the actual cycle promotion, e.g.
+// TripCycle25SurvivorshipBiasCommentaryOnSuperiorPatternProcessing).
+// Deliberately does NOT match TripLint/TripBuild/TripLLM/TripFunctional
+// auto-generated reify machinery, which are predictions ABOUT trip cycles
+// rather than trip promotions themselves.
+var tripCycleClaimRE = regexp.MustCompile(`^TripCycle\d`)
+
+func isTripGenerated(claimVar string) bool {
+	return tripCycleClaimRE.MatchString(claimVar)
+}
 
 // entity is a corpus entity declaration: a var whose value is a role-type
 // composite literal wrapping &Entity{Name, Brief, Aliases, ...}.
@@ -24,11 +37,12 @@ type entity struct {
 // claim is a typed predicate instance: var X = PredicateType{Subject: A, Object: B, Prov: ...}.
 // Unary claims have empty objectVar.
 type claim struct {
-	varName       string // claim var name
-	predicateType string // predicate type, e.g. "Proposes"
-	subjectVar    string // subject var ref (Ident name)
-	objectVar     string // object var ref; empty if unary
-	file          string
+	varName         string // claim var name
+	predicateType   string // predicate type, e.g. "Proposes"
+	subjectVar      string // subject var ref (Ident name)
+	objectVar       string // object var ref; empty if unary
+	file            string
+	tripGenerated   bool   // true if the claim was promoted by a trip cycle (heuristic: TripCycleNN... prefix)
 }
 
 // parseCorpus walks the root .go files (non-test) and extracts entities + claims.
@@ -139,7 +153,7 @@ func tryParseClaim(varName string, cl *ast.CompositeLit, file string) (claim, bo
 	if predType == "" {
 		return claim{}, false
 	}
-	c := claim{varName: varName, predicateType: predType, file: file}
+	c := claim{varName: varName, predicateType: predType, file: file, tripGenerated: isTripGenerated(varName)}
 	hasProv := false
 	for _, elt := range cl.Elts {
 		kv, ok := elt.(*ast.KeyValueExpr)

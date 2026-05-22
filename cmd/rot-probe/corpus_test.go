@@ -212,6 +212,72 @@ func TestSampleDeterministic(t *testing.T) {
 	}
 }
 
+func TestIsTripGenerated(t *testing.T) {
+	tripCases := []string{
+		"TripCycle25SurvivorshipBiasCommentaryOnSuperiorPatternProcessing",
+		"TripCycle1MathematicalFoundationsCommentaryOnNondualism",
+		"TripCycle10HypothesisCometaryAirburstTheoryOfFiniteOntologyIncompleteness",
+	}
+	for _, name := range tripCases {
+		if !isTripGenerated(name) {
+			t.Errorf("expected %q to be detected as trip-generated", name)
+		}
+	}
+	nonTripCases := []string{
+		// Meta-checks ABOUT trip cycles — not trip promotions themselves.
+		"TripLintTripCycle25SurvivorshipBiasCheckResolution",
+		"TripBuildTripCycle25SurvivorshipBiasBuildability",
+		"TripLLMTripCycle25SurvivorshipBiasConsistency",
+		"TripFunctionalTripCycle25SurvivorshipBiasCheck",
+		// Ordinary claims and entities.
+		"ConradProposesClinicalFraming",
+		"MagicalThinkingBelongsToSPP",
+		"Apophenia",
+		"Trip", // bare prefix without digit
+	}
+	for _, name := range nonTripCases {
+		if isTripGenerated(name) {
+			t.Errorf("expected %q to NOT be detected as trip-generated", name)
+		}
+	}
+}
+
+func TestParseClaimsMarksTripGenerated(t *testing.T) {
+	const tripFixture = `package winze
+
+var (
+	SomeSource = Provenance{Origin: "test", Quote: "q", IngestedAt: "2026-05-21", IngestedBy: "test"}
+
+	NormalClaim = Proposes{
+		Subject: Alice,
+		Object:  Beta,
+		Prov:    SomeSource,
+	}
+
+	TripCycle99FooCommentaryOnBar = CommentaryOn{
+		Subject: Foo,
+		Object:  Bar,
+		Prov:    SomeSource,
+	}
+)
+`
+	dir := writeFixture(t, "trip.go", tripFixture)
+	_, claims, err := parseCorpus(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]claim{}
+	for _, c := range claims {
+		byName[c.varName] = c
+	}
+	if byName["NormalClaim"].tripGenerated {
+		t.Error("NormalClaim should not be trip-generated")
+	}
+	if !byName["TripCycle99FooCommentaryOnBar"].tripGenerated {
+		t.Error("TripCycle99FooCommentaryOnBar should be trip-generated")
+	}
+}
+
 func TestSampleAllWhenNGEN(t *testing.T) {
 	hoods := []neighborhood{
 		{ent: entity{varName: "a"}, asSubj: []claim{{varName: "c"}}},
