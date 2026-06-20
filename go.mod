@@ -5,7 +5,7 @@ go 1.26.2
 require (
 	github.com/anthropics/anthropic-sdk-go v1.35.0
 	github.com/justinstimatze/defn v0.17.0
-	github.com/justinstimatze/gozim v0.1.0
+	github.com/justinstimatze/gozim v0.2.1
 	github.com/mark3labs/mcp-go v0.48.0
 )
 
