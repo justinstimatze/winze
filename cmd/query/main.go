@@ -890,18 +890,31 @@ func askWithClient(client anthropic.Client, kbContext, question string) (string,
 		return "", fmt.Errorf("KB context too large (%d chars, max %d) — reduce entity count or use defn MCP for large KBs", len(kbContext), maxKBContextChars)
 	}
 
-	prompt := kbContext +
+	// The KB context plus the fixed answer instructions form a stable prefix
+	// that is byte-identical across every question — within a REPL session
+	// (kbContext is built once, reused per question) and across separate
+	// `--ask` invocations, since the server-side ephemeral cache is keyed on
+	// content, not connection. The KB dominates the prompt (up to ~100k
+	// tokens), so marking it as a cache_control breakpoint is the single
+	// largest token lever in the query path: only the first question pays
+	// full price for the KB; the rest read the prefix at ~10% input cost.
+	// 1h TTL (not 5m) so human think-time gaps between REPL questions don't
+	// evict the prefix mid-session.
+	system := kbContext +
 		"\nAnswer the question using ONLY the KB data above. " +
 		"Cite entity names and file locations. Be specific and concise. " +
 		"If the KB doesn't contain enough information to answer, say so. " +
-		"Do not invent claims not in the data." +
-		"\n\nQuestion: " + question
+		"Do not invent claims not in the data."
 
 	resp, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaudeHaiku4_5,
 		MaxTokens: 2048,
+		System: []anthropic.TextBlockParam{{
+			Text:         system,
+			CacheControl: anthropic.CacheControlEphemeralParam{TTL: anthropic.CacheControlEphemeralTTLTTL1h},
+		}},
 		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+			anthropic.NewUserMessage(anthropic.NewTextBlock("Question: " + question)),
 		},
 	})
 	if err != nil {
