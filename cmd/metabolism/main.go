@@ -154,6 +154,12 @@ type Cycle struct {
 	// change between re-runs identifies oracle-code drift, distinguishing
 	// "we edited the rule" from "the corpus changed under a stable rule".
 	OracleDigest string `json:"oracle_digest,omitempty"`
+	// CorpusDigest is a short sha256 over the corpus content (all non-test
+	// *.go + go.mod/go.sum) at resolution time — the corpus-content
+	// counterpart to OracleDigest. When both are unchanged since the prior
+	// recheck, the resolver is a pure function of unchanged inputs and
+	// --durability skips the (expensive) resolver invocation entirely.
+	CorpusDigest string `json:"corpus_digest,omitempty"`
 	// PipelineClaims records per-claim accept/reject decisions during ingest.
 	// Added for pipeline observability.
 	PipelineClaims []PipelineClaim `json:"pipeline_claims,omitempty"`

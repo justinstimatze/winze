@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,6 +47,9 @@ func runDurability(dir string, jsonOut, writeLog bool) {
 		fmt.Println("[durability] no KB-internal resolver entries in log")
 		return
 	}
+	// digests carries the inputs (corpus+oracle) recorded at the last actual
+	// run, including _recheck entries — the gate keys on this, not `latest`.
+	digests := latestRecheckState(mlog.Cycles)
 
 	commit := oracleCommit(dir)
 
@@ -67,13 +71,13 @@ func runDurability(dir string, jsonOut, writeLog bool) {
 
 	var results []durabilityResult
 	if len(lintVars) > 0 {
-		results = append(results, recheckLint(dir, lintVars, latest, commit)...)
+		results = append(results, recheckLint(dir, lintVars, latest, digests, commit)...)
 	}
 	if len(functionalVars) > 0 {
-		results = append(results, recheckFunctional(dir, functionalVars, latest, commit)...)
+		results = append(results, recheckFunctional(dir, functionalVars, latest, digests, commit)...)
 	}
 	if len(buildVars) > 0 {
-		results = append(results, recheckBuild(dir, buildVars, latest, commit)...)
+		results = append(results, recheckBuild(dir, buildVars, latest, digests, commit)...)
 	}
 
 	report := buildDurabilityReport(results)
@@ -96,6 +100,7 @@ func runDurability(dir string, jsonOut, writeLog bool) {
 				Evidence:       r.newEvidence,
 				OracleCommit:   r.newOracleCommit,
 				OracleDigest:   r.newOracleDigest,
+				CorpusDigest:   r.newCorpusDigest,
 			})
 		}
 		if err := saveLog(logPath, mlog); err != nil {
@@ -121,6 +126,7 @@ type verdictRecord struct {
 	evidence     string
 	oracleCommit string
 	oracleDigest string
+	corpusDigest string
 	timestamp    time.Time
 }
 
@@ -142,6 +148,7 @@ func latestVerdicts(cycles []Cycle) map[verdictKey]verdictRecord {
 			evidence:     c.Evidence,
 			oracleCommit: c.OracleCommit,
 			oracleDigest: c.OracleDigest,
+			corpusDigest: c.CorpusDigest,
 			timestamp:    c.Timestamp,
 		}
 	}
@@ -154,6 +161,39 @@ func isRecheckable(pt string) bool {
 		return true
 	}
 	return false
+}
+
+// latestRecheckState returns the most recent recorded state per BASE
+// (hypothesis, predictionType), INCLUDING _recheck entries (mapped back to
+// their base type via the "_recheck" suffix). The corpus-digest gate reads
+// THIS, not latestVerdicts: it must know the inputs and verdict at the last
+// time the resolver actually ran (or was carried forward), which lives on
+// the newest entry regardless of the _recheck suffix. latestVerdicts
+// deliberately ignores _recheck to preserve drift-vs-original semantics;
+// the gate instead needs "has anything changed since the last run", and the
+// CorpusDigest it keys on is only ever written on _recheck entries — so
+// filtering them out (as latestVerdicts does) would make the gate dead.
+func latestRecheckState(cycles []Cycle) map[verdictKey]verdictRecord {
+	out := map[verdictKey]verdictRecord{}
+	for _, c := range cycles {
+		base := strings.TrimSuffix(c.PredictionType, "_recheck")
+		if !isRecheckable(base) {
+			continue
+		}
+		key := verdictKey{hypothesis: c.Hypothesis, predictionType: base}
+		if prev, ok := out[key]; ok && !c.Timestamp.After(prev.timestamp) {
+			continue
+		}
+		out[key] = verdictRecord{
+			resolution:   c.Resolution,
+			evidence:     c.Evidence,
+			oracleCommit: c.OracleCommit,
+			oracleDigest: c.OracleDigest,
+			corpusDigest: c.CorpusDigest,
+			timestamp:    c.Timestamp,
+		}
+	}
+	return out
 }
 
 type driftCategory string
@@ -180,8 +220,64 @@ type durabilityResult struct {
 	newEvidence     string
 	newOracleCommit string
 	newOracleDigest string
+	newCorpusDigest string
 
 	drift driftCategory
+}
+
+// corpusUnchanged reports whether every claimVar's last recheck observed
+// the same corpus content AND the same oracle code as now. When true, the
+// resolver is a pure function of unchanged inputs, so its verdicts cannot
+// have moved and the (expensive) resolver invocation can be skipped. A var
+// whose prior entry has no stored CorpusDigest (legacy, pre-gate) forces a
+// full run — the conservative direction. The oracle half is mandatory:
+// editing cmd/lint can change output on a byte-identical corpus.
+func corpusUnchanged(claimVars []string, latest map[verdictKey]verdictRecord, predictionType, curCorpus, curOracle string) bool {
+	if curCorpus == "" {
+		return false
+	}
+	for _, v := range claimVars {
+		old := latest[verdictKey{hypothesis: v, predictionType: predictionType}]
+		if old.corpusDigest == "" || old.corpusDigest != curCorpus || old.oracleDigest != curOracle {
+			return false
+		}
+	}
+	return true
+}
+
+// stableCarryForward emits recheck results that reuse the last run's verdict
+// without re-running the resolver. Used only when corpusUnchanged proved the
+// resolver's inputs (corpus + oracle) are byte-identical to the last run, so
+// a fresh run would reproduce that run's verdict exactly.
+//
+// The carried verdict comes from `last` (latestRecheckState — the newest
+// entry, including _recheck), NOT the original: if a prior recheck already
+// flipped the verdict, the flip persists under unchanged inputs, and
+// carrying the original would mask it as stable. Drift is still classified
+// against the ORIGINAL verdict (`orig`, from latestVerdicts), matching the
+// non-skip path's drift-vs-original semantics.
+func stableCarryForward(claimVars []string, latest, digests map[verdictKey]verdictRecord, predictionType, commit, corpusDig string) []durabilityResult {
+	out := make([]durabilityResult, 0, len(claimVars))
+	for _, v := range claimVars {
+		key := verdictKey{hypothesis: v, predictionType: predictionType}
+		orig := latest[key]   // original promotion verdict — drift baseline
+		last := digests[key]  // newest run's verdict — what a fresh run would reproduce
+		out = append(out, durabilityResult{
+			hypothesis:        v,
+			oldPredictionType: predictionType,
+			oldVerdict:        orig.resolution,
+			oldEvidence:       orig.evidence,
+			oldOracleCommit:   orig.oracleCommit,
+			oldOracleDigest:   orig.oracleDigest,
+			newVerdict:        last.resolution,
+			newEvidence:       "skipped: corpus+oracle digest unchanged since last run (" + corpusDig + ")",
+			newOracleCommit:   commit,
+			newOracleDigest:   last.oracleDigest, // == current oracle by the gate's construction
+			newCorpusDigest:   corpusDig,
+			drift:             classifyDrift(orig.resolution, last.resolution, orig.oracleDigest, last.oracleDigest),
+		})
+	}
+	return out
 }
 
 // classifyDrift decides the drift category from old vs new verdicts and
@@ -212,7 +308,14 @@ func classifyDrift(oldVerdict, newVerdict, oldDigest, newDigest string) driftCat
 
 // ---- lint recheck ----
 
-func recheckLint(dir string, claimVars []string, latest map[verdictKey]verdictRecord, commit string) []durabilityResult {
+func recheckLint(dir string, claimVars []string, latest, digests map[verdictKey]verdictRecord, commit string) []durabilityResult {
+	digest := oracleDigest(dir, "trip_lint_durability")
+	curCorpus := corpusDigest(dir)
+	if corpusUnchanged(claimVars, digests, "trip_lint_durability", curCorpus, digest) {
+		fmt.Fprintln(os.Stderr, "[durability] lint recheck skipped: corpus+oracle digest unchanged")
+		return stableCarryForward(claimVars, latest, digests, "trip_lint_durability", commit, curCorpus)
+	}
+
 	cmd := exec.Command("go", "run", "./cmd/lint", ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
@@ -225,7 +328,6 @@ func recheckLint(dir string, claimVars []string, latest map[verdictKey]verdictRe
 		}
 	}
 
-	digest := oracleDigest(dir, "trip_lint_durability")
 	existing := existingVars(dir)
 
 	var results []durabilityResult
@@ -242,6 +344,7 @@ func recheckLint(dir string, claimVars []string, latest map[verdictKey]verdictRe
 			oldOracleDigest:   old.oracleDigest,
 			newOracleCommit:   commit,
 			newOracleDigest:   digest,
+			newCorpusDigest:   curCorpus,
 		}
 		if !existing[v] {
 			r.newVerdict = "unresolvable"
@@ -264,8 +367,17 @@ func recheckLint(dir string, claimVars []string, latest map[verdictKey]verdictRe
 
 // ---- functional recheck ----
 
-func recheckFunctional(dir string, claimVars []string, latest map[verdictKey]verdictRecord, commit string) []durabilityResult {
+func recheckFunctional(dir string, claimVars []string, latest, digests map[verdictKey]verdictRecord, commit string) []durabilityResult {
 	digest := oracleDigest(dir, "trip_functional_durability")
+	curCorpus := corpusDigest(dir)
+	if corpusUnchanged(claimVars, digests, "trip_functional_durability", curCorpus, digest) {
+		// Bonus: this path needs defn, which can be down. When the corpus
+		// is unchanged we carry verdicts forward without touching defn at
+		// all, so an idle recheck stays "stable" instead of degrading to
+		// now_ambiguous on a defn outage.
+		fmt.Fprintln(os.Stderr, "[durability] functional recheck skipped: corpus+oracle digest unchanged")
+		return stableCarryForward(claimVars, latest, digests, "trip_functional_durability", commit, curCorpus)
+	}
 
 	dbClient, err := defndb.New(dir)
 	if err != nil {
@@ -285,6 +397,7 @@ func recheckFunctional(dir string, claimVars []string, latest map[verdictKey]ver
 				newEvidence:       fmt.Sprintf("defndb unreachable: %v", err),
 				newOracleCommit:   commit,
 				newOracleDigest:   digest,
+				newCorpusDigest:   curCorpus,
 				drift:             driftNowAmbiguous,
 			})
 		}
@@ -348,6 +461,7 @@ func recheckFunctional(dir string, claimVars []string, latest map[verdictKey]ver
 			oldOracleDigest:   old.oracleDigest,
 			newOracleCommit:   commit,
 			newOracleDigest:   digest,
+			newCorpusDigest:   curCorpus,
 		}
 
 		info, present := byVar[v]
@@ -398,8 +512,13 @@ func recheckFunctional(dir string, claimVars []string, latest map[verdictKey]ver
 
 // ---- build-gate recheck ----
 
-func recheckBuild(dir string, claimVars []string, latest map[verdictKey]verdictRecord, commit string) []durabilityResult {
+func recheckBuild(dir string, claimVars []string, latest, digests map[verdictKey]verdictRecord, commit string) []durabilityResult {
 	digest := oracleDigest(dir, "trip_promotion_attempt")
+	curCorpus := corpusDigest(dir)
+	if corpusUnchanged(claimVars, digests, "trip_promotion_attempt", curCorpus, digest) {
+		fmt.Fprintln(os.Stderr, "[durability] build recheck skipped: corpus+toolchain digest unchanged")
+		return stableCarryForward(claimVars, latest, digests, "trip_promotion_attempt", commit, curCorpus)
+	}
 
 	cmd := exec.Command("go", "build", "./...")
 	cmd.Dir = dir
@@ -423,6 +542,7 @@ func recheckBuild(dir string, claimVars []string, latest map[verdictKey]verdictR
 			oldOracleDigest:   old.oracleDigest,
 			newOracleCommit:   commit,
 			newOracleDigest:   digest,
+			newCorpusDigest:   curCorpus,
 		}
 		if !existing[v] {
 			r.newVerdict = "unresolvable"
@@ -708,6 +828,60 @@ func goVersionDigest() string {
 	}
 	h := sha256.Sum256(out)
 	sum := fmt.Sprintf("%x", h)
+	if len(sum) > 12 {
+		sum = sum[:12]
+	}
+	return sum
+}
+
+// corpusDigest returns a short sha256 over the corpus content — every
+// non-test *.go in the module plus go.mod/go.sum — sorted by module-
+// relative path for determinism. It is the corpus-content counterpart to
+// oracleDigest: together they let --durability skip a resolver invocation
+// when neither the corpus nor the resolver code changed since the last
+// recheck. The set is a deliberate SUPERSET of what any single resolver
+// reads (it includes machinery .go a lint rule may not touch): a superset
+// can only trigger an unnecessary re-run, never an unsound skip. Test
+// files are excluded to match `go build ./...` semantics (it does not
+// compile them) and to keep the digest stable under test-only edits.
+func corpusDigest(dir string) string {
+	var files []string
+	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", ".defn", "node_modules":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		name := d.Name()
+		switch {
+		case name == "go.mod" || name == "go.sum":
+			files = append(files, path)
+		case strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go"):
+			files = append(files, path)
+		}
+		return nil
+	})
+	sort.Strings(files)
+	h := sha256.New()
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		rel, relErr := filepath.Rel(dir, f)
+		if relErr != nil {
+			rel = f
+		}
+		h.Write([]byte(rel + "\x00"))
+		h.Write(data)
+		h.Write([]byte("\n"))
+	}
+	sum := fmt.Sprintf("%x", h.Sum(nil))
 	if len(sum) > 12 {
 		sum = sum[:12]
 	}

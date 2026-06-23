@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -148,5 +150,128 @@ func TestGoVersionDigest(t *testing.T) {
 	// Two calls should be identical (Go version doesn't change mid-test)
 	if d2 := goVersionDigest(); d2 != d {
 		t.Errorf("goVersionDigest not deterministic: %q vs %q", d, d2)
+	}
+}
+
+func TestCorpusDigest(t *testing.T) {
+	dir := t.TempDir()
+	writeFile := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile("alpha.go", "package corpus\n\nvar A = 1\n")
+	writeFile("beta.go", "package corpus\n\nvar B = 2\n")
+	writeFile("go.mod", "module corpus\n\ngo 1.22\n")
+
+	d1 := corpusDigest(dir)
+	if len(d1) != 12 {
+		t.Fatalf("digest length = %d, want 12", len(d1))
+	}
+	// Deterministic across calls.
+	if d2 := corpusDigest(dir); d2 != d1 {
+		t.Errorf("corpusDigest not deterministic: %q vs %q", d1, d2)
+	}
+
+	// A content change must move the digest.
+	writeFile("beta.go", "package corpus\n\nvar B = 3\n")
+	if d3 := corpusDigest(dir); d3 == d1 {
+		t.Error("corpusDigest unchanged after editing beta.go — gate would skip unsoundly")
+	}
+
+	// _test.go files must NOT affect the digest (go build doesn't compile
+	// them; including them would cause spurious re-runs).
+	dBefore := corpusDigest(dir)
+	writeFile("alpha_test.go", "package corpus\n\n// noise\n")
+	if dAfter := corpusDigest(dir); dAfter != dBefore {
+		t.Error("corpusDigest changed when only a _test.go file was added")
+	}
+}
+
+func TestCorpusUnchanged(t *testing.T) {
+	const pt = "trip_lint_durability"
+	latest := map[verdictKey]verdictRecord{
+		{hypothesis: "X", predictionType: pt}: {corpusDigest: "cccccccccccc", oracleDigest: "oooooooooooo"},
+		{hypothesis: "Y", predictionType: pt}: {corpusDigest: "cccccccccccc", oracleDigest: "oooooooooooo"},
+	}
+	vars := []string{"X", "Y"}
+
+	if !corpusUnchanged(vars, latest, pt, "cccccccccccc", "oooooooooooo") {
+		t.Error("want skip when both digests match for all vars")
+	}
+	if corpusUnchanged(vars, latest, pt, "dddddddddddd", "oooooooooooo") {
+		t.Error("must NOT skip when corpus digest moved")
+	}
+	if corpusUnchanged(vars, latest, pt, "cccccccccccc", "pppppppppppp") {
+		t.Error("must NOT skip when oracle digest moved (lint code edited)")
+	}
+	if corpusUnchanged(vars, latest, pt, "", "oooooooooooo") {
+		t.Error("must NOT skip when current corpus digest is empty")
+	}
+
+	// A legacy entry with no stored CorpusDigest forces a full run.
+	latest[verdictKey{hypothesis: "Z", predictionType: pt}] = verdictRecord{corpusDigest: "", oracleDigest: "oooooooooooo"}
+	if corpusUnchanged([]string{"X", "Y", "Z"}, latest, pt, "cccccccccccc", "oooooooooooo") {
+		t.Error("must NOT skip when any var lacks a stored corpus digest (legacy entry)")
+	}
+}
+
+func TestStableCarryForward(t *testing.T) {
+	const pt = "trip_lint_durability"
+	// latest = original promotion verdicts (drift baseline).
+	latest := map[verdictKey]verdictRecord{
+		{hypothesis: "Good", predictionType: pt}: {resolution: "confirmed", oracleDigest: "oooooooooooo"},
+		{hypothesis: "Flip", predictionType: pt}: {resolution: "confirmed", oracleDigest: "oooooooooooo"},
+		{hypothesis: "Gone", predictionType: pt}: {resolution: "unresolvable", oracleDigest: "oooooooooooo"},
+	}
+	// digests = newest run's state. "Flip" already flipped to refuted in a
+	// prior recheck; carrying the ORIGINAL "confirmed" would mask that.
+	digests := map[verdictKey]verdictRecord{
+		{hypothesis: "Good", predictionType: pt}: {resolution: "confirmed", oracleDigest: "oooooooooooo", corpusDigest: "cccccccccccc"},
+		{hypothesis: "Flip", predictionType: pt}: {resolution: "refuted", oracleDigest: "oooooooooooo", corpusDigest: "cccccccccccc"},
+		{hypothesis: "Gone", predictionType: pt}: {resolution: "unresolvable", oracleDigest: "oooooooooooo", corpusDigest: "cccccccccccc"},
+	}
+	out := stableCarryForward([]string{"Good", "Flip", "Gone"}, latest, digests, pt, "abc123", "cccccccccccc")
+
+	byHyp := map[string]durabilityResult{}
+	for _, r := range out {
+		byHyp[r.hypothesis] = r
+	}
+	if got := byHyp["Good"]; got.drift != driftStable || got.newVerdict != "confirmed" {
+		t.Errorf("Good: drift=%q verdict=%q, want stable/confirmed", got.drift, got.newVerdict)
+	}
+	// The persisted flip must survive the skip, not be masked as stable.
+	if got := byHyp["Flip"]; got.newVerdict != "refuted" || got.drift != driftFlippedRefuted {
+		t.Errorf("Flip: drift=%q verdict=%q, want flipped_to_refuted/refuted (skip must not mask a prior flip)", got.drift, got.newVerdict)
+	}
+	if got := byHyp["Gone"]; got.drift != driftUnresolvable {
+		t.Errorf("Gone: drift=%q, want unresolvable (must not write a bogus stable entry)", got.drift)
+	}
+	if byHyp["Good"].newCorpusDigest != "cccccccccccc" {
+		t.Errorf("newCorpusDigest=%q, want propagated", byHyp["Good"].newCorpusDigest)
+	}
+}
+
+// TestLatestRecheckState_ReadsBackDigest is the regression guard for the
+// gate-never-fires bug: CorpusDigest is written only on _recheck entries,
+// and latestVerdicts filters those out, so the gate must read its digest
+// via latestRecheckState (which maps _recheck back to its base type).
+func TestLatestRecheckState_ReadsBackDigest(t *testing.T) {
+	const base = "trip_lint_durability"
+	cycles := []Cycle{
+		// Original promotion entry: no corpus digest.
+		{Hypothesis: "H", PredictionType: base, Resolution: "confirmed", Timestamp: time.Unix(100, 0)},
+		// A later _recheck wrote the corpus digest.
+		{Hypothesis: "H", PredictionType: base + "_recheck", Resolution: "confirmed", CorpusDigest: "deadbeef0000", OracleDigest: "oo", Timestamp: time.Unix(200, 0)},
+	}
+
+	// latestVerdicts (originals only) must NOT see the digest...
+	if got := latestVerdicts(cycles)[verdictKey{"H", base}].corpusDigest; got != "" {
+		t.Errorf("latestVerdicts corpusDigest = %q, want empty (it ignores _recheck)", got)
+	}
+	// ...but latestRecheckState must surface it under the BASE key.
+	st := latestRecheckState(cycles)[verdictKey{"H", base}]
+	if st.corpusDigest != "deadbeef0000" {
+		t.Errorf("latestRecheckState corpusDigest = %q, want deadbeef0000 — gate would be dead", st.corpusDigest)
 	}
 }
