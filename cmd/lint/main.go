@@ -12,6 +12,7 @@
 //   5. llm-contradiction  — LLM-detected semantic contradictions (--llm, advisory)
 //   6. brief-check        — entities with missing or overlong Briefs (advisory)
 //   7. provenance-split   — same Origin cited by multiple Provenance vars (advisory)
+//   8. brief-drift        — Brief names an entity with no claim path to it (advisory)
 package main
 
 import (
@@ -1095,9 +1096,11 @@ func main() {
 	rc6 := briefCheckRule(dir)
 	fmt.Println()
 	rc7 := provenanceSplitRule(dir)
+	fmt.Println()
+	rc8 := briefDriftRule(dir)
 
 	worst := rc1
-	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7} {
+	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8} {
 		if rc > worst {
 			worst = rc
 		}

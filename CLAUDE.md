@@ -23,7 +23,15 @@ go run ./cmd/lint . --llm --llm-max-calls=5 # + LLM contradiction check
 ```
 
 Lint rules: naming-oracle, orphan-report, value-conflict, contested-concept,
-brief-check, provenance-split, llm-contradiction.
+brief-check, provenance-split, llm-contradiction, brief-drift.
+
+`brief-drift` reports entities whose Brief names another entity with no claim
+path to it within two hops. It is advisory by design: Brief-level references
+for connections a source does not commit to are explicitly permitted (see
+Mirror-source-commitments), so a hit is not a defect. Read it two ways — as
+prose/structure drift, and as a worklist of things written about but never
+wired up. Two hops rather than one because the house pattern routes a person
+to a concept through an intermediate framing entity.
 
 ### Authoring helper
 
