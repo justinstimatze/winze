@@ -1,7 +1,6 @@
 package defndb_test
 
 import (
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -16,27 +15,22 @@ func rootDir(t *testing.T) string {
 	return filepath.Join(filepath.Dir(file), "..", "..")
 }
 
-func skipIfNoDefn(t *testing.T) *defndb.Client {
+// newClient opens a Client over the corpus root. The backing store is the
+// corpus source itself, so unlike the previous defn-backed implementation
+// there is no external database that can be missing — these tests always run
+// rather than skipping into a false green.
+func newClient(t *testing.T) *defndb.Client {
 	t.Helper()
-	dir := rootDir(t)
-	// Check .defn exists before creating client (avoids timeout on missing db)
-	if _, err := os.Stat(filepath.Join(dir, ".defn")); err != nil {
-		t.Skip(".defn directory not found:", err)
-	}
-	client, err := defndb.New(dir)
+	client, err := defndb.New(rootDir(t))
 	if err != nil {
-		t.Skip("defn database not available:", err)
+		t.Fatal(err)
 	}
 	t.Cleanup(func() { client.Close() })
-	// Verify the client can actually query (catches corrupt db, timeouts)
-	if _, err := client.RoleTypeSet(); err != nil {
-		t.Skip("defn query failed:", err)
-	}
 	return client
 }
 
 func TestConcordance_RoleTypes(t *testing.T) {
-	client := skipIfNoDefn(t)
+	client := newClient(t)
 	dir := rootDir(t)
 
 	// AST path
@@ -65,7 +59,7 @@ func TestConcordance_RoleTypes(t *testing.T) {
 }
 
 func TestConcordance_ClaimFields(t *testing.T) {
-	client := skipIfNoDefn(t)
+	client := newClient(t)
 
 	fields, err := client.ClaimFields()
 	if err != nil {
@@ -96,7 +90,7 @@ func TestConcordance_ClaimFields(t *testing.T) {
 }
 
 func TestConcordance_Pragmas(t *testing.T) {
-	client := skipIfNoDefn(t)
+	client := newClient(t)
 
 	pragmas, err := client.Pragmas("winze:")
 	if err != nil {
@@ -123,7 +117,7 @@ func TestConcordance_Pragmas(t *testing.T) {
 }
 
 func TestConcordance_EntityFields(t *testing.T) {
-	client := skipIfNoDefn(t)
+	client := newClient(t)
 
 	fields, err := client.EntityFields()
 	if err != nil {
