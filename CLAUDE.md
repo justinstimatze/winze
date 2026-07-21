@@ -13,6 +13,23 @@ Every `.go` file in the root is a knowledge corpus slice. Each declares:
 
 The type system is in `schema.go`, roles in `roles.go`, predicates in `predicates.go`.
 
+### Build the tools first (interactive speed)
+
+```bash
+make build      # -> ./bin/winze-{query,lint,topology,metabolism,add,...}
+make install    # -> $GOBIN (defaults to ~/go/bin)
+```
+
+`go run ./cmd/foo` recompiles on every invocation and costs ~0.5s before the
+tool starts. Measured on this corpus: `go run ./cmd/query --stats .` is 497ms
+against 27ms for the built binary — an 18x tax on the operation a knowledge
+base exists to make cheap. The `go run` forms below still work and are fine
+for batch phases; use the built binaries for anything interactive.
+
+Reference timings (built, 364 entities / 510 claims): query 27-112ms,
+topology 503ms, lint 896ms, the per-claim gate (`go build . && go vet .`)
+~300ms.
+
 ### Quality gates
 
 ```bash
@@ -66,6 +83,35 @@ the build gate validates that the named var exists. The tool does no
 slot-type checking of its own — the build gate is what validates the
 claim, which is the load-bearing discipline this project was built around.
 Do NOT relax that path.
+
+### Editing helper (referentially-safe mutation)
+
+```bash
+winze-edit rename --from Apophenia --to Pareidolia .    # rewrite every reference
+winze-edit rename --from A --to B --dry-run .            # report sites, write nothing
+```
+
+`cmd/add` appends; `cmd/edit` mutates. A KB you can only append to is one you
+cannot maintain — when rot-probe reports two entities that are probably the
+same thing, or a framing gets refined and its claims should retarget, there
+has to be a tool to act on the finding.
+
+Rename works on byte offsets the parser identifies, not text substitution.
+On this corpus `Apophenia` has **119 textual occurrences but 7 real
+identifier references** — the rest are Briefs, Quotes, comments, and the
+longer identifier `ApopheniaClinicalFraming`. A `sed` would corrupt all 112.
+That gap is the whole argument for Go-shaped knowledge: the parser knows
+which occurrences are the symbol.
+
+Every mutation runs the same gate as `cmd/add` (gofmt, `go build`, `go vet`)
+and reverts **all** touched files if any step fails. gofmt is applied only to
+files the mutation touched — a mutation tool must not have a blast radius
+wider than its mutation.
+
+Not yet implemented: merge (two entities into one), retarget (bulk Object
+rewrite), safe delete. Merge has open modeling questions — which Brief
+survives, what happens to conflicting claims, whether both provenance trails
+are kept — so it wants a decision before code.
 
 ### Rot probe
 

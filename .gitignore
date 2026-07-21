@@ -112,3 +112,6 @@ __pycache__/
 state.json
 CLAUDE.md
 CLAUDE.local.md
+
+# Built tool binaries (make build)
+bin/
