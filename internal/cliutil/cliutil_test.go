@@ -3,6 +3,7 @@ package cliutil
 import (
 	"reflect"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestTruncate(t *testing.T) {
@@ -30,11 +31,8 @@ func TestTruncateRuneSafe(t *testing.T) {
 	if got != "a…" {
 		t.Errorf("Truncate rune-split = %q, want %q", got, "a…")
 	}
-	for i := 0; i < len(got); {
-		if got[i] >= 0x80 && got[i] < 0xC0 { // stray continuation byte
-			t.Fatalf("Truncate emitted invalid UTF-8: %q", got)
-		}
-		i++
+	if !utf8.ValidString(got) {
+		t.Fatalf("Truncate emitted invalid UTF-8: %q", got)
 	}
 }
 
