@@ -62,9 +62,42 @@ That cross-session referential integrity is the thing an Obsidian vault of
 | git conflict (two sessions append at EOF) | conflicts every time | disjoint files -> `git pull --rebase` is clean |
 | gate race (concurrent `go build .` in one tree) | one session sees another's half-written append | each session in its own worktree -> gate runs isolated |
 
-Worktree-per-session is the load-bearing requirement. Gas Town polecats
-already clone into `polecats/<name>/winze/`; a bare multi-session user needs
-one `git worktree add` per session.
+Worktree-per-session is the *conflict-free* path: disjoint files and isolated
+gates mean zero contention. Gas Town polecats already clone into
+`polecats/<name>/winze/`.
+
+### Sharing one worktree: the corpus lock
+
+Not every multi-session user sets up a worktree per session — the simplest
+"point all my parallel windows at one repo" shape has N sessions writing the
+**same** working tree. There the gate race is real: the gate is `go build .`
+over the whole directory, so one session running its gate while another is
+mid-write sees the other's half-written file, and three things break — a lost
+update (B's write overwrites A's from a stale backup), a revert clobber (A's
+failed gate reverts to A's backup, wiping B's committed write), and a
+cross-file **false revert** (B's gate fails on A's syntactically-broken
+intermediate and B reverts its *own valid* change, even for a write to a
+different file).
+
+`internal/corpuslock` closes all three: every mutator (`cmd/add`,
+`cmd/add --batch`, `cmd/edit rename`/`merge`) takes a corpus-wide exclusive
+`flock(2)` on `.winze.lock` around its whole read→gate→commit section, so
+shared-tree writers serialize instead of racing. The lock is per-open-file-
+description, so the kernel releases it if a holder crashes — no stale-lock
+recovery. Uncontended cost is a sub-microsecond syscall, so the single-writer
+path is unaffected.
+
+The false-revert case is the one that matters most when the author is an
+**agent**: an agent takes a build error at face value and immediately tries to
+"fix" its claim — so a phantom error from another session's in-flight write
+sends it into a repair spiral on code that was already correct. Serialization
+guarantees any gate failure is attributable to the writer's own change, which
+is also what makes "revert on gate fail" a *sound* policy again.
+
+So there are two safe multi-session shapes: worktree-per-session (no
+contention, needs `git worktree` setup) and shared-tree-with-lock (serialized
+writes, zero setup). Pick by whether write concurrency is high enough that
+serialization latency bites.
 
 ## Burst writes: batch the gate (`cmd/add --batch`)
 
@@ -113,7 +146,7 @@ logs into curated topic files and dedups (cold path, coherence).
 Compaction is not new machinery — it is the existing maintenance tools:
 
 - `rot-probe` — find duplicate / drifted entities (the compaction *lens*)
-- `winze-edit merge` — fold two entities into one (the compaction *primitive*, not yet built)
+- `winze-edit merge` — fold two entities into one (the compaction *primitive*, built)
 - `winze-edit rename` — referential cleanup (built)
 - `metabolism --dream` — Brief quality, file balance
 

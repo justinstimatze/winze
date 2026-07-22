@@ -22,6 +22,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/justinstimatze/winze/internal/corpuslock"
 )
 
 // claimSpec is one claim in a batch file. Fields mirror the single-claim
@@ -114,6 +116,13 @@ func runBatch(batchPath, repoRoot string, dryRun bool) int {
 		}
 		return 0
 	}
+
+	unlock, err := corpuslock.Acquire(repoRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "corpus lock: %v\n", err)
+		return 1
+	}
+	defer unlock()
 
 	// Back up every unique target before the first write; touched preserves
 	// insertion order so gofmt gets a stable, minimal file list.

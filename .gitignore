@@ -115,3 +115,6 @@ CLAUDE.local.md
 
 # Built tool binaries (make build)
 bin/
+
+# corpus-wide advisory write lock (internal/corpuslock)
+.winze.lock

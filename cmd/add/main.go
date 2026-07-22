@@ -39,6 +39,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/justinstimatze/winze/internal/corpuslock"
 )
 
 func main() {
@@ -79,6 +81,15 @@ func main() {
 		fmt.Println(decl)
 		return
 	}
+
+	// Serialize with any concurrent winze writer: the read-append-gate-commit
+	// section below is not safe against a parallel mutator sharing this corpus.
+	unlock, err := corpuslock.Acquire(*repoRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "corpus lock: %v\n", err)
+		os.Exit(1)
+	}
+	defer unlock()
 
 	targetPath := filepath.Join(*repoRoot, *target)
 	backup, err := os.ReadFile(targetPath)

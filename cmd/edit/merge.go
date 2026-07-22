@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/justinstimatze/winze/internal/astutil"
+	"github.com/justinstimatze/winze/internal/corpuslock"
 )
 
 // edit is a single byte-range replacement. A deletion is repl == "".
@@ -138,6 +139,13 @@ func cmdMerge(args []string) int {
 		fmt.Println("(dry run — nothing written)")
 		return 0
 	}
+
+	unlock, err := corpuslock.Acquire(*root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "corpus lock: %v\n", err)
+		return 1
+	}
+	defer unlock()
 
 	backups := map[string][]byte{}
 	revert := func() {

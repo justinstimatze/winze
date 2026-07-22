@@ -121,6 +121,17 @@ and reverts **all** touched files if any step fails. gofmt is applied only to
 files the mutation touched — a mutation tool must not have a blast radius
 wider than its mutation.
 
+**Concurrent-write safety.** Every write path — `cmd/add`, `cmd/add --batch`,
+`cmd/edit rename`/`merge` — takes a corpus-wide advisory `flock(2)` on
+`.winze.lock` (`internal/corpuslock`) around its whole read→gate→commit
+section, so multiple sessions sharing one worktree serialize instead of
+racing. Without it the shared `go build .` gate lets concurrent writers lose
+updates, clobber each other's reverts, and — worst for an agent author —
+false-revert a valid change after tripping over another session's
+half-written file. The lock is per-fd, so a crashed holder is released by the
+kernel (no stale-lock reaping); uncontended cost is one syscall, so the
+single-writer path is unaffected. See `docs/multi-session-write-shape.md`.
+
 `merge` folds entity A into entity B: every reference to A is retargeted to
 B, A's declaration is removed (its whole `var (…)` group when A is the only
 member, else just A's spec), and A's claims retarget automatically because
