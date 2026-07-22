@@ -1083,16 +1083,30 @@ type entityMeta struct {
 
 
 func basicLitString(e ast.Expr) string {
-	lit, ok := e.(*ast.BasicLit)
-	if !ok || lit.Kind != token.STRING {
-		return ""
+	switch v := e.(type) {
+	case *ast.BasicLit:
+		if v.Kind != token.STRING {
+			return ""
+		}
+		// Simple unquoting: strip surrounding quotes
+		s := v.Value
+		if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+			s = s[1 : len(s)-1]
+		}
+		return s
+	case *ast.BinaryExpr:
+		// Multi-line Quotes are written as "..." + "..." + ... — an
+		// *ast.BinaryExpr chain, not a single BasicLit. Concatenate the
+		// operands so a rich concatenated Quote is not misread as empty
+		// (which false-flagged well-sourced files like blindsight.go as
+		// thin_provenance).
+		if v.Op == token.ADD {
+			return basicLitString(v.X) + basicLitString(v.Y)
+		}
+	case *ast.ParenExpr:
+		return basicLitString(v.X)
 	}
-	// Simple unquoting: strip surrounding quotes
-	s := lit.Value
-	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
-		s = s[1 : len(s)-1]
-	}
-	return s
+	return ""
 }
 
 func collectEntities(dir string) ([]entityInfo, error) {
