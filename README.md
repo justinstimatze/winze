@@ -8,6 +8,21 @@ The agent-memory systems we've surveyed — [Hermes](https://github.com/nousrese
 
 Knowledge looks like code. Entities are typed constants, claims are variable declarations, predicates are generic types. Put the wrong entity type in a relationship slot and it doesn't compile. Standard tooling works unchanged: LSP, `go/ast`, CI, code review, `git blame`. Every improvement to Claude Code, OpenClaw, Cursor, or Devin directly benefits this knowledge base — no adapter required.
 
+## Typed citation
+
+The primitive under all of it is the **typed citation**: a reference whose
+target existence is checked by the compiler, so it cannot go stale silently.
+Concept→concept links, claim→source provenance, and doc→code references are the
+same shape — a citation with a type the build keeps honest. A documentation
+entity can cite a live code symbol *by value* (`winze_self.go` does this on
+winze's own internals): rename or delete the symbol and the KB stops compiling.
+Most tools in this space *detect* drift after the fact and route a proposed fix
+through human approval; winze *prevents* it — a stale reference is a build
+error, not something a reviewer might notice. The format is an implementation
+detail: a user adds and queries knowledge by talking to an agent that maps the
+conversation to a typed claim behind the gate, and never needs to know it is
+code. See [docs/typed-citation.md](docs/typed-citation.md).
+
 ## Where this is headed
 
 The agent memory race is building filing cabinets. [Hermes](https://github.com/nousresearch/hermes-agent) writes reusable skills. [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) compiles markdown from raw sources. These solve retrieval. None of the systems in the comparison below target *epistemic self-awareness* — knowing which beliefs are load-bearing and which might break.
