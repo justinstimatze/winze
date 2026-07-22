@@ -25,12 +25,14 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/justinstimatze/winze/internal/corpusparse"
 	"github.com/justinstimatze/winze/internal/dedup"
 	"github.com/justinstimatze/winze/internal/defndb"
+	"github.com/justinstimatze/winze/internal/usagelog"
 )
 
 // --- data types ---
@@ -71,6 +73,7 @@ type kbIndex struct {
 // --- main ---
 
 func main() {
+	start := time.Now()
 	if os.Getenv("GOMEMLIMIT") == "" {
 		debug.SetMemoryLimit(512 << 20) // 512 MiB
 	}
@@ -101,6 +104,8 @@ func main() {
 			query = a
 		}
 	}
+
+	defer usagelog.Log(dir, "query", os.Args[1:], start)
 
 	kb, err := buildIndex(dir)
 	if err != nil {

@@ -121,3 +121,6 @@ bin/
 
 # semantic search embedding cache (cmd/query --semantic)
 .winze-embed/
+
+# self-telemetry (usage-frequency log; local only)
+.winze-usage.jsonl

@@ -41,34 +41,38 @@ import (
 	"time"
 
 	"github.com/justinstimatze/winze/internal/corpuslock"
+	"github.com/justinstimatze/winze/internal/usagelog"
 )
 
 func main() {
 	var (
-		predicate   = flag.String("predicate", "", "predicate type name (e.g. Proposes, TheoryOf)")
-		subject     = flag.String("subject", "", "subject entity var name (e.g. KlausConrad)")
-		object      = flag.String("object", "", "object entity var name (omit for --unary predicates)")
-		quote       = flag.String("quote", "", "exact source quote (required unless --provenance-var is set)")
-		origin      = flag.String("origin", "", "free-form provenance origin hint (required unless --provenance-var is set)")
-		ingestedBy  = flag.String("ingested-by", "winze-add", "ingestor tag for inline Provenance.IngestedBy (ignored when --provenance-var is set)")
-		provVar     = flag.String("provenance-var", "", "name of an existing Provenance var to reuse (e.g. apopheniaSource); mutually exclusive with --quote/--origin/--ingested-by")
-		target      = flag.String("to", "", "target corpus file (relative to --root, e.g. apophenia.go)")
-		claimName   = flag.String("name", "", "Go var name for the new claim")
-		repoRoot    = flag.String("root", ".", "winze repo root (the directory containing predicates.go)")
-		unary       = flag.Bool("unary", false, "set for UnaryClaim predicates (omit --object)")
-		dryRun      = flag.Bool("dry-run", false, "print what would be written; do not modify files or build")
-		batch       = flag.String("batch", "", "append many claims from a JSONL file (or '-' for stdin) under one build gate; ignores the single-claim flags")
-		propose     = flag.String("propose", "", "rough natural-language note; an LLM proposes the typed claim (predicate/subject/object) from the existing vocabulary, then the normal gate validates it (needs ANTHROPIC_API_KEY)")
-		commit      = flag.Bool("commit", false, "with --propose: actually write the proposed claim through the build gate (default: show the proposal only)")
-		model       = flag.String("model", "", "with --propose: model override (default Claude Haiku 4.5)")
+		predicate  = flag.String("predicate", "", "predicate type name (e.g. Proposes, TheoryOf)")
+		subject    = flag.String("subject", "", "subject entity var name (e.g. KlausConrad)")
+		object     = flag.String("object", "", "object entity var name (omit for --unary predicates)")
+		quote      = flag.String("quote", "", "exact source quote (required unless --provenance-var is set)")
+		origin     = flag.String("origin", "", "free-form provenance origin hint (required unless --provenance-var is set)")
+		ingestedBy = flag.String("ingested-by", "winze-add", "ingestor tag for inline Provenance.IngestedBy (ignored when --provenance-var is set)")
+		provVar    = flag.String("provenance-var", "", "name of an existing Provenance var to reuse (e.g. apopheniaSource); mutually exclusive with --quote/--origin/--ingested-by")
+		target     = flag.String("to", "", "target corpus file (relative to --root, e.g. apophenia.go)")
+		claimName  = flag.String("name", "", "Go var name for the new claim")
+		repoRoot   = flag.String("root", ".", "winze repo root (the directory containing predicates.go)")
+		unary      = flag.Bool("unary", false, "set for UnaryClaim predicates (omit --object)")
+		dryRun     = flag.Bool("dry-run", false, "print what would be written; do not modify files or build")
+		batch      = flag.String("batch", "", "append many claims from a JSONL file (or '-' for stdin) under one build gate; ignores the single-claim flags")
+		propose    = flag.String("propose", "", "rough natural-language note; an LLM proposes the typed claim (predicate/subject/object) from the existing vocabulary, then the normal gate validates it (needs ANTHROPIC_API_KEY)")
+		commit     = flag.Bool("commit", false, "with --propose: actually write the proposed claim through the build gate (default: show the proposal only)")
+		model      = flag.String("model", "", "with --propose: model override (default Claude Haiku 4.5)")
 	)
 	flag.Parse()
+	start := time.Now()
 
 	// Batch mode is the burst-write path: K claims, one ~91ms gate. It takes
 	// its own JSONL input, so the single-claim required-flag validation below
 	// does not apply.
 	if *batch != "" {
-		os.Exit(runBatch(*batch, *repoRoot, *dryRun))
+		code := runBatch(*batch, *repoRoot, *dryRun)
+		usagelog.Log(*repoRoot, "add-batch", os.Args[1:], start)
+		os.Exit(code)
 	}
 
 	// Propose mode is the human-via-agent write path: a rough note becomes a
@@ -76,12 +80,15 @@ func main() {
 	// vocabulary); the same build gate validates it. Provenance is never
 	// invented — --quote/--origin or --provenance-var still supply the source.
 	if *propose != "" {
-		os.Exit(runPropose(proposeOpts{
+		code := runPropose(proposeOpts{
 			note: *propose, quote: *quote, origin: *origin, ingestedBy: *ingestedBy,
 			provVar: *provVar, target: *target, model: *model, repoRoot: *repoRoot,
 			commit: *commit && !*dryRun,
-		}))
+		})
+		usagelog.Log(*repoRoot, "add-propose", os.Args[1:], start)
+		os.Exit(code)
 	}
+	defer usagelog.Log(*repoRoot, "add", os.Args[1:], start)
 
 	if err := validateFlags(*predicate, *subject, *object, *quote, *origin, *provVar, *target, *claimName, *unary); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
