@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/justinstimatze/winze/internal/cliutil"
 	"os"
 	"sort"
 	"strings"
@@ -29,8 +30,8 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
-	"github.com/justinstimatze/winze/internal/dotenv"
 	"github.com/justinstimatze/winze/internal/corpusparse"
+	"github.com/justinstimatze/winze/internal/dotenv"
 )
 
 type proposeOpts struct {
@@ -179,7 +180,7 @@ func proposeClaim(apiKey, model, note string, entities []corpusparse.Entity, pre
 	b.WriteString(strings.Join(predicates, ", "))
 	b.WriteString("\n\nENTITIES (reuse an existing var name EXACTLY for subject/object):\n")
 	for _, e := range entities {
-		fmt.Fprintf(&b, "%s — %s: %s\n", e.VarName, e.Name, truncate(e.Brief, 90))
+		fmt.Fprintf(&b, "%s — %s: %s\n", e.VarName, e.Name, cliutil.Truncate(e.Brief, 90))
 	}
 	b.WriteString("\nRules:\n")
 	b.WriteString("- Output ONLY a JSON object: {\"predicate\",\"subject\",\"object\",\"unary\",\"name\",\"confidence\",\"reasoning\"}.\n")
@@ -339,14 +340,6 @@ func uniqueName(name string, p proposal, used map[string]bool) string {
 			return cand
 		}
 	}
-}
-
-func truncate(s string, max int) string {
-	s = strings.ReplaceAll(s, "\n", " ")
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "…"
 }
 
 func contains(ss []string, want string) bool {

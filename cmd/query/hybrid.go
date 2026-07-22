@@ -13,6 +13,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/justinstimatze/winze/internal/cliutil"
 )
 
 const rrfK = 60
@@ -158,7 +160,7 @@ func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut bool)
 		e := kb.Entities[f.idx]
 		fmt.Printf("  [%.4f] %s (%s · %s)  [lex %s · sem %s]\n", f.rrf, e.Name, e.VarName, e.RoleType, rankStr(f.lex), rankStr(f.sem))
 		if e.Brief != "" {
-			fmt.Printf("        %s\n", truncate(e.Brief, 200))
+			fmt.Printf("        %s\n", cliutil.Truncate(e.Brief, 200))
 		}
 		if expand {
 			for _, edge := range neighborhood(kb, e.VarName) {

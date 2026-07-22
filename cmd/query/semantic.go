@@ -24,6 +24,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/justinstimatze/winze/internal/cliutil"
 )
 
 const (
@@ -197,7 +199,7 @@ func runSemantic(kb *kbIndex, query, dir string, jsonOut bool) {
 		e := kb.Entities[h.idx]
 		fmt.Printf("  [%.3f] %s (%s)  %s\n", h.score, e.Name, e.VarName, e.File)
 		if e.Brief != "" {
-			fmt.Printf("        %s\n", truncate(e.Brief, 200))
+			fmt.Printf("        %s\n", cliutil.Truncate(e.Brief, 200))
 		}
 	}
 }

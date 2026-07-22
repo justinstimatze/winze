@@ -23,12 +23,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/justinstimatze/winze/internal/cliutil"
 	"github.com/justinstimatze/winze/internal/corpusparse"
 	"github.com/justinstimatze/winze/internal/dedup"
 	"github.com/justinstimatze/winze/internal/defndb"
@@ -172,7 +172,7 @@ func runSearch(kb *kbIndex, query string, jsonOut bool) {
 			fmt.Printf("    Name: %s\n", e.Name)
 		}
 		if e.Brief != "" {
-			fmt.Printf("    Brief: %s\n", truncate(e.Brief, 200))
+			fmt.Printf("    Brief: %s\n", cliutil.Truncate(e.Brief, 200))
 		}
 		if len(e.Aliases) > 0 {
 			fmt.Printf("    Aliases: %s\n", strings.Join(e.Aliases, ", "))
@@ -227,13 +227,13 @@ func runFulltext(kb *kbIndex, query string, jsonOut bool) {
 			e := kb.Entities[h.ref]
 			fmt.Printf("  [%.2f] %s (%s)  %s\n", h.score, e.Name, e.VarName, e.File)
 			if e.Brief != "" {
-				fmt.Printf("        %s\n", truncate(e.Brief, 200))
+				fmt.Printf("        %s\n", cliutil.Truncate(e.Brief, 200))
 			}
 		} else {
 			p := kb.Provenance[h.ref]
 			fmt.Printf("  [%.2f] «prov» %s (%s)\n", h.score, p.Origin, p.VarName)
 			if p.Quote != "" {
-				fmt.Printf("        %s\n", truncate(p.Quote, 200))
+				fmt.Printf("        %s\n", cliutil.Truncate(p.Quote, 200))
 			}
 		}
 	}
@@ -288,7 +288,7 @@ func runTheories(kb *kbIndex, target string, jsonOut bool) {
 		// Find the hypothesis entity for its Brief
 		for _, e := range kb.Entities {
 			if e.VarName == t.Subject && e.Brief != "" {
-				fmt.Printf("     %s\n", truncate(e.Brief, 200))
+				fmt.Printf("     %s\n", cliutil.Truncate(e.Brief, 200))
 				break
 			}
 		}
@@ -364,7 +364,7 @@ func runProvenance(kb *kbIndex, target string, jsonOut bool) {
 		fmt.Printf("  %s  (%s)\n", p.VarName, p.File)
 		fmt.Printf("    Origin: %s\n", p.Origin)
 		if p.Quote != "" {
-			fmt.Printf("    Quote: %s\n", truncate(p.Quote, 200))
+			fmt.Printf("    Quote: %s\n", cliutil.Truncate(p.Quote, 200))
 		}
 		// Find claims using this provenance
 		var refs []string
@@ -468,13 +468,13 @@ func runStats(kb *kbIndex, jsonOut bool) {
 	fmt.Printf("  %d contested concepts (2+ theories)\n\n", contested)
 
 	fmt.Println("  Entities by role:")
-	sortedRoles := sortedKeys(roleCounts)
+	sortedRoles := cliutil.SortedKeys(roleCounts)
 	for _, r := range sortedRoles {
 		fmt.Printf("    %-20s %d\n", r, roleCounts[r])
 	}
 
 	fmt.Println("\n  Claims by predicate:")
-	sortedPreds := sortedKeys(predCounts)
+	sortedPreds := cliutil.SortedKeys(predCounts)
 	for _, p := range sortedPreds {
 		fmt.Printf("    %-25s %d\n", p, predCounts[p])
 	}
@@ -704,22 +704,6 @@ func printJSON(v any) {
 	enc.Encode(v) //nolint:errcheck
 }
 
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "..."
-}
-
-func sortedKeys(m map[string]int) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 // --- ask mode (LLM-powered natural language queries) ---
 
 func runAsk(kb *kbIndex, dir, question string) {
@@ -914,7 +898,7 @@ func buildKBContext(kb *kbIndex, dir string) string {
 	for _, p := range kb.Provenance {
 		b.WriteString(fmt.Sprintf("- %s: %s", p.VarName, p.Origin))
 		if p.Quote != "" {
-			b.WriteString(fmt.Sprintf(" [quote: %s]", truncate(p.Quote, 150)))
+			b.WriteString(fmt.Sprintf(" [quote: %s]", cliutil.Truncate(p.Quote, 150)))
 		}
 		b.WriteString("\n")
 	}

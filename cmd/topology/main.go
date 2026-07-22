@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/justinstimatze/winze/internal/cliutil"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -37,16 +38,6 @@ import (
 	"github.com/justinstimatze/winze/internal/defndb"
 )
 
-func isFlagSet(name string) bool {
-	found := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == name {
-			found = true
-		}
-	})
-	return found
-}
-
 func main() {
 	if os.Getenv("GOMEMLIMIT") == "" {
 		debug.SetMemoryLimit(512 << 20) // 512 MiB
@@ -60,7 +51,7 @@ func main() {
 	flag.Parse()
 
 	// WINZE_ENTITY_CAP env var overrides flag default (but explicit --entity-cap wins)
-	if envCap := os.Getenv("WINZE_ENTITY_CAP"); envCap != "" && !isFlagSet("entity-cap") {
+	if envCap := os.Getenv("WINZE_ENTITY_CAP"); envCap != "" && !cliutil.IsFlagSet("entity-cap") {
 		if n, err := strconv.Atoi(envCap); err == nil && n > 0 {
 			*entityCap = n
 		}
@@ -129,12 +120,12 @@ type Report struct {
 // command identifies structurally vulnerable hypotheses and generates
 // search terms that would find corroboration or dispute.
 type SensorTarget struct {
-	Hypothesis  string `json:"hypothesis"`
-	Query       string `json:"query"`
-	ZimQuery    string `json:"zim_query,omitempty"` // encyclopedia-optimized query (topic name, not author+keywords)
-	Prediction  string `json:"prediction"`
-	VulnType    string `json:"vuln_type"`
-	VulnCount   int    `json:"vuln_count"` // number of vulnerability types affecting this hypothesis
+	Hypothesis string `json:"hypothesis"`
+	Query      string `json:"query"`
+	ZimQuery   string `json:"zim_query,omitempty"` // encyclopedia-optimized query (topic name, not author+keywords)
+	Prediction string `json:"prediction"`
+	VulnType   string `json:"vuln_type"`
+	VulnCount  int    `json:"vuln_count"` // number of vulnerability types affecting this hypothesis
 }
 
 type Vulnerability struct {
@@ -637,10 +628,10 @@ func loadMetabolismHistory(dir string) map[string]string {
 
 	// Resolution priority (higher = more "resolved", less need for re-query)
 	priority := map[string]int{
-		"":            0,
-		"no_signal":   1,
-		"irrelevant":  2,
-		"challenged":  2,
+		"":             0,
+		"no_signal":    1,
+		"irrelevant":   2,
+		"challenged":   2,
 		"corroborated": 3,
 	}
 
@@ -1073,14 +1064,12 @@ func collectEntityMetasDefn(client *defndb.Client) (map[string]entityMeta, error
 	return metas, nil
 }
 
-
 type entityMeta struct {
 	name     string // Entity.Name field (human-readable, often a full sentence for hypotheses)
 	brief    string // Entity.Brief field (supplementary description)
 	proposer string // Name of the person/org who proposed this (from Proposes claims)
 	explains string // Name of concept this hypothesis explains (from HypothesisExplains)
 }
-
 
 func basicLitString(e ast.Expr) string {
 	switch v := e.(type) {
@@ -1133,7 +1122,6 @@ func collectEntitiesDefn(client *defndb.Client) ([]entityInfo, error) {
 	}
 	return out, nil
 }
-
 
 func collectClaims(dir string) ([]claimInfo, error) {
 	client, err := defndb.New(dir)
@@ -1190,7 +1178,6 @@ func collectClaimsDefn(client *defndb.Client) ([]claimInfo, error) {
 	}
 	return out, nil
 }
-
 
 // collectProvenance walks .go files looking for Provenance composite
 // literals assigned to package-level vars. Records whether the Quote

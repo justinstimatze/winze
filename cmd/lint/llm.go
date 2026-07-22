@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/justinstimatze/winze/internal/cliutil"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -119,7 +120,7 @@ func extractBrief(cl *ast.CompositeLit) string {
 }
 
 func resolveStringExpr(e ast.Expr) string { return astutil.ResolveStringExpr(e) }
-func basicLitString(e ast.Expr) string     { return astutil.ResolveStringExpr(e) }
+func basicLitString(e ast.Expr) string    { return astutil.ResolveStringExpr(e) }
 
 type neighborhood struct {
 	entity entitySite
@@ -186,7 +187,7 @@ func serializeNeighborhood(n neighborhood, briefs map[string]string) string {
 		for _, c := range n.asSubj {
 			fmt.Fprintf(&b, "  [%s] %s --%s--> %s\n", c.name, c.subject, c.predicateType, c.object)
 			if ob, ok := briefs[c.object]; ok {
-				fmt.Fprintf(&b, "    (%s brief: %s)\n", c.object, truncate(ob, 120))
+				fmt.Fprintf(&b, "    (%s brief: %s)\n", c.object, cliutil.Truncate(ob, 120))
 			}
 		}
 		b.WriteString("\n")
@@ -197,19 +198,12 @@ func serializeNeighborhood(n neighborhood, briefs map[string]string) string {
 		for _, c := range n.asObj {
 			fmt.Fprintf(&b, "  [%s] %s --%s--> %s\n", c.name, c.subject, c.predicateType, c.object)
 			if sb, ok := briefs[c.subject]; ok {
-				fmt.Fprintf(&b, "    (%s brief: %s)\n", c.subject, truncate(sb, 120))
+				fmt.Fprintf(&b, "    (%s brief: %s)\n", c.subject, cliutil.Truncate(sb, 120))
 			}
 		}
 	}
 
 	return b.String()
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }
 
 func buildPrompt(serialized string, suppressed map[claimKey]string) string {

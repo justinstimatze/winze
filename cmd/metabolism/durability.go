@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/justinstimatze/winze/internal/cliutil"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -260,8 +261,8 @@ func stableCarryForward(claimVars []string, latest, digests map[verdictKey]verdi
 	out := make([]durabilityResult, 0, len(claimVars))
 	for _, v := range claimVars {
 		key := verdictKey{hypothesis: v, predictionType: predictionType}
-		orig := latest[key]   // original promotion verdict — drift baseline
-		last := digests[key]  // newest run's verdict — what a fresh run would reproduce
+		orig := latest[key]  // original promotion verdict — drift baseline
+		last := digests[key] // newest run's verdict — what a fresh run would reproduce
 		out = append(out, durabilityResult{
 			hypothesis:        v,
 			oldPredictionType: predictionType,
@@ -658,7 +659,7 @@ func emitDurabilityText(report durabilityReport, results []durabilityResult, wro
 	})
 
 	fmt.Printf("[durability] rechecked %d historical verdicts across %d resolver(s)\n", report.Total, len(report.ByResolver))
-	for _, pt := range sortedKeys(report.ByResolver) {
+	for _, pt := range cliutil.SortedKeys(report.ByResolver) {
 		fmt.Printf("  %s: %d\n", pt, report.ByResolver[pt])
 	}
 	fmt.Println()
@@ -713,17 +714,17 @@ func emitDurabilityText(report durabilityReport, results []durabilityResult, wro
 
 func emitDurabilityJSON(report durabilityReport, results []durabilityResult) {
 	type flip struct {
-		Hypothesis    string `json:"hypothesis"`
-		Resolver      string `json:"resolver"`
-		Drift         string `json:"drift"`
-		OldVerdict    string `json:"old_verdict"`
-		NewVerdict    string `json:"new_verdict"`
-		OldEvidence   string `json:"old_evidence,omitempty"`
-		NewEvidence   string `json:"new_evidence,omitempty"`
-		OldCommit     string `json:"old_oracle_commit,omitempty"`
-		NewCommit     string `json:"new_oracle_commit,omitempty"`
-		OldDigest     string `json:"old_oracle_digest,omitempty"`
-		NewDigest     string `json:"new_oracle_digest,omitempty"`
+		Hypothesis  string `json:"hypothesis"`
+		Resolver    string `json:"resolver"`
+		Drift       string `json:"drift"`
+		OldVerdict  string `json:"old_verdict"`
+		NewVerdict  string `json:"new_verdict"`
+		OldEvidence string `json:"old_evidence,omitempty"`
+		NewEvidence string `json:"new_evidence,omitempty"`
+		OldCommit   string `json:"old_oracle_commit,omitempty"`
+		NewCommit   string `json:"new_oracle_commit,omitempty"`
+		OldDigest   string `json:"old_oracle_digest,omitempty"`
+		NewDigest   string `json:"new_oracle_digest,omitempty"`
 	}
 	items := []flip{}
 	for _, r := range results {
@@ -774,15 +775,6 @@ func shortResolver(pt string) string {
 		return "llm"
 	}
 	return pt
-}
-
-func sortedKeys(m map[string]int) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 func valueOr(s, fallback string) string {

@@ -25,6 +25,7 @@ import (
 	"encoding/xml"
 	"flag"
 	"fmt"
+	"github.com/justinstimatze/winze/internal/cliutil"
 	"go/format"
 	"io"
 	"net/http"
@@ -48,12 +49,12 @@ import (
 // --- topology output types (subset) ---
 
 type TopologyReport struct {
-	Entities        int               `json:"entities"`
-	Claims          int               `json:"claims"`
-	Edges           int               `json:"edges"`
-	Clusters        int               `json:"clusters"`
-	Vulnerabilities []TopologyVuln    `json:"vulnerabilities"`
-	SensorTargets   []SensorTarget    `json:"sensor_targets"`
+	Entities        int            `json:"entities"`
+	Claims          int            `json:"claims"`
+	Edges           int            `json:"edges"`
+	Clusters        int            `json:"clusters"`
+	Vulnerabilities []TopologyVuln `json:"vulnerabilities"`
+	SensorTargets   []SensorTarget `json:"sensor_targets"`
 }
 
 type TopologyVuln struct {
@@ -66,9 +67,9 @@ type TopologyVuln struct {
 
 type SensorTarget struct {
 	Hypothesis string `json:"hypothesis"`
-	Query      string `json:"query"`                // arXiv-optimized: author + keywords
-	ZimQuery   string `json:"zim_query,omitempty"`   // encyclopedia-optimized: topic name
-	RssQuery   string `json:"rss_query,omitempty"`   // feed-optimized: broader keywords
+	Query      string `json:"query"`               // arXiv-optimized: author + keywords
+	ZimQuery   string `json:"zim_query,omitempty"` // encyclopedia-optimized: topic name
+	RssQuery   string `json:"rss_query,omitempty"` // feed-optimized: broader keywords
 	Prediction string `json:"prediction"`
 	VulnType   string `json:"vuln_type"`
 	VulnCount  int    `json:"vuln_count"`
@@ -129,9 +130,9 @@ type Cycle struct {
 	//   "challenged"   — signal contradicts existing claim, revision needed
 	//   "irrelevant"   — signal found but not relevant to the hypothesis
 	//   ""             — not yet reviewed
-	Resolution string `json:"resolution,omitempty"`
-	ResolvedAt string `json:"resolved_at,omitempty"` // ISO 8601 date
-	Ingested       bool   `json:"ingested,omitempty"`        // true after pipeline extracted claims from this cycle's articles
+	Resolution     string `json:"resolution,omitempty"`
+	ResolvedAt     string `json:"resolved_at,omitempty"`      // ISO 8601 date
+	Ingested       bool   `json:"ingested,omitempty"`         // true after pipeline extracted claims from this cycle's articles
 	LLMLintSkipped bool   `json:"llm_lint_skipped,omitempty"` // true when LLM contradiction check was unavailable during pipeline
 	// PredictionType categorizes the prediction this cycle represents.
 	// Empty (legacy) is treated as "structural_fragility" for calibrate
@@ -256,15 +257,6 @@ func parsePhases(s string) (phaseSet, error) {
 }
 
 // isFlagSet returns true if the named flag was explicitly set on the command line.
-func isFlagSet(name string) bool {
-	found := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == name {
-			found = true
-		}
-	})
-	return found
-}
 
 func main() {
 	// Cap memory to avoid OOM during evolve cycles (Dolt caches default to ~544 MB).
@@ -322,7 +314,7 @@ func main() {
 	flag.Parse()
 
 	// WINZE_ENTITY_CAP env var overrides flag default (but explicit --entity-cap wins)
-	if envCap := os.Getenv("WINZE_ENTITY_CAP"); envCap != "" && !isFlagSet("entity-cap") {
+	if envCap := os.Getenv("WINZE_ENTITY_CAP"); envCap != "" && !cliutil.IsFlagSet("entity-cap") {
 		if n, err := strconv.Atoi(envCap); err == nil && n > 0 {
 			*entityCap = n
 		}
@@ -888,6 +880,7 @@ var zimArchive *zim.Archive
 var htmlStyleRe = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
 var htmlScriptRe = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
 var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+
 // [^>] already matches newlines in Go regexp (unlike PCRE), so multi-line
 // tags like <div\nclass="x"> are handled without the (?s) flag.
 var htmlTagRe = regexp.MustCompile(`<[^>]+>`)
@@ -1403,21 +1396,21 @@ func containsWordBoundary(text, word string) bool {
 
 // hypothesisScore aggregates all cycles for a single hypothesis into a verdict.
 type hypothesisScore struct {
-	Name           string  `json:"name"`
-	VulnType       string  `json:"vuln_type"`
-	PredictionType string  `json:"prediction_type,omitempty"`
-	TotalCycles    int     `json:"total_cycles"`
-	WithSignal     int     `json:"with_signal"`
-	Corroborated   int     `json:"corroborated"`
-	Challenged     int     `json:"challenged"`
-	Irrelevant     int     `json:"irrelevant"`
-	NoSignal       int     `json:"no_signal"`
-	Confirmed      int     `json:"confirmed"` // KB-internal resolvers (e.g. trip_lint_durability)
-	Refuted        int     `json:"refuted"`   // KB-internal resolvers (e.g. trip_lint_durability)
-	Pending        int     `json:"pending"`
-	Verdict        string  `json:"verdict"`          // corroborated|challenged|confirmed|irrelevant|no_signal|refuted|pending
-	CyclesToVerdict int    `json:"cycles_to_verdict"` // cycles until first useful resolution; 0 if pending
-	Precision      float64 `json:"precision"`         // useful cycles / signal cycles (0 if no signal)
+	Name            string  `json:"name"`
+	VulnType        string  `json:"vuln_type"`
+	PredictionType  string  `json:"prediction_type,omitempty"`
+	TotalCycles     int     `json:"total_cycles"`
+	WithSignal      int     `json:"with_signal"`
+	Corroborated    int     `json:"corroborated"`
+	Challenged      int     `json:"challenged"`
+	Irrelevant      int     `json:"irrelevant"`
+	NoSignal        int     `json:"no_signal"`
+	Confirmed       int     `json:"confirmed"` // KB-internal resolvers (e.g. trip_lint_durability)
+	Refuted         int     `json:"refuted"`   // KB-internal resolvers (e.g. trip_lint_durability)
+	Pending         int     `json:"pending"`
+	Verdict         string  `json:"verdict"`           // corroborated|challenged|confirmed|irrelevant|no_signal|refuted|pending
+	CyclesToVerdict int     `json:"cycles_to_verdict"` // cycles until first useful resolution; 0 if pending
+	Precision       float64 `json:"precision"`         // useful cycles / signal cycles (0 if no signal)
 }
 
 // isHit maps a verdict to hit/miss/pending for aggregate hit-rate calculation.
@@ -1764,36 +1757,36 @@ func runCalibrate(dir string, jsonOut bool) {
 			Earliest    string  `json:"earliest"`
 			Latest      string  `json:"latest"`
 			// Prediction accuracy (per hypothesis)
-			Hypotheses    int              `json:"hypotheses"`
-			HitRate       float64          `json:"hit_rate"`
-			Hits          int              `json:"hits"`
-			Misses        int              `json:"misses"`
-			Pending       int              `json:"pending"`
-			AvgCyclesToHit float64         `json:"avg_cycles_to_hit"`
+			Hypotheses     int     `json:"hypotheses"`
+			HitRate        float64 `json:"hit_rate"`
+			Hits           int     `json:"hits"`
+			Misses         int     `json:"misses"`
+			Pending        int     `json:"pending"`
+			AvgCyclesToHit float64 `json:"avg_cycles_to_hit"`
 			// Tautology scan (gap_confirmed, mixed_overlap, no_gap)
-			GapConfirmed      int `json:"gap_confirmed"`
-			MixedOverlap      int `json:"mixed_overlap"`
-			NoGap             int `json:"no_gap"`
-			CorroboratedNovel int `json:"corroborated_novel"`
-			CorroboratedTaut  int `json:"corroborated_tautological"`
-			ChallengedNovel   int `json:"challenged_novel"`
-			ChallengedTaut    int `json:"challenged_tautological"`
-			ByVulnType    []VulnTypeScore  `json:"by_vuln_type"`
-			Scores        []hypothesisScore `json:"scores"`
+			GapConfirmed      int               `json:"gap_confirmed"`
+			MixedOverlap      int               `json:"mixed_overlap"`
+			NoGap             int               `json:"no_gap"`
+			CorroboratedNovel int               `json:"corroborated_novel"`
+			CorroboratedTaut  int               `json:"corroborated_tautological"`
+			ChallengedNovel   int               `json:"challenged_novel"`
+			ChallengedTaut    int               `json:"challenged_tautological"`
+			ByVulnType        []VulnTypeScore   `json:"by_vuln_type"`
+			Scores            []hypothesisScore `json:"scores"`
 		}
 		r := CalReport{
-			TotalCycles: overall.total,
-			SignalRate:  pct(overall.withSignal, overall.total),
-			WithSignal:  overall.withSignal,
-			TotalPapers: overall.totalPaper,
-			Earliest:    earliest.Format("2006-01-02"),
-			Latest:      latest.Format("2006-01-02"),
-			Hypotheses:  len(scores),
-			HitRate:     pct(hits, hits+misses),
-			Hits:        hits,
-			Misses:      misses,
-			Pending:     pending,
-			AvgCyclesToHit: avg(totalCyclesToVerdict, hitsWithCycles),
+			TotalCycles:       overall.total,
+			SignalRate:        pct(overall.withSignal, overall.total),
+			WithSignal:        overall.withSignal,
+			TotalPapers:       overall.totalPaper,
+			Earliest:          earliest.Format("2006-01-02"),
+			Latest:            latest.Format("2006-01-02"),
+			Hypotheses:        len(scores),
+			HitRate:           pct(hits, hits+misses),
+			Hits:              hits,
+			Misses:            misses,
+			Pending:           pending,
+			AvgCyclesToHit:    avg(totalCyclesToVerdict, hitsWithCycles),
 			GapConfirmed:      gapCounts["gap_confirmed"],
 			MixedOverlap:      gapCounts["mixed_overlap"],
 			NoGap:             gapCounts["no_gap"],
@@ -1801,7 +1794,7 @@ func runCalibrate(dir string, jsonOut bool) {
 			CorroboratedTaut:  corrobTaut,
 			ChallengedNovel:   challNovel,
 			ChallengedTaut:    challTaut,
-			Scores:      scores,
+			Scores:            scores,
 		}
 		for vt, a := range byVulnAcc {
 			r.ByVulnType = append(r.ByVulnType, VulnTypeScore{
