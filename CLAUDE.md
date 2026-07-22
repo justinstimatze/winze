@@ -26,9 +26,11 @@ against 27ms for the built binary — an 18x tax on the operation a knowledge
 base exists to make cheap. The `go run` forms below still work and are fine
 for batch phases; use the built binaries for anything interactive.
 
-Reference timings (built, 364 entities / 510 claims): query 27-112ms,
-topology 503ms, lint 896ms, the per-claim gate (`go build . && go vet .`)
-~300ms.
+Reference timings (built binaries, warm, ~364 entities / ~550 claims):
+query 12-47ms (stats/hybrid), topology ~90ms, lint ~260ms (9 rules), the
+per-claim gate (`go build . && go vet .`) ~90ms warm (build ~37ms + vet
+~55ms) and up to ~400ms cold or under load. `go run` adds ~0.5s compile
+on top — use the built binaries for anything interactive.
 
 ### Quality gates
 
