@@ -62,9 +62,25 @@ func main() {
 		propose    = flag.String("propose", "", "rough natural-language note; an LLM proposes the typed claim (predicate/subject/object) from the existing vocabulary, then the normal gate validates it (needs ANTHROPIC_API_KEY)")
 		commit     = flag.Bool("commit", false, "with --propose: actually write the proposed claim through the build gate (default: show the proposal only)")
 		model      = flag.String("model", "", "with --propose: model override (default Claude Haiku 4.5)")
+		entity     = flag.Bool("entity", false, "create a new entity instead of a claim (needs --role and --brief; the creation primitive claims lack)")
+		role       = flag.String("role", "", "with --entity: role type (e.g. Concept, Person, Hypothesis)")
+		brief      = flag.String("brief", "", "with --entity: the entity's Brief prose")
+		aliases    = flag.String("aliases", "", "with --entity: comma-separated aliases")
+		kind       = flag.String("kind", "", "with --entity: Kind field (defaults to lowercased role)")
 	)
 	flag.Parse()
 	start := time.Now()
+
+	// Entity mode: create a new typed entity (the primitive the claim path
+	// lacks). --name is optional here — a var name is generated from the brief.
+	if *entity {
+		code := runEntity(entityOpts{
+			role: *role, name: *claimName, brief: *brief, kind: *kind, aliases: *aliases,
+			target: *target, repoRoot: *repoRoot, dryRun: *dryRun,
+		})
+		usagelog.Log(*repoRoot, "add-entity", os.Args[1:], start)
+		os.Exit(code)
+	}
 
 	// Batch mode is the burst-write path: K claims, one ~91ms gate. It takes
 	// its own JSONL input, so the single-claim required-flag validation below
