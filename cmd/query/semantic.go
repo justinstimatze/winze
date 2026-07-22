@@ -121,7 +121,10 @@ type semHit struct {
 	score float64
 }
 
-func runSemantic(kb *kbIndex, query, dir string, jsonOut bool) {
+// semanticRank embeds every entity's prose (cached, incremental) plus the
+// query, then returns entities ranked by cosine similarity, highest first.
+// Shared by runSemantic and the hybrid fusion (runHybrid).
+func semanticRank(kb *kbIndex, query, dir string) ([]semHit, error) {
 	cache := loadVecCache(dir)
 
 	type ev struct {
@@ -142,8 +145,7 @@ func runSemantic(kb *kbIndex, query, dir string, jsonOut bool) {
 		}
 		v, err := embed(text)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "semantic: %v\n", err)
-			os.Exit(1)
+			return nil, err
 		}
 		cache.m[embedKey(text)] = v
 		cache.dirty = true
@@ -157,8 +159,7 @@ func runSemantic(kb *kbIndex, query, dir string, jsonOut bool) {
 
 	qv, err := embed(query)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "semantic: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
 
 	hits := make([]semHit, 0, len(vecs))
@@ -166,6 +167,15 @@ func runSemantic(kb *kbIndex, query, dir string, jsonOut bool) {
 		hits = append(hits, semHit{e.idx, dot(qv, e.vec)})
 	}
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].score > hits[j].score })
+	return hits, nil
+}
+
+func runSemantic(kb *kbIndex, query, dir string, jsonOut bool) {
+	hits, err := semanticRank(kb, query, dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "semantic: %v\n", err)
+		os.Exit(1)
+	}
 	if len(hits) > 15 {
 		hits = hits[:15]
 	}

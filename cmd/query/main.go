@@ -82,6 +82,7 @@ func main() {
 	jsonOut := flag.Bool("json", false, "JSON output")
 	fulltext := flag.String("fulltext", "", "BM25 fulltext search over entity Briefs and provenance Quotes")
 	semantic := flag.String("semantic", "", "semantic (embedding) search over entity prose via local ollama all-minilm")
+	hybrid := flag.String("hybrid", "", "hybrid BM25 + semantic search fused with reciprocal rank fusion")
 	flag.Parse()
 
 	dir := "."
@@ -117,6 +118,8 @@ func main() {
 		runFulltext(kb, *fulltext, *jsonOut)
 	case *semantic != "":
 		runSemantic(kb, *semantic, dir, *jsonOut)
+	case *hybrid != "":
+		runHybrid(kb, *hybrid, dir, *jsonOut)
 	case *ask && query != "":
 		runAsk(kb, dir, query)
 	case *ask:
