@@ -118,3 +118,6 @@ bin/
 
 # corpus-wide advisory write lock (internal/corpuslock)
 .winze.lock
+
+# semantic search embedding cache (cmd/query --semantic)
+.winze-embed/

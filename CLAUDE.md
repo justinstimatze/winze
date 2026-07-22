@@ -268,6 +268,7 @@ Pragmas are placed as line comments on the var declaration, not on the type.
 ```bash
 go run ./cmd/query "consciousness" .              # substring search entities by name/brief/alias
 go run ./cmd/query --fulltext "pattern detection failure" .  # BM25 fulltext ranking over Briefs + provenance Quotes
+go run ./cmd/query --semantic "machine that seems to understand but does not" .  # embedding search via local ollama all-minilm (~53ms cached)
 go run ./cmd/query --theories "apophenia" .        # competing theories of a concept
 go run ./cmd/query --claims "Chalmers" .           # all claims involving an entity
 go run ./cmd/query --provenance "Sagan" .          # provenance trail for a source
