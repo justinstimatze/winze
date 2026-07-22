@@ -266,7 +266,8 @@ Pragmas are placed as line comments on the var declaration, not on the type.
 ### Query interface
 
 ```bash
-go run ./cmd/query "consciousness" .              # search entities by name/brief/alias
+go run ./cmd/query "consciousness" .              # substring search entities by name/brief/alias
+go run ./cmd/query --fulltext "pattern detection failure" .  # BM25 fulltext ranking over Briefs + provenance Quotes
 go run ./cmd/query --theories "apophenia" .        # competing theories of a concept
 go run ./cmd/query --claims "Chalmers" .           # all claims involving an entity
 go run ./cmd/query --provenance "Sagan" .          # provenance trail for a source

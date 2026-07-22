@@ -80,6 +80,7 @@ func main() {
 	stats := flag.Bool("stats", false, "show KB summary statistics")
 	ask := flag.Bool("ask", false, "natural language query via LLM (needs ANTHROPIC_API_KEY)")
 	jsonOut := flag.Bool("json", false, "JSON output")
+	fulltext := flag.String("fulltext", "", "BM25 fulltext search over entity Briefs and provenance Quotes")
 	flag.Parse()
 
 	dir := "."
@@ -111,6 +112,8 @@ func main() {
 		runClaims(kb, *claims, *jsonOut)
 	case *provenance != "":
 		runProvenance(kb, *provenance, *jsonOut)
+	case *fulltext != "":
+		runFulltext(kb, *fulltext, *jsonOut)
 	case *ask && query != "":
 		runAsk(kb, dir, query)
 	case *ask:
@@ -172,6 +175,49 @@ func runSearch(kb *kbIndex, query string, jsonOut bool) {
 			}
 		}
 		fmt.Println()
+	}
+}
+
+func runFulltext(kb *kbIndex, query string, jsonOut bool) {
+	fi := buildFTIndex(kb)
+	hits := fi.search(query, 15)
+
+	if jsonOut {
+		out := make([]map[string]any, 0, len(hits))
+		for _, h := range hits {
+			rec := map[string]any{"kind": h.kind, "score": h.score}
+			if h.kind == "entity" {
+				e := kb.Entities[h.ref]
+				rec["var_name"], rec["name"], rec["brief"], rec["file"] = e.VarName, e.Name, e.Brief, e.File
+			} else {
+				p := kb.Provenance[h.ref]
+				rec["var_name"], rec["origin"], rec["quote"], rec["file"] = p.VarName, p.Origin, p.Quote, p.File
+			}
+			out = append(out, rec)
+		}
+		printJSON(map[string]any{"query": query, "count": len(hits), "hits": out})
+		return
+	}
+
+	if len(hits) == 0 {
+		fmt.Printf("No fulltext matches for %q\n", query)
+		return
+	}
+	fmt.Printf("Fulltext matches for %q (%d):\n\n", query, len(hits))
+	for _, h := range hits {
+		if h.kind == "entity" {
+			e := kb.Entities[h.ref]
+			fmt.Printf("  [%.2f] %s (%s)  %s\n", h.score, e.Name, e.VarName, e.File)
+			if e.Brief != "" {
+				fmt.Printf("        %s\n", truncate(e.Brief, 200))
+			}
+		} else {
+			p := kb.Provenance[h.ref]
+			fmt.Printf("  [%.2f] «prov» %s (%s)\n", h.score, p.Origin, p.VarName)
+			if p.Quote != "" {
+				fmt.Printf("        %s\n", truncate(p.Quote, 200))
+			}
+		}
 	}
 }
 
