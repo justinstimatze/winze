@@ -84,6 +84,17 @@ slot-type checking of its own — the build gate is what validates the
 claim, which is the load-bearing discipline this project was built around.
 Do NOT relax that path.
 
+**Batch mode** (`--batch <file.jsonl>`, or `-` for stdin) appends many
+claims under a single build gate — the burst-write path. The gate (~91ms
+warm) dominates per-claim cost; running it once for K claims measured
+**5.2× faster** on a 5-claim burst (621ms → 119ms) against this corpus.
+Each JSONL line is one claim with fields mirroring the flags
+(`to`, `name`, `predicate`, `subject`, `object`, `quote`, `origin`,
+`ingested_by`, `provenance_var`, `unary`). All-or-nothing: every touched
+file reverts if any record fails validation or the gate. `--dry-run`
+renders without touching files. This is the write path the multi-session
+shared-KB shape relies on (see `docs/multi-session-write-shape.md`).
+
 ### Editing helper (referentially-safe mutation)
 
 ```bash

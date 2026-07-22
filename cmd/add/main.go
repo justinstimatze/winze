@@ -55,8 +55,16 @@ func main() {
 		repoRoot    = flag.String("root", ".", "winze repo root (the directory containing predicates.go)")
 		unary       = flag.Bool("unary", false, "set for UnaryClaim predicates (omit --object)")
 		dryRun      = flag.Bool("dry-run", false, "print what would be written; do not modify files or build")
+		batch       = flag.String("batch", "", "append many claims from a JSONL file (or '-' for stdin) under one build gate; ignores the single-claim flags")
 	)
 	flag.Parse()
+
+	// Batch mode is the burst-write path: K claims, one ~91ms gate. It takes
+	// its own JSONL input, so the single-claim required-flag validation below
+	// does not apply.
+	if *batch != "" {
+		os.Exit(runBatch(*batch, *repoRoot, *dryRun))
+	}
 
 	if err := validateFlags(*predicate, *subject, *object, *quote, *origin, *provVar, *target, *claimName, *unary); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
