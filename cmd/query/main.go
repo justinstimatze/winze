@@ -83,6 +83,8 @@ func main() {
 	fulltext := flag.String("fulltext", "", "BM25 fulltext search over entity Briefs and provenance Quotes")
 	semantic := flag.String("semantic", "", "semantic (embedding) search over entity prose via local ollama all-minilm")
 	hybrid := flag.String("hybrid", "", "hybrid BM25 + semantic search fused with reciprocal rank fusion")
+	typeFilter := flag.String("type", "", "with --hybrid: restrict results to a verified entity role (e.g. Hypothesis, Concept, Person)")
+	expand := flag.Bool("expand", false, "with --hybrid: show each result's typed claim neighborhood (reasoning-ready context)")
 	flag.Parse()
 
 	dir := "."
@@ -119,7 +121,7 @@ func main() {
 	case *semantic != "":
 		runSemantic(kb, *semantic, dir, *jsonOut)
 	case *hybrid != "":
-		runHybrid(kb, *hybrid, dir, *jsonOut)
+		runHybrid(kb, *hybrid, dir, *typeFilter, *expand, *jsonOut)
 	case *ask && query != "":
 		runAsk(kb, dir, query)
 	case *ask:

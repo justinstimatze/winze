@@ -35,3 +35,40 @@ func TestRRFEmpty(t *testing.T) {
 		t.Fatalf("empty inputs should fuse to nothing, got %+v", got)
 	}
 }
+
+func TestCanonicalRoleCaseInsensitive(t *testing.T) {
+	kb := &kbIndex{RoleTypes: map[string]bool{"Hypothesis": true, "Concept": true}}
+	if got, ok := canonicalRole(kb, "hypothesis"); !ok || got != "Hypothesis" {
+		t.Errorf("canonicalRole(hypothesis) = %q,%v; want Hypothesis,true", got, ok)
+	}
+	if _, ok := canonicalRole(kb, "bogus"); ok {
+		t.Errorf("canonicalRole(bogus) should not resolve")
+	}
+}
+
+// neighborhood must read edge DIRECTION off the verified graph: when the query
+// entity is the object, the neighbor is the subject (← ), and the neighbor's
+// role comes from the index, not a guess. Unary claims report on the entity.
+func TestNeighborhoodDirectionAndRole(t *testing.T) {
+	kb := &kbIndex{
+		Entities: []entityRecord{
+			{VarName: "Apophenia", RoleType: "Concept"},
+			{VarName: "Shermer", RoleType: "Person"},
+		},
+		Claims: []claimRecord{
+			{Predicate: "Proposes", Subject: "Shermer", Object: "Apophenia"},
+			{Predicate: "IsPolyvalentTerm", Subject: "Apophenia", Object: ""}, // unary
+		},
+	}
+	got := neighborhood(kb, "Apophenia")
+	if len(got) != 2 {
+		t.Fatalf("want 2 edges, got %d: %+v", len(got), got)
+	}
+	// Apophenia is the OBJECT of Proposes → neighbor is the subject, arrow ←.
+	if got[0]["label"] != "Proposes ← Shermer (Person)" {
+		t.Errorf("edge 0 label = %q", got[0]["label"])
+	}
+	if got[1]["label"] != "IsPolyvalentTerm (unary)" {
+		t.Errorf("unary edge label = %q", got[1]["label"])
+	}
+}

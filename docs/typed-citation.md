@@ -81,12 +81,24 @@ reference-integrity, metabolism/LLM loop for narrative accuracy.
 A verified type is not only an integrity check; it is a retrieval signal with
 zero classification error. Because an entity's role and a claim's predicate
 *compiled*, retrieval can filter or weight by them without the misclassification
-noise that soft, model-assigned tags carry. The read side already has content
-retrieval (BM25 fulltext, local-embedding semantic search, reciprocal-rank
-hybrid); the natural next step is fusing the type/graph signal into that ranking
-and returning an entity's verified typed neighborhood as context — so downstream
-reasoning gets the relationships, not just a prose snippet. The same type
-declaration pays twice: once for integrity, once for retrieval.
+noise that soft, model-assigned tags carry.
+
+The read side has content retrieval (BM25 fulltext, local-embedding semantic
+search, reciprocal-rank hybrid) and the type signal fused on top:
+
+- `query --hybrid "consciousness" --type Hypothesis` filters the fused ranking
+  to a verified role. The role was type-checked at build time, so nothing
+  misclassified leaks the wrong kind in or a right one out — a lower-ranked
+  hypothesis surfaces past a higher-ranked concept exactly when you asked for
+  hypotheses.
+- `query --hybrid "apophenia" --expand` appends each hit's typed claim
+  neighborhood — `predicate → neighbor (neighbor's verified role)`, with edge
+  direction read off the graph. Downstream reasoning gets the relationships,
+  not just a prose snippet, which is the concrete answer to "terminology
+  mismatch ruins downstream reasoning": you hand the model the typed subgraph.
+
+The same type declaration pays twice — once for integrity, once for retrieval —
+because both read the one source of truth the compiler already verified.
 
 ## The format is an implementation detail
 
