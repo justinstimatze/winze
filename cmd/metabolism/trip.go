@@ -66,8 +66,8 @@ type TripConnection struct {
 	EntityB     string   `json:"entity_b"`
 	ClusterA    int      `json:"cluster_a"`
 	ClusterB    int      `json:"cluster_b"`
-	Entities    []string `json:"entities,omitempty"`    // confluence/synthesis: all entity names
-	GroupSize   int      `json:"group_size,omitempty"`  // confluence/synthesis: number of entities
+	Entities    []string `json:"entities,omitempty"`   // confluence/synthesis: all entity names
+	GroupSize   int      `json:"group_size,omitempty"` // confluence/synthesis: number of entities
 	PromptType  string   `json:"prompt_type"`
 	Temperature float64  `json:"temperature"`
 	Connection  string   `json:"connection"`
@@ -653,7 +653,6 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 			}
 		}
 
-		provVar := fmt.Sprintf("tripCycle%d%s%sSource", cycleNum, subj, obj)
 		claimVar := fmt.Sprintf("TripCycle%d%s%s%s", cycleNum, subj, c.Predicate, obj)
 
 		var b strings.Builder
@@ -662,17 +661,26 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 		b.WriteString(fmt.Sprintf("// %s\n", c.Connection))
 		b.WriteString(fmt.Sprintf("// ---------------------------------------------------------------------------\n\n"))
 
-		b.WriteString(fmt.Sprintf("var %s = Provenance{\n", provVar))
-		b.WriteString(fmt.Sprintf("\tOrigin:     \"winze trip cycle %d (speculative cross-cluster connection)\",\n", cycleNum))
-		b.WriteString(fmt.Sprintf("\tIngestedAt: %q,\n", time.Now().Format("2006-01-02")))
-		b.WriteString(fmt.Sprintf("\tIngestedBy: \"winze metabolism trip (score %d/5, %s, temp=%.1f)\",\n", c.Score, c.PromptType, c.Temperature))
-		b.WriteString(fmt.Sprintf("\tQuote:      %q,\n", cleanLLMString(c.Connection+" "+c.Rationale)))
-		b.WriteString("}\n\n")
-
+		// Winze GENERATED this connection — it is not sourced. Back it with a
+		// Conjecture, never a Provenance: a Conjecture has no Quote field, so
+		// the generated Connection/Rationale text cannot be dressed as a source
+		// quote (the trip-fabrication failure mode, now closed by the type).
+		// The parser flags it Conjectural; it can later be promoted to a
+		// Provenance if a real source is found, or pruned.
 		b.WriteString(fmt.Sprintf("var %s = %s{\n", claimVar, c.Predicate))
 		b.WriteString(fmt.Sprintf("\tSubject: %s,\n", subj))
 		b.WriteString(fmt.Sprintf("\tObject:  %s,\n", obj))
-		b.WriteString(fmt.Sprintf("\tProv:    %s,\n", provVar))
+		b.WriteString("\tProv: Conjecture{\n")
+		b.WriteString("\t\tGeneratedBy:      \"metabolism-trip\",\n")
+		b.WriteString(fmt.Sprintf("\t\tFrom:             []*Entity{%s.Entity, %s.Entity},\n", subj, obj))
+		b.WriteString(fmt.Sprintf("\t\tCycleN:           %d,\n", cycleNum))
+		b.WriteString(fmt.Sprintf("\t\tTemperature:      %.1f,\n", c.Temperature))
+		b.WriteString(fmt.Sprintf("\t\tPromptType:       %q,\n", c.PromptType))
+		b.WriteString(fmt.Sprintf("\t\tScore:            %d,\n", c.Score))
+		b.WriteString(fmt.Sprintf("\t\tRationale:        %q,\n", cleanLLMString(c.Connection+" "+c.Rationale)))
+		b.WriteString(fmt.Sprintf("\t\tGeneratedAt:      %q,\n", time.Now().Format("2006-01-02")))
+		b.WriteString("\t\tGeneratedByAgent: \"winze-metabolism-trip\",\n")
+		b.WriteString("\t},\n")
 		b.WriteString("}\n")
 
 		sections = append(sections, b.String())
@@ -1143,7 +1151,6 @@ func collectTripDataDefn(client *defndb.Client) ([]tripRawEntity, []tripRawClaim
 
 	return entities, claims, nil
 }
-
 
 // pickCrossClusterPairs selects entity pairs from different clusters.
 // Prioritizes pairs where both entities have Briefs (for better LLM context).
