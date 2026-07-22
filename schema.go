@@ -30,6 +30,53 @@ type Provenance struct {
 	Quote      string // the specific source fragment the claim was extracted from
 }
 
+// Attribution is the epistemic backing of a claim. Every claim is either
+// SOURCED (Provenance — mirror-source-commitments, Quote holds the exact source
+// fragment) or a CONJECTURE (Conjecture — winze's own generation, uncitable by
+// construction). The interface is sealed (unexported method), so only these two
+// can back a claim: the compiler thus guarantees every claim declares which
+// kind of knowledge it is, and nothing can pose as a third, ambiguous state.
+type Attribution interface {
+	isAttribution()
+	// Conjectural reports whether this backing is winze's own generation rather
+	// than a sourced record. Sourced provenance returns false; a conjecture
+	// returns true.
+	Conjectural() bool
+}
+
+func (Provenance) isAttribution()    {}
+func (Provenance) Conjectural() bool { return false }
+
+// Conjecture is the honest backing for knowledge winze GENERATED rather than
+// sourced: trip-cycle connections, cross-cluster analogies, synthesis. It is
+// uncitable by construction — it has NO Quote field, so a generated claim can
+// never wear a fabricated source attribution. That is the whole point:
+// `Conjecture{Quote: "..."}` does not compile, so the failure mode where a
+// speculative claim is dressed as sourced fact is closed by the type system,
+// not by a lint rule someone might disable.
+//
+// A conjecture records its OWN honest origin instead — which winze process
+// produced it, from which entities, with what generation parameters and score.
+// Rationale is winze's own reasoning for the connection, explicitly not a
+// source's words. A conjecture may later be PROMOTED to a Provenance if a real
+// source is found, or pruned if it fails to corroborate; that lifecycle is what
+// makes winze's generation a reasoning process rather than unlabelled
+// invention. See docs/typed-citation.md.
+type Conjecture struct {
+	GeneratedBy      string    // the winze process, e.g. "metabolism-trip", "synthesis"
+	From             []*Entity // the entities the conjecture was generated from
+	CycleN           int       // metabolism cycle that produced it (0 if not applicable)
+	Temperature      float64   // generation temperature (the drug-profile wildness axis)
+	PromptType       string    // "analogy", "contradiction", "genealogy", "synthesis", ...
+	Score            int       // interestingness score (>=3 interesting, >=4 promote)
+	Rationale        string    // winze's OWN reasoning for the connection — never a source quote
+	GeneratedAt      string    // ISO-8601 date
+	GeneratedByAgent string    // worker id that ran the generation
+}
+
+func (Conjecture) isAttribution()    {}
+func (Conjecture) Conjectural() bool { return true }
+
 // TemporalMarker places a claim in time. v0 is deliberately coarse: Era is
 // a free-string tag and Ordinal is an optional tie-breaker. The schema will
 // churn here as soon as real claims want intervals, relative ordering, or
@@ -51,7 +98,7 @@ type BinaryRelation[S, O any] struct {
 	Subject S
 	Object  O
 	When    *TemporalMarker
-	Prov    Provenance
+	Prov    Attribution
 }
 
 // UnaryClaim is the generic base for single-slot predicates (Is, Has, etc.).
@@ -60,7 +107,7 @@ type BinaryRelation[S, O any] struct {
 type UnaryClaim[S any] struct {
 	Subject S
 	When    *TemporalMarker
-	Prov    Provenance
+	Prov    Attribution
 }
 
 // Scene groups claims that share a setting. Claims is []any because

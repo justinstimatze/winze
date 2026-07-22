@@ -226,6 +226,19 @@ Only encode claims the source explicitly commits to. Use `Provenance.Quote`
 with exact source text. Do not fabricate relationships. Brief-level references
 are fine for connections the source doesn't explicitly make.
 
+**Sourced vs conjecture (the `Attribution` fence).** A claim's `Prov` is an
+`Attribution` — either a sourced `Provenance` (Quote = exact source text) or a
+`Conjecture` (winze's OWN generation: trip cycles, cross-cluster analogy,
+synthesis). `Conjecture` has **no `Quote` field by design** — the compiler
+forbids a generated claim from wearing a fabricated source attribution, which
+is the trip-fabrication failure mode closed structurally rather than by lint.
+When winze generates a speculative connection, back it with `Conjecture`
+(honest self-origin: `GeneratedBy`, `From`, `PromptType`, `Score`,
+`Rationale`), **never** a `Provenance` with an invented Quote. A conjecture can
+be promoted to a `Provenance` later if a real source is found, or pruned. The
+parser flags conjecture-backed claims (`corpusparse.Claim.Conjectural`) so
+they're distinguishable from sourced fact.
+
 ### Schema accretion
 
 Do NOT invent predicates speculatively. Wait for the forcing function: a

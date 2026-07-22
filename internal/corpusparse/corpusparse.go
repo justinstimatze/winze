@@ -49,6 +49,7 @@ type Claim struct {
 	ObjectVar     string
 	File          string
 	TripGenerated bool // matches IsTripGenerated(VarName)
+	Conjectural   bool // Prov is a Conjecture (winze's own generation), not a sourced Provenance
 }
 
 // tripCycleClaimRE matches var names of trip-cycle-promoted claims:
@@ -239,6 +240,12 @@ func tryParseClaim(varName string, cl *ast.CompositeLit, file string) (Claim, bo
 			c.ObjectVar = identName(kv.Value)
 		case "Prov":
 			hasProv = true
+			// Distinguish a sourced Provenance from a Conjecture (winze's own
+			// generation). The type name on the Prov value literal is the
+			// verified epistemic status — no heuristic needed.
+			if pcl, ok := kv.Value.(*ast.CompositeLit); ok && typeIdent(pcl.Type) == "Conjecture" {
+				c.Conjectural = true
+			}
 		}
 	}
 	if c.SubjectVar == "" || !hasProv {
