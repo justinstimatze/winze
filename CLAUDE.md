@@ -133,10 +133,14 @@ compaction primitive for the log-structured multi-session KB
 (`docs/multi-session-write-shape.md`): rot-probe finds duplicates coined
 across session files, merge folds them into the canonical topic file.
 
-Merge is NOT yet recorded as a typed claim. A `MergedFrom` / `AlternateOf`
-predicate (PROV-O `alternateOf`) would make the fold auditable and stop a
-re-ingest of A's source from recreating it — but that is a schema-accretion
-decision reserved for a human. Until then the git commit is the record.
+Merge records itself as a typed `AbsorbedAlternate` claim appended to the
+survivor's file (maps to PROV-O `alternateOf`) — so the fold is auditable
+and queryable, not just a git diff. It is a UnaryClaim on the survivor
+(`Subject: B.Entity`), not a binary `MergedFrom`, because merge deletes A's
+declaration — there is no var left to reference. A's consumed identity (old
+var name, ID, Name) is captured in the claim's `Provenance.Quote`. Suppress
+with `--no-record`. The claim is visible via `query --provenance "winze-edit
+merge"` and `query --claims <survivor>`.
 
 Not yet implemented: retarget (bulk Object rewrite), safe delete.
 
@@ -230,6 +234,7 @@ below `--entity-cap` (default 250).
 **Prediction:** Predicts, Credence, ResolvedAs (//winze:functional)
 **Functional (//winze:functional):** FormedAt, EnergyEstimate, EnglishTranslationOf
 **Investigation (Tunguska-domain, low corpus usage):** LedExpedition, FundedBy, CausedEvent, Operates, RunsFacility, Released, Contaminates, HoldsContractWith, MonitoredBy, MonitoredByOrg, ShipsSamplesTo
+**Audit (KB self-mutation history):** AbsorbedAlternate (`UnaryClaim[*Entity]`, PROV-O alternateOf) — written by `winze-edit merge` to record that an entity was folded into the Subject survivor; absorbed identity lives in `Provenance.Quote`
 **User:** GrantsBroadAuthorityOverWinze, PrefersTerseResponses, PushesBackOnOverengineering, PrefersOrganicSchemaGrowth
 
 ### Pragma annotations

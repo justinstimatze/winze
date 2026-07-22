@@ -227,16 +227,29 @@ func ExtractSubjectObject(cl *ast.CompositeLit) (subj, obj string) {
 		}
 		switch key.Name {
 		case "Subject":
-			if id, ok := kv.Value.(*ast.Ident); ok {
-				subj = id.Name
-			}
+			subj = subjectObjectIdent(kv.Value)
 		case "Object":
-			if id, ok := kv.Value.(*ast.Ident); ok {
-				obj = id.Name
-			}
+			obj = subjectObjectIdent(kv.Value)
 		}
 	}
 	return
+}
+
+// subjectObjectIdent resolves a Subject/Object value to the entity var it
+// names. A plain ident (Subject: Alice) is the var directly. A selector
+// (Subject: Survivor.Entity) names the var in its X half — the shape
+// winze-edit merge's audit claim writes to reach the embedded *Entity of a
+// role-typed survivor whose concrete type is not known at claim-render time.
+func subjectObjectIdent(e ast.Expr) string {
+	switch v := e.(type) {
+	case *ast.Ident:
+		return v.Name
+	case *ast.SelectorExpr:
+		if id, ok := v.X.(*ast.Ident); ok {
+			return id.Name
+		}
+	}
+	return ""
 }
 
 // VarDecl represents a top-level var declaration with its composite literal.

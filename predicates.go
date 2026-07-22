@@ -590,3 +590,27 @@ type ResolutionOutcome struct {
 //
 //winze:functional
 type ResolvedAs BinaryRelation[Event, *ResolutionOutcome]
+
+// -----------------------------------------------------------------------------
+// Audit family. Records structural mutations of the KB itself, so the corpus
+// carries its own maintenance history as first-class claims.
+// -----------------------------------------------------------------------------
+
+// AbsorbedAlternate records that an entity was folded into the Subject by
+// winze-edit merge — the Subject is the canonical survivor and an alternate
+// (a duplicate coined independently, often across session files) was merged
+// away into it. Maps to PROV-O alternateOf: the absorbed entity was an
+// alternate representation of the same thing.
+//
+// This is a UnaryClaim, not a binary MergedFrom, on purpose: merge removes
+// the absorbed entity's declaration, so there is no var left to reference as
+// an Object. The absorbed identity (its old var name, ID, and Name) is
+// captured in the claim's Provenance.Quote instead — that quote IS the audit
+// record, exactly as for source-extracted claims whose source is gone.
+//
+// The slot is *Entity (not a fixed role type) because a survivor can be any
+// role — Person, Concept, Hypothesis. The claim reaches it as
+// `Subject: Survivor.Entity`; ExtractSubjectObject resolves that selector to
+// the survivor var. Not functional: a survivor can absorb several alternates
+// over time.
+type AbsorbedAlternate UnaryClaim[*Entity]

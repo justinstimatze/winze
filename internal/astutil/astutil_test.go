@@ -288,4 +288,23 @@ func TestExtractSubjectObject(t *testing.T) {
 	if obj != "" {
 		t.Errorf("Object = %q, want empty", obj)
 	}
+
+	// Selector subject (Subject: Survivor.Entity) — the shape merge's audit
+	// claim writes to reach a role-typed survivor's embedded *Entity. The
+	// indexed subject is the var in the X half, not the ".Entity" field.
+	selector := &ast.CompositeLit{
+		Elts: []ast.Expr{
+			&ast.KeyValueExpr{
+				Key: &ast.Ident{Name: "Subject"},
+				Value: &ast.SelectorExpr{
+					X:   &ast.Ident{Name: "MichaelShermer"},
+					Sel: &ast.Ident{Name: "Entity"},
+				},
+			},
+		},
+	}
+	subj, _ = ExtractSubjectObject(selector)
+	if subj != "MichaelShermer" {
+		t.Errorf("selector Subject = %q, want %q", subj, "MichaelShermer")
+	}
 }

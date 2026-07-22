@@ -262,11 +262,15 @@ func runClaims(kb *kbIndex, target string, jsonOut bool) {
 
 	fmt.Printf("Claims involving %s (%d):\n\n", targetName, len(related))
 	for _, c := range related {
-		role := "subject"
-		if c.Object == targetName {
-			role = "object"
+		if c.Object == "" {
+			fmt.Printf("  %s  %s  (unary, as subject)\n", c.Predicate, c.Subject)
+		} else {
+			role := "subject"
+			if c.Object == targetName {
+				role = "object"
+			}
+			fmt.Printf("  %s  %s → %s  (as %s)\n", c.Predicate, c.Subject, c.Object, role)
 		}
-		fmt.Printf("  %s  %s → %s  (as %s)\n", c.Predicate, c.Subject, c.Object, role)
 		fmt.Printf("    prov: %s  (%s)\n\n", c.ProvRef, c.File)
 	}
 }
@@ -498,15 +502,19 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 		val := strings.Trim(f.FieldValue, "\"")
 		switch f.FieldName {
 		case "Subject":
-			rec.Subject = val
+			rec.Subject = baseVar(val)
 		case "Object":
-			rec.Object = val
+			rec.Object = baseVar(val)
 		case "Prov":
 			rec.ProvRef = val
 		}
 	}
 	for _, rec := range claimMap {
-		if rec.Subject != "" && rec.Object != "" {
+		// Binary claims carry Subject+Object; unary claims (IsCognitiveBias,
+		// AbsorbedAlternate, the user-preference predicates) carry Subject
+		// only. Both are claims involving their Subject and belong in the
+		// index — requiring an Object silently dropped every unary claim.
+		if rec.Subject != "" {
 			kb.Claims = append(kb.Claims, *rec)
 		}
 	}
@@ -541,6 +549,18 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 
 
 // --- search helpers ---
+
+// baseVar resolves a claim Subject/Object value to the entity var it names.
+// A plain ref (Alice) is the var; a selector ref (Survivor.Entity, written by
+// merge's audit claim to reach a role type's embedded *Entity) names the var
+// in its head. Entity var names never contain a dot, so splitting on the
+// first dot is safe.
+func baseVar(s string) string {
+	if i := strings.IndexByte(s, '.'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
 
 func matchEntity(e entityRecord, q string) bool {
 	if strings.Contains(strings.ToLower(e.VarName), q) ||

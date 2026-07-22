@@ -32,6 +32,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/justinstimatze/winze/internal/astutil"
 )
@@ -70,6 +73,7 @@ func cmdMerge(args []string) int {
 	into := fs.String("into", "", "canonical entity var that survives")
 	root := fs.String("root", ".", "winze repo root (the directory containing predicates.go)")
 	dryRun := fs.Bool("dry-run", false, "report what would change; do not modify files")
+	noRecord := fs.Bool("no-record", false, "skip appending the AbsorbedAlternate audit claim")
 	fs.Parse(args)
 
 	if *from == "" || *into == "" {
@@ -96,22 +100,39 @@ func cmdMerge(args []string) int {
 		return 1
 	}
 
-	files := make([]string, 0, len(plan.edits))
-	refs := 0
-	for f, es := range plan.edits {
+	// The survivor's file receives the audit claim even if it holds no
+	// references to `from`, so it joins the touched set.
+	fileSet := map[string]bool{}
+	for f := range plan.edits {
+		fileSet[f] = true
+	}
+	record := !*noRecord
+	if record {
+		fileSet[plan.intoFile] = true
+	}
+	files := make([]string, 0, len(fileSet))
+	for f := range fileSet {
 		files = append(files, f)
+	}
+	sort.Strings(files)
+
+	refs := 0
+	for _, es := range plan.edits {
 		for _, e := range es {
 			if e.repl == *into {
 				refs++
 			}
 		}
 	}
-	sort.Strings(files)
 
 	fmt.Printf("merge %s -> %s: remove declaration in %s, retarget %d references across %d files\n",
 		*from, *into, filepath.Base(plan.declFile), refs, len(files))
 	for _, f := range files {
-		fmt.Printf("  %s (%d edits)\n", filepath.Base(f), len(plan.edits[f]))
+		note := ""
+		if record && f == plan.intoFile {
+			note = " +audit claim"
+		}
+		fmt.Printf("  %s (%d edits%s)\n", filepath.Base(f), len(plan.edits[f]), note)
 	}
 	if *dryRun {
 		fmt.Println("(dry run — nothing written)")
@@ -133,7 +154,11 @@ func cmdMerge(args []string) int {
 			return 1
 		}
 		backups[path] = src
-		if err := os.WriteFile(path, applyEdits(src, plan.edits[path]), 0o644); err != nil {
+		out := applyEdits(src, plan.edits[path])
+		if record && path == plan.intoFile {
+			out = append(out, renderAuditClaim(*from, *into, plan.fromID, plan.fromName)...)
+		}
+		if err := os.WriteFile(path, out, 0o644); err != nil {
 			revert()
 			fmt.Fprintf(os.Stderr, "write %s: %v (reverted)\n", path, err)
 			return 1
@@ -161,7 +186,10 @@ func cmdMerge(args []string) int {
 type mergePlan struct {
 	fromDeclared bool
 	intoDeclared bool
-	declFile     string       // file holding `from`'s declaration
+	declFile     string // file holding `from`'s declaration
+	intoFile     string // file holding the survivor's declaration (audit claim lands here)
+	fromID       string // absorbed entity's ID field, for the audit record
+	fromName     string // absorbed entity's Name field, for the audit record
 	edits        map[string][]edit
 }
 
@@ -199,9 +227,18 @@ func planMerge(root, from, into string) (*mergePlan, error) {
 						switch n.Name {
 						case into:
 							plan.intoDeclared = true
+							plan.intoFile = path
 						case from:
 							plan.fromDeclared = true
 							plan.declFile = path
+							// Capture the absorbed entity's identity for the
+							// audit record before its declaration is deleted.
+							if len(vs.Values) == 1 {
+								if cl, ok := vs.Values[0].(*ast.CompositeLit); ok {
+									plan.fromID = astutil.ExtractStringField(cl, "ID")
+									plan.fromName = astutil.ExtractStringField(cl, "Name")
+								}
+							}
 							// Delete the whole GenDecl when `from` is its only
 							// spec (covers standalone `var X = ...` and a group
 							// of one); otherwise delete just this spec's lines.
@@ -251,6 +288,28 @@ func planMerge(root, from, into string) (*mergePlan, error) {
 		}
 	}
 	return plan, nil
+}
+
+// renderAuditClaim builds the AbsorbedAlternate claim recording that `from`
+// was folded into `into`. It is a unary claim on the survivor (reached via
+// `.Entity` because the survivor's role type is not known here); the absorbed
+// entity's identity lives in Provenance.Quote because its var is now gone.
+func renderAuditClaim(from, into, fromID, fromName string) string {
+	claimName := into + "Absorbed" + from
+	quote := fmt.Sprintf("winze-edit merge: absorbed %s (id: %q, name: %q) into %s", from, fromID, fromName, into)
+	today := time.Now().UTC().Format("2006-01-02")
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "\nvar %s = AbsorbedAlternate{\n", claimName)
+	fmt.Fprintf(&b, "\tSubject: %s.Entity,\n", into)
+	fmt.Fprintf(&b, "\tProv: Provenance{\n")
+	fmt.Fprintf(&b, "\t\tOrigin:     %q,\n", "winze-edit merge")
+	fmt.Fprintf(&b, "\t\tIngestedAt: %s,\n", strconv.Quote(today))
+	fmt.Fprintf(&b, "\t\tIngestedBy: %q,\n", "winze-edit-merge")
+	fmt.Fprintf(&b, "\t\tQuote:      %s,\n", strconv.Quote(quote))
+	fmt.Fprintf(&b, "\t},\n")
+	fmt.Fprintf(&b, "}\n")
+	return b.String()
 }
 
 // declBounds returns the start position (doc comment if present, else the node)
