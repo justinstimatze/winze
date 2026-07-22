@@ -6,9 +6,10 @@ package main
 import "strings"
 
 func (h *handler) coreSearch(query string) any {
+	kb := h.index()
 	q := strings.ToLower(query)
 	var results []map[string]any
-	for _, e := range h.kb.Entities {
+	for _, e := range kb.Entities {
 		if !matchEntity(e, q) {
 			continue
 		}
@@ -26,7 +27,7 @@ func (h *handler) coreSearch(query string) any {
 		if e.ID != "" {
 			rec["id"] = e.ID
 		}
-		related := claimsInvolving(h.kb, e.VarName)
+		related := claimsInvolving(kb, e.VarName)
 		if len(related) > 0 {
 			rec["claims"] = related
 		}
@@ -39,18 +40,19 @@ func (h *handler) coreSearch(query string) any {
 }
 
 func (h *handler) coreTheories(concept string) any {
+	kb := h.index()
 	q := strings.ToLower(concept)
 
 	var targetEntity *entityRecord
-	for i, e := range h.kb.Entities {
+	for i, e := range kb.Entities {
 		if matchEntity(e, q) {
-			targetEntity = &h.kb.Entities[i]
+			targetEntity = &kb.Entities[i]
 			break
 		}
 	}
 
 	var theories []map[string]any
-	for _, c := range h.kb.Claims {
+	for _, c := range kb.Claims {
 		if c.Predicate != "TheoryOf" {
 			continue
 		}
@@ -69,7 +71,7 @@ func (h *handler) coreTheories(concept string) any {
 			"prov":       c.ProvRef,
 			"file":       c.File,
 		}
-		for _, e := range h.kb.Entities {
+		for _, e := range kb.Entities {
 			if e.VarName == c.Subject && e.Brief != "" {
 				t["brief"] = e.Brief
 				break
@@ -90,9 +92,10 @@ func (h *handler) coreTheories(concept string) any {
 }
 
 func (h *handler) coreClaims(entity string) any {
+	kb := h.index()
 	q := strings.ToLower(entity)
 	var targetName string
-	for _, e := range h.kb.Entities {
+	for _, e := range kb.Entities {
 		if matchEntity(e, q) {
 			targetName = e.VarName
 			break
@@ -102,7 +105,7 @@ func (h *handler) coreClaims(entity string) any {
 		targetName = entity
 	}
 
-	related := claimsInvolving(h.kb, targetName)
+	related := claimsInvolving(kb, targetName)
 	if len(related) == 0 {
 		return map[string]any{"count": 0, "message": "No claims found involving " + entity}
 	}
@@ -110,9 +113,10 @@ func (h *handler) coreClaims(entity string) any {
 }
 
 func (h *handler) coreProvenance(query string) any {
+	kb := h.index()
 	q := strings.ToLower(query)
 	var results []map[string]any
-	for _, p := range h.kb.Provenance {
+	for _, p := range kb.Provenance {
 		if !strings.Contains(strings.ToLower(p.Origin), q) &&
 			!strings.Contains(strings.ToLower(p.VarName), q) {
 			continue
@@ -126,7 +130,7 @@ func (h *handler) coreProvenance(query string) any {
 			rec["quote"] = p.Quote
 		}
 		var refs []string
-		for _, c := range h.kb.Claims {
+		for _, c := range kb.Claims {
 			if c.ProvRef == p.VarName {
 				refs = append(refs, c.VarName)
 			}
@@ -143,8 +147,9 @@ func (h *handler) coreProvenance(query string) any {
 }
 
 func (h *handler) coreDisputes() any {
+	kb := h.index()
 	var disputes []claimRecord
-	for _, c := range h.kb.Claims {
+	for _, c := range kb.Claims {
 		if c.Predicate == "Disputes" || c.Predicate == "DisputesOrg" {
 			disputes = append(disputes, c)
 		}
@@ -156,30 +161,31 @@ func (h *handler) coreDisputes() any {
 }
 
 func (h *handler) coreStats() any {
+	kb := h.index()
 	roleCounts := map[string]int{}
-	for _, e := range h.kb.Entities {
+	for _, e := range kb.Entities {
 		roleCounts[e.RoleType]++
 	}
 
 	predCounts := map[string]int{}
-	for _, c := range h.kb.Claims {
+	for _, c := range kb.Claims {
 		predCounts[c.Predicate]++
 	}
 
 	files := map[string]bool{}
-	for _, e := range h.kb.Entities {
+	for _, e := range kb.Entities {
 		files[e.File] = true
 	}
 
 	disputes := 0
-	for _, c := range h.kb.Claims {
+	for _, c := range kb.Claims {
 		if c.Predicate == "Disputes" || c.Predicate == "DisputesOrg" {
 			disputes++
 		}
 	}
 
 	theoryTargets := map[string]int{}
-	for _, c := range h.kb.Claims {
+	for _, c := range kb.Claims {
 		if c.Predicate == "TheoryOf" {
 			theoryTargets[c.Object]++
 		}
@@ -192,10 +198,10 @@ func (h *handler) coreStats() any {
 	}
 
 	return map[string]any{
-		"entities":           len(h.kb.Entities),
-		"claims":             len(h.kb.Claims),
+		"entities":           len(kb.Entities),
+		"claims":             len(kb.Claims),
 		"predicates":         len(predCounts),
-		"provenance":         len(h.kb.Provenance),
+		"provenance":         len(kb.Provenance),
 		"files":              len(files),
 		"disputes":           disputes,
 		"contested_concepts": contested,

@@ -28,7 +28,10 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 
+	"github.com/justinstimatze/winze/internal/astutil"
 	"github.com/justinstimatze/winze/internal/defndb"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -96,7 +99,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	h := &handler{kb: kb, dir: absDir}
+	h := &handler{dir: absDir}
+	h.cur.Store(kb)
+	h.builtAt.Store(corpusMaxMtime(absDir))
 
 	if *httpAddr != "" {
 		// HTTP mode: A2A JSON-RPC endpoint
@@ -167,8 +172,56 @@ func main() {
 // --- handler ---
 
 type handler struct {
-	kb  *kbIndex
-	dir string
+	dir     string
+	mu      sync.Mutex              // serializes rebuilds
+	cur     atomic.Pointer[kbIndex] // current KB snapshot (atomically swapped)
+	builtAt atomic.Int64            // max corpus .go mtime (unix nano) at last successful build
+}
+
+// index returns the current KB snapshot, first rebuilding it if any corpus
+// .go file changed since the last build. The common (unchanged) path is a
+// cheap mtime stat sweep — the ~24ms parse is paid only when the corpus
+// actually moved, so a claim written by one session becomes visible to
+// readers in another without restarting the server. A rebuild failure keeps
+// the last good snapshot (stale but valid) rather than serving nothing.
+func (h *handler) index() *kbIndex {
+	m := corpusMaxMtime(h.dir)
+	if m > h.builtAt.Load() {
+		h.mu.Lock()
+		if m > h.builtAt.Load() { // recheck under lock — another request may have rebuilt
+			if kb, err := buildIndex(h.dir); err == nil {
+				h.cur.Store(kb)
+				h.builtAt.Store(m)
+			}
+		}
+		h.mu.Unlock()
+	}
+	return h.cur.Load()
+}
+
+// corpusMaxMtime returns the newest modification time (unix nano) across the
+// corpus .go files, using the same filter buildIndex parses. Zero on a
+// directory-read error; index() then keeps its last good snapshot rather than
+// rebuilding on a transient FS hiccup.
+func corpusMaxMtime(dir string) int64 {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	var newest int64
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || !astutil.GoFileFilter(info) {
+			continue
+		}
+		if n := info.ModTime().UnixNano(); n > newest {
+			newest = n
+		}
+	}
+	return newest
 }
 
 // MCP handlers — thin wrappers around core functions.
