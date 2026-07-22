@@ -95,6 +95,21 @@ file reverts if any record fails validation or the gate. `--dry-run`
 renders without touching files. This is the write path the multi-session
 shared-KB shape relies on (see `docs/multi-session-write-shape.md`).
 
+**Propose mode** (`--propose "<rough note>"`) is the human-via-agent write
+path: an LLM (Haiku by default, `--model` to override) maps a natural-language
+note onto the EXISTING predicate/entity vocabulary and proposes one typed
+claim (predicate + subject + object), reusing existing entity vars. The
+proposal is validated against the corpus and rendered; a referenced entity
+that doesn't exist is reported with nearest-existing suggestions (coin-time
+dedup nudge) rather than silently coined. Target file is inferred from the
+subject's file unless `--to` is given. **Provenance is never invented** — the
+LLM proposes structure only; `--quote`/`--origin` (or `--provenance-var`) still
+supply the source, and `--commit` is refused without them. Default is preview;
+`--commit` routes the claim through the same build gate as direct add. The note
+is treated as untrusted data (mapped, not obeyed). The stable vocabulary prefix
+is `cache_control`-marked, so repeated proposals in a session read it at ~10%
+input cost. See `docs/typed-citation.md` (the two write paths).
+
 ### Editing helper (referentially-safe mutation)
 
 ```bash

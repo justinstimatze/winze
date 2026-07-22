@@ -58,6 +58,9 @@ func main() {
 		unary       = flag.Bool("unary", false, "set for UnaryClaim predicates (omit --object)")
 		dryRun      = flag.Bool("dry-run", false, "print what would be written; do not modify files or build")
 		batch       = flag.String("batch", "", "append many claims from a JSONL file (or '-' for stdin) under one build gate; ignores the single-claim flags")
+		propose     = flag.String("propose", "", "rough natural-language note; an LLM proposes the typed claim (predicate/subject/object) from the existing vocabulary, then the normal gate validates it (needs ANTHROPIC_API_KEY)")
+		commit      = flag.Bool("commit", false, "with --propose: actually write the proposed claim through the build gate (default: show the proposal only)")
+		model       = flag.String("model", "", "with --propose: model override (default Claude Haiku 4.5)")
 	)
 	flag.Parse()
 
@@ -66,6 +69,18 @@ func main() {
 	// does not apply.
 	if *batch != "" {
 		os.Exit(runBatch(*batch, *repoRoot, *dryRun))
+	}
+
+	// Propose mode is the human-via-agent write path: a rough note becomes a
+	// typed claim proposal (LLM maps it onto the existing predicate/entity
+	// vocabulary); the same build gate validates it. Provenance is never
+	// invented — --quote/--origin or --provenance-var still supply the source.
+	if *propose != "" {
+		os.Exit(runPropose(proposeOpts{
+			note: *propose, quote: *quote, origin: *origin, ingestedBy: *ingestedBy,
+			provVar: *provVar, target: *target, model: *model, repoRoot: *repoRoot,
+			commit: *commit && !*dryRun,
+		}))
 	}
 
 	if err := validateFlags(*predicate, *subject, *object, *quote, *origin, *provVar, *target, *claimName, *unary); err != nil {
@@ -82,46 +97,50 @@ func main() {
 		return
 	}
 
-	// Serialize with any concurrent winze writer: the read-append-gate-commit
-	// section below is not safe against a parallel mutator sharing this corpus.
-	unlock, err := corpuslock.Acquire(*repoRoot)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "corpus lock: %v\n", err)
+	if err := commitDecl(*repoRoot, *target, decl); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "added %s to %s (build gate passed)\n", *claimName, *target)
+}
+
+// commitDecl is the shared write path for `add` and `--propose --commit`: it
+// takes the corpus-wide lock, appends decl to target, runs the
+// gofmt+build+vet gate, and reverts the touched file on any failure. The build
+// gate is the load-bearing semantic check — do not bypass it.
+func commitDecl(repoRoot, target, decl string) error {
+	// Serialize with any concurrent winze writer: the read-append-gate-commit
+	// section is not safe against a parallel mutator sharing this corpus.
+	unlock, err := corpuslock.Acquire(repoRoot)
+	if err != nil {
+		return fmt.Errorf("corpus lock: %w", err)
 	}
 	defer unlock()
 
-	targetPath := filepath.Join(*repoRoot, *target)
+	targetPath := filepath.Join(repoRoot, target)
 	backup, err := os.ReadFile(targetPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "read %s: %v\n", targetPath, err)
-		os.Exit(1)
+		return fmt.Errorf("read %s: %w", targetPath, err)
 	}
+	revert := func() { _ = os.WriteFile(targetPath, backup, 0o644) }
 
 	if err := appendDecl(targetPath, decl); err != nil {
-		_ = os.WriteFile(targetPath, backup, 0o644)
-		fmt.Fprintf(os.Stderr, "append failed (reverted): %v\n", err)
-		os.Exit(1)
+		revert()
+		return fmt.Errorf("append failed (reverted): %w", err)
 	}
-
-	if out, err := runCmd(*repoRoot, "gofmt", "-w", targetPath); err != nil {
-		_ = os.WriteFile(targetPath, backup, 0o644)
-		fmt.Fprintf(os.Stderr, "gofmt failed (reverted):\n%s\n", out)
-		os.Exit(1)
+	if out, err := runCmd(repoRoot, "gofmt", "-w", targetPath); err != nil {
+		revert()
+		return fmt.Errorf("gofmt failed (reverted):\n%s", out)
 	}
-
-	if out, err := runCmd(*repoRoot, "go", "build", "."); err != nil {
-		_ = os.WriteFile(targetPath, backup, 0o644)
-		fmt.Fprintf(os.Stderr, "go build failed (reverted %s):\n%s\n", targetPath, out)
-		os.Exit(1)
+	if out, err := runCmd(repoRoot, "go", "build", "."); err != nil {
+		revert()
+		return fmt.Errorf("go build failed (reverted %s):\n%s", targetPath, out)
 	}
-	if out, err := runCmd(*repoRoot, "go", "vet", "."); err != nil {
-		_ = os.WriteFile(targetPath, backup, 0o644)
-		fmt.Fprintf(os.Stderr, "go vet failed (reverted %s):\n%s\n", targetPath, out)
-		os.Exit(1)
+	if out, err := runCmd(repoRoot, "go", "vet", "."); err != nil {
+		revert()
+		return fmt.Errorf("go vet failed (reverted %s):\n%s", targetPath, out)
 	}
-
-	fmt.Fprintf(os.Stderr, "added %s to %s (build gate passed)\n", *claimName, *target)
+	return nil
 }
 
 func validateFlags(predicate, subject, object, quote, origin, provVar, target, claimName string, unary bool) error {
