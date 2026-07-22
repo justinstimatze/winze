@@ -139,6 +139,12 @@ func embedsEntityPointer(st *ast.StructType) bool {
 // noDefn is set by the --no-defn flag to force AST-only mode.
 var noDefn bool
 
+// briefStrict is set by --brief-strict: brief-drift becomes a gate (exit 1) on
+// any Brief assertion-candidate not backed by a claim or acknowledged with a
+// //winze:mentions annotation. Opt-in — the corpus permits contextual Brief
+// mentions, so strict mode is for a triaged corpus, not the default.
+var briefStrict bool
+
 // namingOracleRule reports role types whose names do not appear in
 // winze.ExternalTerms. Exits nonzero when any role is ungrounded.
 func namingOracleRule(dir string) int {
@@ -1109,8 +1115,10 @@ func main() {
 	llmMaxCalls := fs.Int("llm-max-calls", 0, "max LLM calls per run (0 = unlimited)")
 	llmMaxTokens := fs.Int("llm-max-tokens", 1024, "max tokens per LLM call")
 	noDefnFlag := fs.Bool("no-defn", false, "force AST-only mode (skip defn queries)")
+	briefStrictFlag := fs.Bool("brief-strict", false, "brief-drift gates (exit 1) on unexempted Brief assertion-candidates")
 	fs.Parse(os.Args[1:])
 	noDefn = *noDefnFlag
+	briefStrict = *briefStrictFlag
 
 	dir := "."
 	if fs.NArg() > 0 {

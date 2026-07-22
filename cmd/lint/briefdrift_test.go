@@ -1,10 +1,50 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/justinstimatze/winze/internal/corpusparse"
 )
+
+// collectMentionPragmas must read //winze:mentions from all three positions:
+// a doc comment on the spec, a trailing line comment, and (for a single-spec
+// `var x = ...`) the GenDecl doc comment.
+func TestCollectMentionPragmas(t *testing.T) {
+	src := `package winze
+
+var (
+	// winze:mentions HardProblemOfConsciousness,IntegratedInformationTheory
+	DocForm = Person{&Entity{Name: "Doc Form"}}
+
+	LineForm = Person{&Entity{Name: "Line Form"}} //winze:mentions Advaita
+)
+
+//winze:mentions KurtGodel
+var SingleSpec = Person{&Entity{Name: "Single Spec"}}
+`
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "e.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := collectMentionPragmas(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got["DocForm"]["HardProblemOfConsciousness"] || !got["DocForm"]["IntegratedInformationTheory"] {
+		t.Errorf("DocForm exemptions wrong: %v", got["DocForm"])
+	}
+	if !got["LineForm"]["Advaita"] {
+		t.Errorf("LineForm (trailing comment) not parsed: %v", got["LineForm"])
+	}
+	if !got["SingleSpec"]["KurtGodel"] {
+		t.Errorf("SingleSpec (GenDecl doc) not parsed: %v", got["SingleSpec"])
+	}
+	if len(got["LineForm"]) != 1 {
+		t.Errorf("LineForm should have exactly one exemption, got %v", got["LineForm"])
+	}
+}
 
 func TestBuildMentionMatchers_SurfaceSelection(t *testing.T) {
 	entities := []corpusparse.Entity{

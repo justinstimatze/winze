@@ -59,12 +59,20 @@ query: "does something structurally identical already exist?"). See
 `internal/dedup`.
 
 `brief-drift` reports entities whose Brief names another entity with no claim
-path to it within two hops. It is advisory by design: Brief-level references
-for connections a source does not commit to are explicitly permitted (see
-Mirror-source-commitments), so a hit is not a defect. Read it two ways — as
-prose/structure drift, and as a worklist of things written about but never
-wired up. Two hops rather than one because the house pattern routes a person
-to a concept through an intermediate framing entity.
+path to it within two hops. Each hit is an **assertion-candidate**: prose that
+may claim a relationship the claim graph does not encode. Two ways to resolve
+one: **add the claim** (if the Brief asserts a real relationship — the prose
+was ahead of the structure), or **annotate `//winze:mentions Target`** (if the
+Brief names it for context only — mirror-source-commitments permits Brief
+references a source does not commit to). Marked mentions are exempted and
+counted separately.
+
+Advisory by default (a bare Brief mention is often legitimate, so hard-failing
+all of them would be the over-strict trap). `lint --brief-strict` turns it into
+a gate (exit 1) on any unexempted assertion-candidate — for a triaged corpus
+where every Brief mention is either claimed or explicitly acknowledged. Two
+hops rather than one because the house pattern routes a person to a concept
+through an intermediate framing entity.
 
 ### Authoring helper
 
@@ -304,6 +312,12 @@ Pragma comments control lint behavior for specific declarations:
   most one Object). The value-conflict lint rule flags multiple functional
   claims with the same Subject as a potential contradiction. Apply to predicates
   like FormedAt, EnergyEstimate, ResolvedAs where uniqueness is expected.
+- `//winze:mentions Target1,Target2` — on an ENTITY var declaration, marks the
+  named target entities as contextual mentions in that entity's Brief, exempting
+  them from brief-drift. Use when the Brief names an entity for context, not to
+  assert a relationship the claim graph should encode. Accepted on the spec's
+  doc comment, its trailing line comment, or (for a single-spec `var x = …`) the
+  declaration's doc comment.
 
 Pragmas are placed as line comments on the var declaration, not on the type.
 

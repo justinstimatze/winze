@@ -2,12 +2,82 @@ package main
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/justinstimatze/winze/internal/corpusparse"
 )
+
+// collectMentionPragmas reads `//winze:mentions Target1,Target2` annotations on
+// entity var declarations. A listed target is an ACKNOWLEDGED contextual
+// mention — the author has said "the Brief names this for context, not as an
+// asserted relationship" — so brief-drift exempts it. Everything a Brief names
+// that is NOT so marked is an assertion candidate: prose claiming a
+// relationship the claim graph should encode. Returns entityVar -> set of
+// exempt target vars. The pragma may sit on the spec's own doc/line comment or
+// (for a single-spec `var x = ...`) on the GenDecl.
+func collectMentionPragmas(dir string) (map[string]map[string]bool, error) {
+	out := map[string]map[string]bool{}
+	fset := token.NewFileSet()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	parseInto := func(entityVar string, cg *ast.CommentGroup) {
+		if cg == nil {
+			return
+		}
+		for _, c := range cg.List {
+			text := strings.TrimSpace(strings.TrimPrefix(c.Text, "//"))
+			rest, ok := strings.CutPrefix(text, "winze:mentions")
+			if !ok {
+				continue
+			}
+			for _, t := range strings.Split(strings.TrimSpace(rest), ",") {
+				if t = strings.TrimSpace(t); t != "" {
+					if out[entityVar] == nil {
+						out[entityVar] = map[string]bool{}
+					}
+					out[entityVar][t] = true
+				}
+			}
+		}
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.ParseComments)
+		if err != nil {
+			return nil, err
+		}
+		for _, decl := range f.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Names) != 1 {
+					continue
+				}
+				name := vs.Names[0].Name
+				parseInto(name, vs.Doc)
+				parseInto(name, vs.Comment)
+				if len(gen.Specs) == 1 {
+					parseInto(name, gen.Doc)
+				}
+			}
+		}
+	}
+	return out, nil
+}
 
 // briefDriftRule surfaces prose that asserts a relationship the claim graph
 // does not encode: an entity whose Brief names another entity it has no claim
@@ -28,6 +98,11 @@ import (
 // never wired up.
 func briefDriftRule(dir string) int {
 	entities, claims, err := corpusparse.ParseCorpus(dir)
+	if err != nil {
+		fmt.Printf("[brief-drift] error: %v\n", err)
+		return 2
+	}
+	exemptions, err := collectMentionPragmas(dir)
 	if err != nil {
 		fmt.Printf("[brief-drift] error: %v\n", err)
 		return 2
@@ -78,7 +153,8 @@ func briefDriftRule(dir string) int {
 		mentions []mention
 	}
 	var findings []finding
-	totalMentions := 0
+	totalMentions := 0 // unexempted assertion-candidates
+	exemptedCount := 0 // acknowledged //winze:mentions references
 
 	for _, e := range entities {
 		if e.Brief == "" || corpusparse.IsReifyMachinery(e.VarName) {
@@ -95,6 +171,10 @@ func briefDriftRule(dir string) int {
 			}
 			if loc := m.re.FindString(e.Brief); loc != "" {
 				seen[m.varName] = true
+				if exemptions[e.VarName][m.varName] {
+					exemptedCount++ // author marked this a contextual mention
+					continue
+				}
 				ms = append(ms, mention{target: m.varName, surface: loc})
 			}
 		}
@@ -112,8 +192,8 @@ func briefDriftRule(dir string) int {
 		return findings[i].entity.VarName < findings[j].entity.VarName
 	})
 
-	fmt.Printf("[brief-drift] %d entities, %d with Brief mentions lacking a connecting claim (%d mentions total)\n",
-		len(entities), len(findings), totalMentions)
+	fmt.Printf("[brief-drift] %d entities, %d with unexempted assertion-candidates (%d mentions; %d acknowledged via //winze:mentions)\n",
+		len(entities), len(findings), totalMentions, exemptedCount)
 
 	const maxShown = 15
 	for i, f := range findings {
@@ -126,9 +206,20 @@ func briefDriftRule(dir string) int {
 			fmt.Printf("      Brief names %q -> %s, but no claim links them\n", m.surface, m.target)
 		}
 	}
-	if len(findings) > 0 {
-		fmt.Println("  (advisory — a Brief-level reference with no claim is permitted; treat as a candidate-claim worklist)")
+	if len(findings) == 0 {
+		fmt.Println("  no unexempted assertion-candidates — every Brief mention is either claimed or acknowledged")
+		return 0
 	}
+	// Resolve each by ADDING the claim (if the Brief asserts a real relationship)
+	// or ANNOTATING it //winze:mentions Target (if it is contextual). In strict
+	// mode this is a gate; by default it is a worklist (mirror-source-commitments
+	// permits Brief mentions with no claim, so hard-failing all of them would be
+	// the over-strict trap — strict mode is opt-in, for a triaged corpus).
+	if briefStrict {
+		fmt.Println("  --brief-strict: FAIL — add a claim or mark each //winze:mentions Target")
+		return 1
+	}
+	fmt.Println("  (advisory — add a claim, or annotate //winze:mentions Target; --brief-strict to gate)")
 	return 0
 }
 
