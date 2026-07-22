@@ -5,14 +5,15 @@
 // can read authoritative data like ExternalTerms without duplicating it.
 //
 // Rules implemented:
-//   1. naming-oracle      — role types must be grounded in ExternalTerms
-//   2. orphan-report      — entity vars with zero claim references (advisory)
-//   3. value-conflict     — functional-predicate value conflicts (advisory)
-//   4. contested-concept  — multiple TheoryOf subjects per concept (advisory)
-//   5. llm-contradiction  — LLM-detected semantic contradictions (--llm, advisory)
-//   6. brief-check        — entities with missing or overlong Briefs (advisory)
-//   7. provenance-split   — same Origin cited by multiple Provenance vars (advisory)
-//   8. brief-drift        — Brief names an entity with no claim path to it (advisory)
+//  1. naming-oracle      — role types must be grounded in ExternalTerms
+//  2. orphan-report      — entity vars with zero claim references (advisory)
+//  3. value-conflict     — functional-predicate value conflicts (advisory)
+//  4. contested-concept  — multiple TheoryOf subjects per concept (advisory)
+//  5. llm-contradiction  — LLM-detected semantic contradictions (--llm, advisory)
+//  6. brief-check        — entities with missing or overlong Briefs (advisory)
+//  7. provenance-split   — same Origin cited by multiple Provenance vars (advisory)
+//  8. brief-drift        — Brief names an entity with no claim path to it (advisory)
+//  9. structural-dedup   — probable duplicate entities by shared claim-neighborhood (advisory)
 package main
 
 import (
@@ -27,6 +28,8 @@ import (
 	"strings"
 
 	"github.com/justinstimatze/winze"
+	"github.com/justinstimatze/winze/internal/corpusparse"
+	"github.com/justinstimatze/winze/internal/dedup"
 	"github.com/justinstimatze/winze/internal/defndb"
 )
 
@@ -1059,6 +1062,42 @@ func provenanceSplitRule(dir string) int {
 	return 0
 }
 
+// structuralDedupRule flags probable duplicate entities by shared neighborhood
+// — same role, same predicates to/from the same neighbors. Advisory: a high
+// overlap is a strong hint, not proof (two genuinely-distinct concepts can
+// share sources and influences), so it surfaces for review and never fails the
+// gate. This catches the duplicate-entity defect class the build gate is blind
+// to (two same-type entities both type-check). See internal/dedup.
+func structuralDedupRule(dir string) int {
+	entities, claims, err := corpusparse.ParseCorpus(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "structural-dedup: %v\n", err)
+		return 2
+	}
+	// minShared=3, symmetric minCoeff=0.6 (both neighborhoods near-identical),
+	// minWeight=20 (idf mass of shared RARE structure). Tuned high on purpose:
+	// on a clean corpus the honest answer is "few or none", and dense sibling
+	// clusters (a fiction cast, a bias taxonomy) can still appear — a real
+	// duplicate ranks above them by weight. Advisory only.
+	cands := dedup.Candidates(entities, claims, 3, 0.6, 20)
+	if len(cands) == 0 {
+		fmt.Println("[structural-dedup] no strongly-overlapping entity pairs (>=3 shared edges, near-identical neighborhoods)")
+		return 0
+	}
+	fmt.Printf("[structural-dedup] %d strongly-overlapping pair(s) — review, do not auto-merge (dense sibling clusters can appear here):\n", len(cands))
+	limit := len(cands)
+	if limit > 15 {
+		limit = 15
+	}
+	for _, c := range cands[:limit] {
+		fmt.Printf("  %s ≈ %s (%s) — %d shared edges, overlap %.2f, rarity %.1f\n", c.A, c.B, c.Role, c.Shared, c.Coeff, c.Weight)
+	}
+	if len(cands) > limit {
+		fmt.Printf("  … and %d more\n", len(cands)-limit)
+	}
+	return 0
+}
+
 func main() {
 	fs := flag.NewFlagSet("lint", flag.ExitOnError)
 	fs.Usage = func() {
@@ -1098,9 +1137,11 @@ func main() {
 	rc7 := provenanceSplitRule(dir)
 	fmt.Println()
 	rc8 := briefDriftRule(dir)
+	fmt.Println()
+	rc9 := structuralDedupRule(dir)
 
 	worst := rc1
-	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8} {
+	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9} {
 		if rc > worst {
 			worst = rc
 		}

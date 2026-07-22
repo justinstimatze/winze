@@ -28,6 +28,8 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/justinstimatze/winze/internal/corpusparse"
+	"github.com/justinstimatze/winze/internal/dedup"
 	"github.com/justinstimatze/winze/internal/defndb"
 )
 
@@ -85,6 +87,7 @@ func main() {
 	hybrid := flag.String("hybrid", "", "hybrid BM25 + semantic search fused with reciprocal rank fusion")
 	typeFilter := flag.String("type", "", "with --hybrid: restrict results to a verified entity role (e.g. Hypothesis, Concept, Person)")
 	expand := flag.Bool("expand", false, "with --hybrid: show each result's typed claim neighborhood (reasoning-ready context)")
+	dupes := flag.String("dupes", "", "show entities structurally near-identical to NAME (shared claim-neighborhood) — the coin-time dedup query")
 	flag.Parse()
 
 	dir := "."
@@ -120,6 +123,8 @@ func main() {
 		runFulltext(kb, *fulltext, *jsonOut)
 	case *semantic != "":
 		runSemantic(kb, *semantic, dir, *jsonOut)
+	case *dupes != "":
+		runDupes(dir, *dupes, *jsonOut)
 	case *hybrid != "":
 		runHybrid(kb, *hybrid, dir, *typeFilter, *expand, *jsonOut)
 	case *ask && query != "":
@@ -601,7 +606,6 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 	return kb, nil
 }
 
-
 // --- search helpers ---
 
 // baseVar resolves a claim Subject/Object value to the entity var it names.
@@ -641,6 +645,51 @@ func claimsInvolving(kb *kbIndex, varName string) []claimRecord {
 	return out
 }
 
+// runDupes answers the coin-time dedup question for one entity: which existing
+// same-role entities share its claim-neighborhood (its structural position),
+// regardless of how their Briefs read? Containment-based — a thin entity whose
+// edges all reappear on an established one is the duplicate signal. Structural,
+// not prose: this is the calque-faithful check pointed at a single target.
+func runDupes(dir, name string, jsonOut bool) {
+	entities, claims, err := corpusparse.ParseCorpus(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "dupes: %v\n", err)
+		os.Exit(1)
+	}
+	found := false
+	for _, e := range entities {
+		if e.VarName == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		fmt.Fprintf(os.Stderr, "dupes: no entity named %q\n", name)
+		os.Exit(2)
+	}
+	// minShared=2, containment>=0.6, minWeight=8: sensitive (you asked about a
+	// specific entity), but still requires shared rare structure.
+	matches := dedup.MatchesFor(name, entities, claims, 2, 0.6, 8)
+
+	if jsonOut {
+		recs := make([]map[string]any, 0, len(matches))
+		for _, m := range matches {
+			recs = append(recs, map[string]any{
+				"entity": m.B, "role": m.Role, "shared": m.Shared, "overlap": m.Coeff, "rarity": m.Weight,
+			})
+		}
+		printJSON(map[string]any{"target": name, "count": len(matches), "matches": recs})
+		return
+	}
+	if len(matches) == 0 {
+		fmt.Printf("No structural twins of %s (no same-role entity shares its neighborhood)\n", name)
+		return
+	}
+	fmt.Printf("Structural twins of %s — same role, shared claim-neighborhood (review, do not auto-merge):\n\n", name)
+	for _, m := range matches {
+		fmt.Printf("  %s (%s) — %d shared edges, containment %.2f, rarity %.1f\n", m.B, m.Role, m.Shared, m.Coeff, m.Weight)
+	}
+}
 
 // --- output helpers ---
 

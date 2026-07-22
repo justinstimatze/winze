@@ -40,7 +40,21 @@ go run ./cmd/lint . --llm --llm-max-calls=5 # + LLM contradiction check
 ```
 
 Lint rules: naming-oracle, orphan-report, value-conflict, contested-concept,
-brief-check, provenance-split, llm-contradiction, brief-drift.
+brief-check, provenance-split, llm-contradiction, brief-drift, structural-dedup.
+
+`structural-dedup` flags probable duplicate entities by SHARED
+claim-neighborhood — same role, same predicates to/from the same neighbors —
+not by prose (two entities that are the same concept may have Briefs written
+nothing alike). This is the calque-faithful check: index the edges, not the
+representation, catching the duplicate-entity defect the build gate is blind to
+(two same-type entities both type-check). Rarity-weighted (idf) so taxonomic
+siblings fall out, and symmetric (both neighborhoods must be near-identical) so
+it flags twins, not category-mates. Advisory and deliberately high-threshold:
+on a clean corpus the honest answer is few or none, and dense sibling clusters
+(a fiction cast, a bias taxonomy) can still appear — a real duplicate ranks
+above them. Point it at one entity with `query --dupes NAME` (the coin-time
+query: "does something structurally identical already exist?"). See
+`internal/dedup`.
 
 `brief-drift` reports entities whose Brief names another entity with no claim
 path to it within two hops. It is advisory by design: Brief-level references
@@ -300,6 +314,7 @@ go run ./cmd/query --semantic "machine that seems to understand but does not" . 
 go run ./cmd/query --hybrid "confirmation bias" .   # reciprocal-rank-fusion of BM25 + semantic into one list
 go run ./cmd/query --hybrid "consciousness" --type Hypothesis .  # type-aware: filter hybrid results to a verified role (zero-classification-error)
 go run ./cmd/query --hybrid "apophenia" --expand .  # append each hit's typed claim neighborhood (predicate → neighbor + role) — reasoning-ready context
+go run ./cmd/query --dupes ConfirmationBias .       # structural twins: same-role entities sharing this one's claim-neighborhood (coin-time dedup)
 go run ./cmd/query --theories "apophenia" .        # competing theories of a concept
 go run ./cmd/query --claims "Chalmers" .           # all claims involving an entity
 go run ./cmd/query --provenance "Sagan" .          # provenance trail for a source
