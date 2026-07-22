@@ -290,3 +290,25 @@ func WalkVarDecls(pkgs map[string]*ast.Package, fn func(VarDecl)) {
 		}
 	}
 }
+
+// EmbedsEntityPointer reports whether a struct embeds *Entity (an anonymous
+// *Entity field) — the winze role-type marker. lint and internal/defndb each
+// re-implemented this walk (a calque scan flagged the twin); one definition now.
+func EmbedsEntityPointer(st *ast.StructType) bool {
+	if st == nil || st.Fields == nil {
+		return false
+	}
+	for _, field := range st.Fields.List {
+		if len(field.Names) != 0 {
+			continue
+		}
+		star, ok := field.Type.(*ast.StarExpr)
+		if !ok {
+			continue
+		}
+		if ident, ok := star.X.(*ast.Ident); ok && ident.Name == "Entity" {
+			return true
+		}
+	}
+	return false
+}

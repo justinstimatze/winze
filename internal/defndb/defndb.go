@@ -293,19 +293,7 @@ func embedsEntity(ts *ast.TypeSpec) bool {
 	if !ok {
 		return false
 	}
-	for _, field := range st.Fields.List {
-		if len(field.Names) > 0 {
-			continue
-		}
-		star, ok := field.Type.(*ast.StarExpr)
-		if !ok {
-			continue
-		}
-		if ident, ok := star.X.(*ast.Ident); ok && ident.Name == "Entity" {
-			return true
-		}
-	}
-	return false
+	return astutil.EmbedsEntityPointer(st)
 }
 
 // flattenLiteral records every keyed field in a composite literal tree,

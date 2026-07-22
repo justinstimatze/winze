@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/justinstimatze/winze"
+	"github.com/justinstimatze/winze/internal/astutil"
 	"github.com/justinstimatze/winze/internal/dedup"
 )
 
@@ -61,7 +62,7 @@ func collectRoleTypes(dir string) ([]roleType, error) {
 				if !ok || st.Fields == nil {
 					continue
 				}
-				if embedsEntityPointer(st) {
+				if astutil.EmbedsEntityPointer(st) {
 					pos := fset.Position(ts.Pos())
 					out = append(out, roleType{
 						name: ts.Name.Name,
@@ -74,26 +75,6 @@ func collectRoleTypes(dir string) ([]roleType, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
 	return out, nil
-}
-
-func embedsEntityPointer(st *ast.StructType) bool {
-	for _, field := range st.Fields.List {
-		if len(field.Names) != 0 {
-			continue
-		}
-		star, ok := field.Type.(*ast.StarExpr)
-		if !ok {
-			continue
-		}
-		ident, ok := star.X.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		if ident.Name == "Entity" {
-			return true
-		}
-	}
-	return false
 }
 
 // noDefn is set by the --no-defn flag to force AST-only mode.
