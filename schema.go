@@ -72,3 +72,33 @@ type Scene struct {
 	When   *TemporalMarker
 	Claims []any
 }
+
+// CodeRef is a typed citation from a knowledge entity to a live code symbol —
+// the doc→code form of winze's typed-citation primitive. Symbol holds the
+// actual Go symbol (e.g. a function value), so `go build` type-checks the
+// citation: rename or remove the symbol and the corpus stops compiling. A
+// documentation reference that cannot go stale silently, because staleness is
+// a build error rather than something a reviewer might notice.
+//
+// Path is the human-readable label for rendering and query (e.g.
+// "internal/corpuslock.Acquire"); it is derivable from Symbol via
+// runtime.FuncForPC — a later refinement so Path itself can't drift from
+// Symbol — kept explicit for now. Only entities that document code carry
+// CodeRefs; corpus concepts do not, so the field lives on SourceDoc, not on
+// every Entity.
+type CodeRef struct {
+	Symbol any    // the real code symbol — compile-checked existence
+	Path   string // human label, e.g. "internal/corpuslock.Acquire"
+	Note   string // what the citing entity asserts about this symbol
+}
+
+// SourceDoc is a knowledge entity that documents part of a codebase: an
+// ordinary *Entity (identity + prose Brief) plus typed code citations. Prose
+// for meaning, typed references for the links — the same split the rest of the
+// corpus uses for concept→concept claims, pointed at code instead. See
+// winze_self.go for the corpus's self-documentation and docs/typed-citation.md
+// for the thesis.
+type SourceDoc struct {
+	*Entity
+	Refs []CodeRef
+}

@@ -23,25 +23,9 @@ import (
 	"github.com/justinstimatze/winze/internal/corpusparse"
 )
 
-// CodeRef is a typed citation from a knowledge entity to a live code symbol.
-// Symbol holds the actual Go symbol (here, a function value) so its existence
-// is checked at build time. Path is the human-readable label for rendering and
-// query; it is derivable from Symbol via runtime.FuncForPC (a later refinement
-// so Path itself can't drift from Symbol), kept explicit for now.
-type CodeRef struct {
-	Symbol any    // the real code symbol — compile-checked existence
-	Path   string // human label, e.g. "internal/corpuslock.Acquire"
-	Note   string // what the citing entity asserts about this symbol
-}
-
-// SourceDoc is a knowledge entity that documents part of the winze codebase.
-// It is an ordinary *Entity (identity + prose Brief) plus typed code citations
-// — prose for meaning, typed references for the links, the same split the rest
-// of the corpus uses.
-type SourceDoc struct {
-	*Entity
-	Refs []CodeRef
-}
+// CodeRef and SourceDoc are first-class schema types (see schema.go). This
+// file holds the corpus's self-documentation instances — the SourceDoc
+// entities that cite winze's own internals.
 
 var (
 	CorpusLockDoc = SourceDoc{
