@@ -41,6 +41,8 @@ func main() {
 	switch os.Args[1] {
 	case "rename":
 		os.Exit(cmdRename(os.Args[2:]))
+	case "merge":
+		os.Exit(cmdMerge(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -59,8 +61,10 @@ gofmt + go build + go vet and reverts all touched files on failure.
 
 Subcommands:
   rename   rename a top-level var across the corpus, rewriting every reference
+  merge    fold entity A into entity B: retarget every reference, remove A's
+           declaration; claims retarget automatically, the build gate validates
 
-Run 'winze-edit rename -h' for flags.
+Run 'winze-edit rename -h' or 'winze-edit merge -h' for flags.
 `)
 }
 

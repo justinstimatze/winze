@@ -98,8 +98,10 @@ shared-KB shape relies on (see `docs/multi-session-write-shape.md`).
 ### Editing helper (referentially-safe mutation)
 
 ```bash
-winze-edit rename --from Apophenia --to Pareidolia .    # rewrite every reference
-winze-edit rename --from A --to B --dry-run .            # report sites, write nothing
+winze-edit rename --from Apophenia --to Pareidolia .            # rewrite every reference
+winze-edit rename --from A --to B --dry-run .                    # report sites, write nothing
+winze-edit merge  --from DupEntity --into CanonEntity .          # fold A into B
+winze-edit merge  --from A --into B --dry-run .                  # report the fold, write nothing
 ```
 
 `cmd/add` appends; `cmd/edit` mutates. A KB you can only append to is one you
@@ -119,10 +121,24 @@ and reverts **all** touched files if any step fails. gofmt is applied only to
 files the mutation touched — a mutation tool must not have a blast radius
 wider than its mutation.
 
-Not yet implemented: merge (two entities into one), retarget (bulk Object
-rewrite), safe delete. Merge has open modeling questions — which Brief
-survives, what happens to conflicting claims, whether both provenance trails
-are kept — so it wants a decision before code.
+`merge` folds entity A into entity B: every reference to A is retargeted to
+B, A's declaration is removed (its whole `var (…)` group when A is the only
+member, else just A's spec), and A's claims retarget automatically because
+they reference the var. B is the canonical survivor — A's Brief/ID/Name are
+dropped; claim-level provenance is preserved for free (each claim keeps its
+own `Prov`, only its Subject/Object identifiers move). The **build gate is
+the semantic check**: fold two entities of incompatible type and the
+retargeted claims fail to type-check, so the merge reverts. This is the
+compaction primitive for the log-structured multi-session KB
+(`docs/multi-session-write-shape.md`): rot-probe finds duplicates coined
+across session files, merge folds them into the canonical topic file.
+
+Merge is NOT yet recorded as a typed claim. A `MergedFrom` / `AlternateOf`
+predicate (PROV-O `alternateOf`) would make the fold auditable and stop a
+re-ingest of A's source from recreating it — but that is a schema-accretion
+decision reserved for a human. Until then the git commit is the record.
+
+Not yet implemented: retarget (bulk Object rewrite), safe delete.
 
 ### Rot probe
 
