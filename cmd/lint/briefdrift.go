@@ -3,10 +3,7 @@ package main
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -24,8 +21,7 @@ import (
 // (for a single-spec `var x = ...`) on the GenDecl.
 func collectMentionPragmas(dir string) (map[string]map[string]bool, error) {
 	out := map[string]map[string]bool{}
-	fset := token.NewFileSet()
-	entries, err := os.ReadDir(dir)
+	_, files, err := corpusFiles(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -49,14 +45,7 @@ func collectMentionPragmas(dir string) (map[string]map[string]bool, error) {
 			}
 		}
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.ParseComments)
-		if err != nil {
-			return nil, err
-		}
+	for _, f := range files {
 		for _, decl := range f.Decls {
 			gen, ok := decl.(*ast.GenDecl)
 			if !ok || gen.Tok != token.VAR {
@@ -97,7 +86,7 @@ func collectMentionPragmas(dir string) (map[string]map[string]bool, error) {
 // ways: as drift detection, and as a worklist of things written about but
 // never wired up.
 func briefDriftRule(dir string) int {
-	entities, claims, err := corpusparse.ParseCorpus(dir)
+	entities, claims, err := parseCorpusCached(dir)
 	if err != nil {
 		fmt.Printf("[brief-drift] error: %v\n", err)
 		return 2

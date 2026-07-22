@@ -20,7 +20,6 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
@@ -28,9 +27,7 @@ import (
 	"strings"
 
 	"github.com/justinstimatze/winze"
-	"github.com/justinstimatze/winze/internal/corpusparse"
 	"github.com/justinstimatze/winze/internal/dedup"
-	"github.com/justinstimatze/winze/internal/defndb"
 )
 
 type roleType struct {
@@ -39,54 +36,17 @@ type roleType struct {
 	line int
 }
 
+// collectRoleTypes walks the shared corpus parse for types embedding *Entity.
+// The former defndb path built a heavier full-corpus index and was rebuilt per
+// Client (twice per lint run) — slower than this targeted walk over the one
+// shared parse.
 func collectRoleTypes(dir string) ([]roleType, error) {
-	if !noDefn {
-		if client, err := defndb.New(dir); err == nil {
-			defer client.Close()
-			if roles, err := collectRoleTypesDefn(client); err == nil {
-				return roles, nil
-			}
-		}
-	}
-	return collectRoleTypesAST(dir)
-}
-
-func collectRoleTypesDefn(client *defndb.Client) ([]roleType, error) {
-	defnRoles, err := client.RoleTypes()
+	fset, files, err := corpusFiles(dir)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]roleType, 0, len(defnRoles))
-	for _, r := range defnRoles {
-		out = append(out, roleType{
-			name: r.Name,
-			file: filepath.Base(r.SourceFile),
-		})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
-	return out, nil
-}
-
-func collectRoleTypesAST(dir string) ([]roleType, error) {
-	fset := token.NewFileSet()
 	var out []roleType
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
-			continue
-		}
-		if strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", path, err)
-		}
+	for _, f := range files {
 		for _, decl := range f.Decls {
 			gen, ok := decl.(*ast.GenDecl)
 			if !ok || gen.Tok != token.TYPE {
@@ -221,29 +181,17 @@ type claimSite struct {
 // identify predicate claims by shape, and avoiding go/types keeps the
 // lint binary cheap enough to run on every commit.
 func collectClaims(dir string) ([]claimSite, map[claimKey][]claimSite, map[string]bool, map[string]bool, map[claimKey]string, error) {
-	fset := token.NewFileSet()
 	var all []claimSite
 	groups := map[claimKey][]claimSite{}
 	functional := map[string]bool{}
 	contested := map[string]bool{}
 	suppressed := map[claimKey]string{}
 
-	entries, err := os.ReadDir(dir)
+	fset, files, err := corpusFiles(dir)
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
-			continue
-		}
-		if strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
-		if err != nil {
-			return nil, nil, nil, nil, nil, fmt.Errorf("parse %s: %w", path, err)
-		}
+	for _, f := range files {
 		for _, decl := range f.Decls {
 			gen, ok := decl.(*ast.GenDecl)
 			if !ok {
@@ -320,24 +268,12 @@ func collectClaims(dir string) ([]claimSite, map[claimKey][]claimSite, map[strin
 // rule keys on (predicate, subject, object) triples and would be
 // confused by rows missing an object.
 func collectUnarySubjects(dir string) ([]string, error) {
-	fset := token.NewFileSet()
-	var out []string
-	entries, err := os.ReadDir(dir)
+	_, files, err := corpusFiles(dir)
 	if err != nil {
 		return nil, err
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
-			continue
-		}
-		if strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", path, err)
-		}
+	var out []string
+	for _, f := range files {
 		for _, decl := range f.Decls {
 			gen, ok := decl.(*ast.GenDecl)
 			if !ok || gen.Tok != token.VAR {
@@ -602,57 +538,12 @@ type entitySite struct {
 // vars and are expected never to be claim-subjects, so including them
 // would drown the useful signal.
 func collectEntityVars(dir string, roleTypes map[string]bool) ([]entitySite, error) {
-	if !noDefn {
-		if client, err := defndb.New(dir); err == nil {
-			defer client.Close()
-			if vars, err := collectEntityVarsDefn(client, roleTypes); err == nil {
-				return vars, nil
-			}
-		}
-	}
-	return collectEntityVarsAST(dir, roleTypes)
-}
-
-func collectEntityVarsDefn(client *defndb.Client, roleTypes map[string]bool) ([]entitySite, error) {
-	varRoles, err := client.EntityVarsWithRoles()
+	fset, files, err := corpusFiles(dir)
 	if err != nil {
 		return nil, err
 	}
 	var out []entitySite
-	for _, vr := range varRoles {
-		if !roleTypes[vr.RoleType] {
-			continue
-		}
-		out = append(out, entitySite{
-			name:     vr.VarName,
-			roleType: vr.RoleType,
-			file:     filepath.Base(vr.SourceFile),
-		})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
-	return out, nil
-}
-
-func collectEntityVarsAST(dir string, roleTypes map[string]bool) ([]entitySite, error) {
-	fset := token.NewFileSet()
-	var out []entitySite
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
-			continue
-		}
-		if strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", path, err)
-		}
+	for _, f := range files {
 		for _, decl := range f.Decls {
 			gen, ok := decl.(*ast.GenDecl)
 			if !ok || gen.Tok != token.VAR {
@@ -955,7 +846,6 @@ func briefCheckRule(dir string) int {
 // ---------------------------------------------------------------------------
 
 func provenanceSplitRule(dir string) int {
-	fset := token.NewFileSet()
 	type provEntry struct {
 		varName string
 		file    string
@@ -964,20 +854,12 @@ func provenanceSplitRule(dir string) int {
 	}
 	var provs []provEntry
 
-	entries, err := os.ReadDir(dir)
+	fset, files, err := corpusFiles(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[provenance-split] error: %v\n", err)
 		return 2
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			continue
-		}
+	for _, f := range files {
 		for _, decl := range f.Decls {
 			gd, ok := decl.(*ast.GenDecl)
 			if !ok || gd.Tok != token.VAR {
@@ -1075,7 +957,7 @@ func provenanceSplitRule(dir string) int {
 // gate. This catches the duplicate-entity defect class the build gate is blind
 // to (two same-type entities both type-check). See internal/dedup.
 func structuralDedupRule(dir string) int {
-	entities, claims, err := corpusparse.ParseCorpus(dir)
+	entities, claims, err := parseCorpusCached(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "structural-dedup: %v\n", err)
 		return 2

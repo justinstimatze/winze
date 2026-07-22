@@ -54,4 +54,5 @@ var ExternalTerms = []*ExternalTerm{
 	{Name: "NeverAnswered", Source: "winze-native", URL: "", Brief: "A question the creative work commits to never resolving. The absence is authorial."},
 	{Name: "AuthorialPolicy", Source: "winze-native", URL: "", Brief: "A rule applied at authoring time that rejects or revises content matching a condition. Loose match to Schema.org Rule but Rule is not in core."},
 	{Name: "Reading", Source: "winze-native", URL: "", Brief: "A specific interpretation of a ProtectedLine at a given DesignLayer or Phase. Reification of a 3-ary relation."},
+	{Name: "SourceDoc", Source: "winze-native", URL: "", Brief: "A knowledge entity documenting part of a codebase: an *Entity plus typed CodeRef citations to live code symbols. The doc→code half of the typed-citation primitive."},
 }
