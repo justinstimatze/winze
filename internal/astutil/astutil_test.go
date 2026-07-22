@@ -308,3 +308,24 @@ func TestExtractSubjectObject(t *testing.T) {
 		t.Errorf("selector Subject = %q, want %q", subj, "MichaelShermer")
 	}
 }
+
+func TestEmbedsEntityPointer(t *testing.T) {
+	withEntity := &ast.StructType{Fields: &ast.FieldList{List: []*ast.Field{
+		{Type: &ast.StarExpr{X: &ast.Ident{Name: "Entity"}}}, // anonymous *Entity
+	}}}
+	if !EmbedsEntityPointer(withEntity) {
+		t.Error("expected true for struct embedding *Entity")
+	}
+	withoutEntity := &ast.StructType{Fields: &ast.FieldList{List: []*ast.Field{
+		{Names: []*ast.Ident{{Name: "Name"}}, Type: &ast.Ident{Name: "string"}},
+	}}}
+	if EmbedsEntityPointer(withoutEntity) {
+		t.Error("expected false for struct without *Entity")
+	}
+	if EmbedsEntityPointer(&ast.StructType{Fields: &ast.FieldList{}}) {
+		t.Error("expected false for empty struct")
+	}
+	if EmbedsEntityPointer(nil) {
+		t.Error("expected false for nil")
+	}
+}
