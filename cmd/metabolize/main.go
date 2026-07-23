@@ -38,6 +38,10 @@ func main() {
 		err = cmdAdd(os.Args[2:])
 	case "list":
 		err = cmdList(os.Args[2:])
+	case "status":
+		err = cmdStatus(os.Args[2:])
+	case "tui":
+		err = cmdTUI(os.Args[2:])
 	case "remove", "rm":
 		err = cmdRemove(os.Args[2:])
 	case "enable":
@@ -68,6 +72,8 @@ func usage() {
   enable <dir>                start the hourly timer for a registered corpus
   disable <dir>               stop its timer
   list [--json]               show registered instances
+  status                      live table: timer state, next/last fire, budget
+  tui                         interactive cockpit (run-now, pause, tier, budget)
   remove <dir>                forget a corpus
   run <dir>                   run one metabolism cycle now (the timer's ExecStart)
 
