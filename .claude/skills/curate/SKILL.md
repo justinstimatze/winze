@@ -4,7 +4,7 @@ description: >
   Interactive knowledge base curation for winze. Ingest sources, audit
   neighborhoods, check predictions, view KB health. Use when working
   on winze as a crew member or in interactive sessions.
-allowed-tools: "Bash(go *), Bash(git *), Bash(gt *), Bash(bd *), Read, Write, Edit, Glob, Grep, Agent"
+allowed-tools: "Bash(go *), Bash(git *), Read, Write, Edit, Glob, Grep, Agent"
 version: "1.0.0"
 author: "winze"
 argument-hint: "<command> [args] — status, ingest <source>, audit [entity], predict, resolve, sensor"

@@ -54,7 +54,7 @@ The output isn't a status report. It's better answers the next time someone asks
 
 Two active DARPA programs (April 2026) overlap with winze's approach. Both have public program pages at [darpa.mil](https://www.darpa.mil/); BAA documents are indexed on [SAM.gov](https://sam.gov/).
 
-**MATHBAC** (Mathematics of Boosting Agentic Communication): "AI excels at navigating solution spaces but struggles to systematically explore hypothesis spaces." Winze's metabolism is systematic hypothesis space exploration. Gas Town's multi-agent orchestration maps to MATHBAC's agent collective topology.
+**MATHBAC** (Mathematics of Boosting Agentic Communication): "AI excels at navigating solution spaces but struggles to systematically explore hypothesis spaces." Winze's metabolism is systematic hypothesis space exploration. Multiple instances (forks sharing improvements via pull requests, each running the metabolism loop on its own schedule) map to MATHBAC's agent collective topology.
 
 **CLARA** (Compositional Learning-And-Reasoning for AI): tight integration of formal reasoning with ML. Winze composes Go's type system (AR) with LLM metabolism (ML) through a quality-gated pipeline. Gap: Go catches structural errors but doesn't produce proof certificates. Z3 or Goose (Go → Coq) could close it.
 
@@ -155,7 +155,7 @@ go run ./cmd/metabolism --dream --bias .         # contradictions + blind spots
 | Fix | `go run ./cmd/metabolism --dream --fix .` | Yes |
 | Full cycle | `go run ./cmd/metabolism --evolve .` | Partial |
 
-LLM phases use the Anthropic API via `ANTHROPIC_API_KEY`. `.beads/formulas/` has [Gas Town](https://github.com/gastownhall/gastown) workflow definitions for autonomous agent fleets.
+LLM phases use the Anthropic API via `ANTHROPIC_API_KEY`. Autonomous operation is scheduler-agnostic: any cron/CI/systemd timer fires `metabolism --evolve .` on a clock, and winze owns the per-phase gating and budget guard (see `script/setup-autonomous.sh`).
 
 ## Bias audit
 
@@ -208,7 +208,6 @@ LLM phases use the Anthropic API via `ANTHROPIC_API_KEY`. `.beads/formulas/` has
 - **[adit](https://github.com/justinstimatze/adit-code)** — Structural analysis for AI-edited codebases. Scores corpus files for agent-writability.
 - **[slimemold](https://github.com/justinstimatze/slimemold)** — Reasoning topology observer. Monitors the epistemic support graph for load-bearing unchallenged claims.
 - **[plancheck](https://github.com/justinstimatze/plancheck)** — Predicts which files agents will miss. Validates implementation plans before execution.
-- **[Gas Town](https://github.com/gastownhall/gastown)** — Agent orchestrator. Runs autonomous curation fleets via workflow definitions in `.beads/formulas/`.
 
 ## License
 

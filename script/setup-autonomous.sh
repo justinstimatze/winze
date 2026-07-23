@@ -1,11 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-# Set up autonomous winze operation.
-#
-# Two modes:
-#   1. Cron-based (no dependencies): runs --cycle on a schedule
-#   2. Gas Town (full orchestration): uses gt/bd for multi-agent operation
+# Set up autonomous winze operation via cron: fires `metabolism --cycle`
+# (alias --evolve) on a schedule. Winze owns the phase gating + budget guard;
+# the scheduler owns cadence. Any scheduler works — cron here, but a CI job or
+# systemd timer fires the same command.
 #
 # Prerequisites:
 #   - Go 1.24+
@@ -65,33 +64,7 @@ fi
 
 echo ""
 
-# Check for Gas Town
-if command -v gt &> /dev/null; then
-    echo "Gas Town detected ($(gt --version 2>/dev/null || echo 'unknown version'))"
-    echo ""
-    echo "=== Gas Town mode ==="
-    echo ""
-    echo "The full autonomous loop uses Gas Town for scheduling and multi-agent"
-    echo "coordination. To start it:"
-    echo ""
-    echo "  # One-time: install formulas"
-    echo "  cp .beads/formulas/mol-curate-auto.formula.toml \$(gt config get formula-dir 2>/dev/null || echo '~/.gt/formulas/')/"
-    echo ""
-    echo "  # Start the overnight cycle"
-    if [ "$HAS_ZIM" = true ]; then
-        echo "  gt mol start mol-curate-auto --var zim_path=$ZIM_PATH"
-    else
-        echo "  gt mol start mol-curate-auto"
-    fi
-    echo ""
-    echo "  # Check status in the morning"
-    echo "  gt mol status"
-    echo ""
-else
-    echo "Gas Town not detected — using cron mode."
-fi
-
-echo "=== Cron mode (no dependencies) ==="
+echo "=== Cron mode ==="
 echo ""
 echo "The --cycle flag runs the full sleep cycle in one command:"
 echo "  metabolism → dream (with bias audit) → trip → calibrate"
