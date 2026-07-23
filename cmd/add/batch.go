@@ -31,16 +31,26 @@ import (
 // (one object per line) is the corpus's native log shape (.metabolism-*.jsonl)
 // and streams without loading the whole batch into a nested document.
 type claimSpec struct {
-	To         string `json:"to"`
-	Name       string `json:"name"`
-	Predicate  string `json:"predicate"`
-	Subject    string `json:"subject"`
-	Object     string `json:"object"`
-	Quote      string `json:"quote"`
-	Origin     string `json:"origin"`
-	IngestedBy string `json:"ingested_by"`
-	ProvVar    string `json:"provenance_var"`
-	Unary      bool   `json:"unary"`
+	To          string `json:"to"`
+	Name        string `json:"name"`
+	Predicate   string `json:"predicate"`
+	Subject     string `json:"subject"`
+	Object      string `json:"object"`
+	Quote       string `json:"quote"`
+	Origin      string `json:"origin"`
+	IngestedBy  string `json:"ingested_by"`
+	ProvVar     string `json:"provenance_var"`
+	Conjecture  bool   `json:"conjecture"`
+	Rationale   string `json:"rationale"`
+	GeneratedBy string `json:"generated_by"`
+	Unary       bool   `json:"unary"`
+}
+
+func (s claimSpec) generatedByOrDefault() string {
+	if s.GeneratedBy == "" {
+		return "winze-add"
+	}
+	return s.GeneratedBy
 }
 
 func (s claimSpec) ingestedByOrDefault() string {
@@ -103,7 +113,7 @@ func runBatch(batchPath, repoRoot string, dryRun bool) int {
 	// Validate every record before touching a single file — a bad record in
 	// the batch should fail the whole thing before any state changes.
 	for i, s := range specs {
-		if err := validateFlags(s.Predicate, s.Subject, s.Object, s.Quote, s.Origin, s.ProvVar, s.To, s.Name, s.Unary); err != nil {
+		if err := validateFlags(s.Predicate, s.Subject, s.Object, s.Quote, s.Origin, s.ProvVar, s.Conjecture, s.Rationale, s.To, s.Name, s.Unary); err != nil {
 			fmt.Fprintf(os.Stderr, "batch record %d (%q): %v\n", i+1, s.Name, err)
 			return 2
 		}
@@ -112,7 +122,7 @@ func runBatch(batchPath, repoRoot string, dryRun bool) int {
 	if dryRun {
 		for _, s := range specs {
 			fmt.Printf("--- would append to %s ---\n", s.To)
-			fmt.Println(renderClaim(s.Predicate, s.Subject, s.Object, s.Quote, s.Origin, s.ingestedByOrDefault(), s.ProvVar, s.Name, s.Unary))
+			fmt.Println(renderClaim(s.Predicate, s.Subject, s.Object, s.Quote, s.Origin, s.ingestedByOrDefault(), s.ProvVar, s.Conjecture, s.Rationale, s.generatedByOrDefault(), s.Name, s.Unary))
 		}
 		return 0
 	}
@@ -145,7 +155,7 @@ func runBatch(batchPath, repoRoot string, dryRun bool) int {
 
 	for _, s := range specs {
 		p := filepath.Join(repoRoot, s.To)
-		decl := renderClaim(s.Predicate, s.Subject, s.Object, s.Quote, s.Origin, s.ingestedByOrDefault(), s.ProvVar, s.Name, s.Unary)
+		decl := renderClaim(s.Predicate, s.Subject, s.Object, s.Quote, s.Origin, s.ingestedByOrDefault(), s.ProvVar, s.Conjecture, s.Rationale, s.generatedByOrDefault(), s.Name, s.Unary)
 		if err := appendDecl(p, decl); err != nil {
 			revertAll(backups)
 			fmt.Fprintf(os.Stderr, "append to %s failed (reverted): %v\n", p, err)

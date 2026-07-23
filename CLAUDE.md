@@ -103,7 +103,14 @@ as the gate. Reverts the file on failure. Use `--unary` for `UnaryClaim`
 predicates (omit `--object`); `--dry-run` to preview the render without
 touching the file. `--provenance-var <name>` reuses an existing `Provenance`
 var instead of inlining one (mutually exclusive with `--quote`/`--origin`);
-the build gate validates that the named var exists. The tool does no
+the build gate validates that the named var exists. `--conjecture` (with a
+required `--rationale`, and optional `--generated-by`) attributes the claim as a
+`Conjecture` — winze's OWN assertion, carrying no source `Quote` — for claims
+winze generates rather than ingests (e.g. a memory-to-memory link). The three
+attribution modes (inline `--quote`/`--origin`, `--provenance-var`,
+`--conjecture`) are mutually exclusive; this is the tool-side honoring of the
+mirror-source-commitments fence — a generated claim can never wear a fabricated
+source. The tool does no
 slot-type checking of its own — the build gate is what validates the
 claim, which is the load-bearing discipline this project was built around.
 Do NOT relax that path.

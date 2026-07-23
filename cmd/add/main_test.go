@@ -57,7 +57,7 @@ func TestValidateFlags(t *testing.T) {
 			provVar:   "src",
 			target:    "f.go",
 			claim:     "C",
-			wantErr:   "mutually exclusive",
+			wantErr:   "pick one attribution mode",
 		},
 		{
 			name:      "provenance-var with bad identifier",
@@ -119,7 +119,7 @@ func TestValidateFlags(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateFlags(tc.predicate, tc.subject, tc.object, tc.quote, tc.origin, tc.provVar, tc.target, tc.claim, tc.unary)
+			err := validateFlags(tc.predicate, tc.subject, tc.object, tc.quote, tc.origin, tc.provVar, false, "", tc.target, tc.claim, tc.unary)
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected err: %v", err)
@@ -170,7 +170,7 @@ func TestQuoteLiteral(t *testing.T) {
 
 func TestRenderClaimBinary(t *testing.T) {
 	out := renderClaim("Proposes", "KlausConrad", "ConradFraming",
-		"the quote", "src/Apophenia", "winze-add", "", "MyClaim", false)
+		"the quote", "src/Apophenia", "winze-add", "", false, "", "winze-add", "MyClaim", false)
 	want := []string{
 		"var MyClaim = Proposes{",
 		"Subject: KlausConrad,",
@@ -193,7 +193,7 @@ func TestRenderClaimBinary(t *testing.T) {
 
 func TestRenderClaimBinaryWithProvVar(t *testing.T) {
 	out := renderClaim("Proposes", "KlausConrad", "ConradFraming",
-		"", "", "", "apopheniaSource", "MyClaim", false)
+		"", "", "", "apopheniaSource", false, "", "winze-add", "MyClaim", false)
 	want := []string{
 		"var MyClaim = Proposes{",
 		"Subject: KlausConrad,",
@@ -211,9 +211,46 @@ func TestRenderClaimBinaryWithProvVar(t *testing.T) {
 	}
 }
 
+func TestRenderClaimConjecture(t *testing.T) {
+	out := renderClaim("RelatesTo", "MemoryA", "MemoryB",
+		"", "", "", "", true, "A and B are the same decision seen twice", "winze-link", "MyLink", false)
+	want := []string{
+		"var MyLink = RelatesTo{",
+		"Subject: MemoryA,",
+		"Object:  MemoryB,",
+		"Prov: Conjecture{",
+		`GeneratedBy: "winze-link",`,
+		"Rationale:   `A and B are the same decision seen twice`,",
+	}
+	for _, w := range want {
+		if !strings.Contains(out, w) {
+			t.Errorf("output missing %q:\n%s", w, out)
+		}
+	}
+	// A conjecture carries no source: never a Quote or a Provenance block.
+	if strings.Contains(out, "Quote:") || strings.Contains(out, "Provenance{") {
+		t.Errorf("conjecture must not emit Quote/Provenance: %s", out)
+	}
+}
+
+func TestValidateFlagsConjecture(t *testing.T) {
+	// conjecture needs a rationale
+	if err := validateFlags("RelatesTo", "A", "B", "", "", "", true, "", "f.go", "C", false); err == nil || !strings.Contains(err.Error(), "rationale") {
+		t.Errorf("conjecture without rationale should require --rationale, got %v", err)
+	}
+	// conjecture is mutually exclusive with an inline quote
+	if err := validateFlags("RelatesTo", "A", "B", "q", "", "", true, "why", "f.go", "C", false); err == nil || !strings.Contains(err.Error(), "pick one") {
+		t.Errorf("conjecture + quote should reject, got %v", err)
+	}
+	// a well-formed conjecture validates
+	if err := validateFlags("RelatesTo", "A", "B", "", "", "", true, "why", "f.go", "C", false); err != nil {
+		t.Errorf("valid conjecture rejected: %v", err)
+	}
+}
+
 func TestRenderClaimUnary(t *testing.T) {
 	out := renderClaim("IsCognitiveBias", "ClusteringIllusion", "",
-		"the quote", "src", "winze-add", "", "MyTag", true)
+		"the quote", "src", "winze-add", "", false, "", "winze-add", "MyTag", true)
 	if !strings.Contains(out, "var MyTag = IsCognitiveBias{") {
 		t.Errorf("missing var decl: %s", out)
 	}

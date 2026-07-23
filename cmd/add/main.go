@@ -53,6 +53,9 @@ func main() {
 		origin     = flag.String("origin", "", "free-form provenance origin hint (required unless --provenance-var is set)")
 		ingestedBy = flag.String("ingested-by", "winze-add", "ingestor tag for inline Provenance.IngestedBy (ignored when --provenance-var is set)")
 		provVar    = flag.String("provenance-var", "", "name of an existing Provenance var to reuse (e.g. apopheniaSource); mutually exclusive with --quote/--origin/--ingested-by")
+		conjecture = flag.Bool("conjecture", false, "attribute as a Conjecture — winze's OWN assertion, no source quote (e.g. a memory link); mutually exclusive with --quote/--origin/--provenance-var")
+		rationale  = flag.String("rationale", "", "with --conjecture: winze's own reasoning for the claim (required)")
+		genBy      = flag.String("generated-by", "winze-add", "with --conjecture: the winze process asserting the claim")
 		target     = flag.String("to", "", "target corpus file (relative to --root, e.g. apophenia.go)")
 		claimName  = flag.String("name", "", "Go var name for the new claim")
 		repoRoot   = flag.String("root", ".", "winze repo root (the directory containing predicates.go)")
@@ -106,13 +109,13 @@ func main() {
 	}
 	defer usagelog.Log(*repoRoot, "add", os.Args[1:], start)
 
-	if err := validateFlags(*predicate, *subject, *object, *quote, *origin, *provVar, *target, *claimName, *unary); err != nil {
+	if err := validateFlags(*predicate, *subject, *object, *quote, *origin, *provVar, *conjecture, *rationale, *target, *claimName, *unary); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		flag.Usage()
 		os.Exit(2)
 	}
 
-	decl := renderClaim(*predicate, *subject, *object, *quote, *origin, *ingestedBy, *provVar, *claimName, *unary)
+	decl := renderClaim(*predicate, *subject, *object, *quote, *origin, *ingestedBy, *provVar, *conjecture, *rationale, *genBy, *claimName, *unary)
 
 	if *dryRun {
 		fmt.Printf("--- would append to %s ---\n", *target)
@@ -166,15 +169,27 @@ func commitDecl(repoRoot, target, decl string) error {
 	return nil
 }
 
-func validateFlags(predicate, subject, object, quote, origin, provVar, target, claimName string, unary bool) error {
+func validateFlags(predicate, subject, object, quote, origin, provVar string, conjecture bool, rationale, target, claimName string, unary bool) error {
+	// Exactly one attribution mode: inline source (--quote/--origin), reuse a
+	// Provenance var (--provenance-var), or self-assertion (--conjecture).
+	modes := 0
+	if quote != "" || origin != "" {
+		modes++
+	}
 	if provVar != "" {
-		// Reusing a named Provenance var — inline-source flags must NOT be set.
-		if quote != "" || origin != "" {
-			return fmt.Errorf("--provenance-var is mutually exclusive with --quote / --origin (pick one source mode)")
-		}
-		if !isValidGoIdent(provVar) {
-			return fmt.Errorf("--provenance-var %q is not a valid Go identifier", provVar)
-		}
+		modes++
+	}
+	if conjecture {
+		modes++
+	}
+	if modes > 1 {
+		return fmt.Errorf("pick one attribution mode: inline --quote/--origin, --provenance-var, or --conjecture")
+	}
+	if provVar != "" && !isValidGoIdent(provVar) {
+		return fmt.Errorf("--provenance-var %q is not a valid Go identifier", provVar)
+	}
+	if conjecture && strings.TrimSpace(rationale) == "" {
+		return fmt.Errorf("--conjecture requires --rationale (winze's own reasoning; a conjecture carries no source quote)")
 	}
 	missing := []string{}
 	if predicate == "" {
@@ -183,7 +198,7 @@ func validateFlags(predicate, subject, object, quote, origin, provVar, target, c
 	if subject == "" {
 		missing = append(missing, "--subject")
 	}
-	if provVar == "" {
+	if provVar == "" && !conjecture {
 		// Inline-source mode — quote and origin are mandatory.
 		if quote == "" {
 			missing = append(missing, "--quote")
@@ -229,20 +244,30 @@ func isValidGoIdent(s string) bool {
 	return true
 }
 
-func renderClaim(predicate, subject, object, quote, origin, ingestedBy, provVar, claimName string, unary bool) string {
+func renderClaim(predicate, subject, object, quote, origin, ingestedBy, provVar string, conjecture bool, rationale, generatedBy, claimName string, unary bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\nvar %s = %s{\n", claimName, predicate)
 	fmt.Fprintf(&b, "\tSubject: %s,\n", subject)
 	if !unary {
 		fmt.Fprintf(&b, "\tObject:  %s,\n", object)
 	}
-	if provVar != "" {
+	today := time.Now().UTC().Format("2006-01-02")
+	switch {
+	case conjecture:
+		// Conjecture is winze's OWN assertion — no source, and by schema design
+		// no Quote (that fence is what stops a generated claim wearing a
+		// fabricated source). Rationale carries the reasoning instead.
+		fmt.Fprintf(&b, "\tProv: Conjecture{\n")
+		fmt.Fprintf(&b, "\t\tGeneratedBy: %s,\n", strconv.Quote(generatedBy))
+		fmt.Fprintf(&b, "\t\tRationale:   %s,\n", quoteLiteral(rationale))
+		fmt.Fprintf(&b, "\t\tGeneratedAt: %s,\n", strconv.Quote(today))
+		fmt.Fprintf(&b, "\t},\n")
+	case provVar != "":
 		// Reuse-mode: the named Provenance var is referenced directly. If
 		// it doesn't exist in scope, the build gate will catch it and the
 		// file will be reverted — no special validation here.
 		fmt.Fprintf(&b, "\tProv:    %s,\n", provVar)
-	} else {
-		today := time.Now().UTC().Format("2006-01-02")
+	default:
 		fmt.Fprintf(&b, "\tProv: Provenance{\n")
 		fmt.Fprintf(&b, "\t\tOrigin:     %s,\n", strconv.Quote(origin))
 		fmt.Fprintf(&b, "\t\tIngestedAt: %s,\n", strconv.Quote(today))

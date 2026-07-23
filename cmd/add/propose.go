@@ -135,7 +135,7 @@ func runPropose(o proposeOpts) int {
 	}
 
 	claimName := uniqueName(sanitizeIdent(p.Name), p, usedNames)
-	decl := renderClaim(p.Predicate, p.Subject, p.Object, o.quote, o.origin, o.ingestedBy, o.provVar, claimName, p.Unary)
+	decl := renderClaim(p.Predicate, p.Subject, p.Object, o.quote, o.origin, o.ingestedBy, o.provVar, false, "", "winze-add", claimName, p.Unary)
 
 	fmt.Printf("--- would append to %s ---\n%s\n", target, decl)
 
