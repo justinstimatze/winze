@@ -224,7 +224,7 @@ func (ps phaseSet) has(name string) bool {
 func parsePhases(s string) (phaseSet, error) {
 	known := map[string]bool{
 		"bias": true, "sense": true, "resolve": true, "ingest": true,
-		"trip": true, "dream": true, "calibrate": true,
+		"trip": true, "dream": true, "calibrate": true, "reify": true,
 	}
 	s = strings.TrimSpace(s)
 	if s == "" || s == "all" {
@@ -2533,19 +2533,27 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 		fmt.Println()
 	}
 
-	// Phase 5: Calibrate + reify
+	// Phase 5: Calibrate (read-only analysis)
 	if sel.has("calibrate") {
 		fmt.Println("=== Phase 5: Calibrate ===")
 		fmt.Println()
 		runCalibrate(dir, false)
 		phases++
-
-		// Reify predictions
-		fmt.Println()
-		runReify(dir)
 		fmt.Println()
 	} else {
 		fmt.Println("=== Phase 5: Calibrate (skipped by --phases) ===")
+		fmt.Println()
+	}
+
+	// Phase 6: Reify — regenerates predictions.go from the log. A WRITE to a
+	// tracked file, so it is its own phase: a sense-only tier (--phases without
+	// "reify") calibrates and reports but leaves the working tree clean. Full
+	// --evolve (nil phaseSet) still reifies, unchanged.
+	if sel.has("reify") {
+		fmt.Println("=== Phase 6: Reify ===")
+		fmt.Println()
+		runReify(dir)
+		phases++
 		fmt.Println()
 	}
 

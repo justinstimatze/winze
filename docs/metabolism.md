@@ -135,11 +135,15 @@ clock (hourly is a reasonable default), and winze's per-phase gates decide
 what's actually worth running on each tick. Cost tracks opportunity, not the
 clock.
 
-`--evolve` runs seven named phases: `bias`, `sense`, `resolve`, `ingest`,
-`trip`, `dream`, `calibrate`. Cheap phases (`bias`, `dream`, `calibrate`) emit
-telemetry every tick — they have no LLM or sensor cost and produce the signal
-the dynamic gates read. Expensive phases (`sense`, `resolve`, `ingest`, `trip`,
-plus dream's optional brief-tightening) self-gate against that telemetry.
+`--evolve` runs eight named phases: `bias`, `sense`, `resolve`, `ingest`,
+`trip`, `dream`, `calibrate`, `reify`. Cheap phases (`bias`, `dream`,
+`calibrate`) emit telemetry every tick — they have no LLM or sensor cost and
+produce the signal the dynamic gates read. Expensive phases (`sense`, `resolve`,
+`ingest`, `trip`, plus dream's optional brief-tightening) self-gate against that
+telemetry. `calibrate` is read-only analysis; `reify` is the one that *writes* —
+it regenerates the tracked `predictions.go` from the log, so it is its own phase
+and a read-only run (a `--phases` list without `reify`) leaves the working tree
+clean. A bare `--evolve` (no `--phases`) runs all eight, reify included.
 
 A scheduler can also fire a phase subset directly with `--phases`:
 
