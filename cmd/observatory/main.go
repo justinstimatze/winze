@@ -18,6 +18,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/justinstimatze/winze/internal/events"
 )
 
 //go:embed index.html
@@ -49,6 +51,14 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		json.NewEncoder(w).Encode(data)
+	})
+	// The fleet event stream: real metabolism phases and meld/unmeld. The page
+	// polls this and animates only genuine events (a bridge lights up when you
+	// actually run winze-meld; a cell pulses when metabolism actually runs).
+	mux.HandleFunc("/api/events.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		json.NewEncoder(w).Encode(map[string]any{"events": events.ReadRecent(200)})
 	})
 
 	url := displayURL(*addr)

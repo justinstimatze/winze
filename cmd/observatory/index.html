@@ -87,6 +87,12 @@
     border-top:1px solid var(--rule); text-align:center}
   footer b{color:var(--dim)}
   .live{color:var(--copper)} .live.stale{color:var(--faint)}
+  /* a cell glows warm while its winze is actually mid-cycle (real cycle_start event) */
+  .cell.active{box-shadow:inset 0 0 0 3px var(--rock), inset 0 0 0 4px rgba(214,154,68,.5)}
+  /* overlay for real meld bridges — pin CSS size so device coords map right */
+  #meld-overlay{position:fixed; inset:0; width:100%; height:100%; z-index:5; pointer-events:none}
+  .meld-label{position:fixed; z-index:6; font-family:var(--mono); font-size:.62rem; letter-spacing:.08em;
+    color:var(--warm); text-shadow:0 0 12px var(--warm); pointer-events:none; opacity:0; transition:opacity .4s}
   @media (max-width:760px){
     body{height:auto; min-height:100dvh; overflow-y:auto}
     #fleet{grid-template-columns:1fr; grid-auto-rows:minmax(240px,58vh)}
@@ -111,6 +117,8 @@
 </header>
 <div class="key" id="key"></div>
 <div id="fleet"></div>
+<canvas id="meld-overlay" aria-hidden="true"></canvas>
+<div class="meld-label" id="meld-label"></div>
 <footer>
   <b>solid lines</b> are typed claims, <b>dashed</b> are latent [[wikilinks]], <b>purple</b> are conjectures ·
   glow shows how recently each winze ran
@@ -125,6 +133,10 @@ const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
 function getVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
 // mineral specimens by community — earthy assay tones, USGS-adjacent, never neon
 const MINERAL = ['#4f9e6b','#3f6ea5','#c0503a','#c39a3e','#8a63a8','#3f9e93','#b8863f','#8a94a0','#b5533a','#9c7bc2'];
+// colour for a real metabolism phase that actually ran (event-driven pulse)
+const PHASE_COLOR = {sense:'#4aa3ff',resolve:'#5cc8e8',ingest:'#43e8d4',trip:'#9a72c4',dream:'#5ce8a0',calibrate:'#d69a44',bias:'#c0503a'};
+function phaseColor(p){ for(const k in PHASE_COLOR){ if(p.indexOf(k)===0) return PHASE_COLOR[k]; } return getVar('--brass'); }
+let cellByName = {}, melds = [], clock = 0;
 
 document.getElementById('key').innerHTML =
   `<span><i class="sw" style="border-top-color:${getVar('--brass')}"></i>typed claim</span>`+
@@ -187,8 +199,9 @@ function buildCells(){
     const cv=fig.querySelector('canvas'), ctx=cv.getContext('2d');
     const hasEdges = inst.edges && inst.edges.length;
     const pos = hasEdges ? settle(inst.nodes, inst.edges) : scatter(inst.nodes);
-    return {inst,fig,cv,ctx,pos,statusEl:fig.querySelector('.cell-status'),offset:Math.random()*10};
+    return {inst,fig,cv,ctx,pos,statusEl:fig.querySelector('.cell-status'),offset:Math.random()*10,phaseFlash:null};
   });
+  cellByName = Object.fromEntries(cells.map(c=>[c.inst.name, c]));
   recomputeAgg();
   fitAll();
   if(reduce) drawStatic();
@@ -206,8 +219,9 @@ function recomputeAgg(){
 }
 
 // ---- resize ----
-function fitCanvas(cell){ const r=cell.cv.getBoundingClientRect(); cell.cv.width=Math.max(1,r.width*DPR); cell.cv.height=Math.max(1,r.height*DPR); cell.w=r.width; cell.h=r.height; }
-function fitAll(){ cells.forEach(fitCanvas); }
+function fitCanvas(cell){ const r=cell.cv.getBoundingClientRect(); cell.cv.width=Math.max(1,r.width*DPR); cell.cv.height=Math.max(1,r.height*DPR); cell.w=r.width; cell.h=r.height; cell.rect=r; }
+const meldCv=document.getElementById('meld-overlay'), meldCtx=meldCv.getContext('2d');
+function fitAll(){ cells.forEach(fitCanvas); meldCv.width=innerWidth*DPR; meldCv.height=innerHeight*DPR; }
 addEventListener('resize', fitAll);
 
 function withAlpha(hex,a){ const n=parseInt(hex.slice(1),16); return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`; }
@@ -259,9 +273,44 @@ function drawCell(cell, time){
   vg.addColorStop(0,withAlpha(temp, 0.018+0.03*Math.abs(w-0.5))); vg.addColorStop(1,'rgba(0,0,0,0)');
   ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
 
-  if(cell.statusEl) cell.statusEl.textContent=statusText(inst); // recency text stays current
+  // real phase pulse — only when a metabolism phase actually fired (event-driven)
+  let running=null;
+  if(cell.phaseFlash && clock < cell.phaseFlash.until){
+    const pf=cell.phaseFlash, t=1-(pf.until-clock)/2.5, a=Math.sin(Math.min(1,Math.max(0,t))*Math.PI)*0.5;
+    const pvg=ctx.createRadialGradient(W*0.5,H*0.12,0,W*0.5,H*0.12,Math.max(W,H));
+    pvg.addColorStop(0,withAlpha(pf.color,0.16*a)); pvg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=pvg; ctx.fillRect(0,0,W,H);
+    running=pf.phase;
+  } else if(cell.phaseFlash){ cell.phaseFlash=null; }
+
+  if(cell.statusEl) cell.statusEl.textContent = running ? ('running · '+running) : statusText(inst);
 }
 function drawStatic(){ for(const c of cells) drawCell(c,2); }
+
+// ---- real meld bridges (driven by winze-meld events, not a timer) ----
+function drawMelds(time){
+  meldCtx.clearRect(0,0,meldCv.width,meldCv.height);
+  const lab=document.getElementById('meld-label');
+  melds = melds.filter(m=>!(m.removeAt!==null && time>m.removeAt+1));
+  if(!melds.length){ lab.style.opacity=0; return; }
+  const col=getVar('--warm'); let labeled=false;
+  for(const m of melds){
+    const ra=m.a.rect, rb=m.b.rect; if(!ra||!rb) continue;
+    const grow=Math.min(1,(time-m.start)/0.8);
+    const fade=m.removeAt!==null ? Math.max(0,1-(time-m.removeAt)/1) : 1;
+    const env=grow*fade; if(env<=0) continue;
+    const ax=(ra.left+ra.width*0.5)*DPR, ay=(ra.top+ra.height*0.5)*DPR, bx=(rb.left+rb.width*0.5)*DPR, by=(rb.top+rb.height*0.5)*DPR;
+    const mx=(ax+bx)/2, my=(ay+by)/2-80*DPR;
+    meldCtx.lineWidth=2.2*DPR; meldCtx.strokeStyle=withAlpha(col,0.5*env); meldCtx.shadowColor=col; meldCtx.shadowBlur=16*DPR;
+    meldCtx.beginPath(); meldCtx.moveTo(ax,ay); meldCtx.quadraticCurveTo(mx,my,bx,by); meldCtx.stroke(); meldCtx.shadowBlur=0;
+    for(let k=0;k<12;k++){ let u=((time*0.5)+(k/12))%1; if(k%2)u=1-u;
+      const x=(1-u)*(1-u)*ax+2*(1-u)*u*mx+u*u*bx, y=(1-u)*(1-u)*ay+2*(1-u)*u*my+u*u*by;
+      meldCtx.fillStyle=withAlpha(col,env*(0.4+0.5*Math.sin(u*Math.PI))); meldCtx.beginPath(); meldCtx.arc(x,y,2.2*DPR,0,7); meldCtx.fill(); }
+    for(const [x,y] of [[ax,ay],[bx,by]]){ const g=meldCtx.createRadialGradient(x,y,0,x,y,50*DPR); g.addColorStop(0,withAlpha(col,0.35*env)); g.addColorStop(1,withAlpha(col,0)); meldCtx.fillStyle=g; meldCtx.beginPath(); meldCtx.arc(x,y,50*DPR,0,7); meldCtx.fill(); }
+    if(!labeled){ lab.textContent='meld · '+m.a.inst.name+' ⇄ '+m.b.inst.name; lab.style.left=(mx/DPR)+'px'; lab.style.top=(my/DPR-14)+'px'; lab.style.transform='translate(-50%,-100%)'; lab.style.opacity=env; labeled=true; }
+  }
+  if(!labeled) lab.style.opacity=0;
+}
 
 // ---- clock + live loader ----
 const clockEl=document.getElementById('clock'), liveEl=document.getElementById('live');
@@ -280,13 +329,42 @@ refresh();
 setInterval(refresh, 20000);
 setInterval(updateClock, 1000); updateClock();
 
+// ---- consume the real fleet event stream ----
+const seenEv=new Set(); let evInit=false;
+function handleEvent(ev){
+  const c=cellByName[ev.name];
+  if(ev.kind==='phase' && ev.payload && ev.payload.decision==='allow'){
+    if(c) c.phaseFlash={phase:ev.payload.phase, color:phaseColor(ev.payload.phase), until:clock+2.5};
+  } else if(ev.kind==='cycle_start'){ if(c) c.fig.classList.add('active'); }
+  else if(ev.kind==='cycle_end'){ if(c) c.fig.classList.remove('active'); }
+  else if(ev.kind==='meld'){
+    const cs=((ev.payload&&ev.payload.stores)||[]).map(n=>cellByName[n]).filter(Boolean);
+    const key=(ev.payload&&ev.payload.dir)||'';
+    for(let i=0;i<cs.length;i++) for(let j=i+1;j<cs.length;j++) melds.push({a:cs[i],b:cs[j],start:clock,removeAt:null,key});
+  } else if(ev.kind==='unmeld'){
+    const key=(ev.payload&&ev.payload.dir)||'';
+    for(const m of melds) if(m.key===key && m.removeAt===null) m.removeAt=Math.max(clock, m.start+3);
+  }
+}
+async function pollEvents(){
+  try{ const r=await fetch('/api/events.json',{cache:'no-store'}); if(!r.ok) return;
+    const evs=(await r.json()).events||[];
+    for(const ev of evs){ const sig=ev.ts+'|'+ev.kind+'|'+ev.name+'|'+JSON.stringify(ev.payload||{});
+      if(seenEv.has(sig)) continue; seenEv.add(sig); if(evInit) handleEvent(ev); }
+    evInit=true;
+    if(seenEv.size>5000){ seenEv.clear(); evInit=false; } // don't replay history on reseed
+  }catch(e){}
+}
+setInterval(pollEvents, 3000); pollEvents();
+
 let t0=null, lastDraw=0;
 function frame(ts){
   requestAnimationFrame(frame);
   if(ts-lastDraw < 33) return;   // ~30fps for an always-on sheet
   lastDraw=ts;
-  if(t0===null)t0=ts; const time=(ts-t0)/1000;
-  for(const c of cells) drawCell(c,time);
+  if(t0===null)t0=ts; clock=(ts-t0)/1000;
+  for(const c of cells) drawCell(c,clock);
+  drawMelds(clock);
 }
 if(reduce) drawStatic(); else requestAnimationFrame(frame);
 </script>
