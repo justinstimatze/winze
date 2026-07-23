@@ -67,6 +67,7 @@ stays small so it can stay current. To pull a topic yourself:
 - `docs/authoring.md` — `cmd/add`: inline / provenance-var / conjecture / batch / propose
 - `docs/editing.md` — `cmd/edit`: rename, merge, concurrent-write safety
 - `docs/query.md` — the read side (`cmd/query`), all modes
+- `docs/decisions.md` — the decision log: `--decisions` over the Supersedes graph
 - `docs/lint-rules.md` — the lint rules; structural-dedup and brief-drift in depth
 - `docs/pragmas.md` — `//winze:contested`, `//winze:functional`, `//winze:mentions`
 - `docs/predicates.md` — the predicate families
