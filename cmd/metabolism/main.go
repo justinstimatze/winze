@@ -742,17 +742,23 @@ func invalidateTopologyCache() {
 	topologyCache.valid = false
 }
 
-// countEntities returns the current entity count, using the topology cache
-// if available.
+// countEntities returns the current *knowledge* entity count for the cap
+// check: the corpus total (from the topology cache when available) minus
+// reify's calibration bookkeeping in predictions.go. The cap bounds the
+// knowledge base; counting reify's own Events against it lets the loop
+// calibrate itself into refusing ingest. See reifyEntityCount.
 func countEntities(dir string) (int, error) {
+	var total int
 	if topologyCache.valid && topologyCache.dir == dir {
-		return topologyCache.report.Entities, nil
+		total = topologyCache.report.Entities
+	} else {
+		_, report, err := runTopology(dir)
+		if err != nil {
+			return 0, err
+		}
+		total = report.Entities
 	}
-	_, report, err := runTopology(dir)
-	if err != nil {
-		return 0, err
-	}
-	return report.Entities, nil
+	return total - reifyEntityCount(dir), nil
 }
 
 // runTopology shells out to cmd/topology and parses the JSON output.
