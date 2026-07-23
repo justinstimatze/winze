@@ -138,6 +138,18 @@ func extractRoleGlosses() string {
 	}, "\n")
 }
 
+// debugCacheUsage prints per-call cache accounting to stderr when
+// WINZE_CACHE_DEBUG=1. cache_create is the first-call write of the shared
+// prefix; cache_read is a hit (~10% price). Across a phase's calls you want
+// to see one create followed by reads. Off by default — pure observability.
+func debugCacheUsage(label string, u anthropic.Usage) {
+	if os.Getenv("WINZE_CACHE_DEBUG") == "" {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "[cache] %-18s input=%d cache_create=%d cache_read=%d output=%d\n",
+		label, u.InputTokens, u.CacheCreationInputTokens, u.CacheReadInputTokens, u.OutputTokens)
+}
+
 // sharedSystemBlock wraps the prefix in a cache_control'd System block, or
 // returns nil when prefix is empty (the uncached fallback path).
 func sharedSystemBlock(prefix string) []anthropic.TextBlockParam {
