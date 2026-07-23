@@ -347,7 +347,7 @@ an in-memory index of entities, claims, and provenance, and answers queries.
 (needs ANTHROPIC_API_KEY). For richer queries (multi-hop, aggregation), use
 `defn` MCP directly in a Claude Code session.
 
-### MCP tools available (for polecats and human sessions)
+### MCP tools available (for any agent or human session)
 
 - **defn** (`mcp__defn__code`): SQL-backed code database. Query entities, claims,
   provenance across the entire KB. Use for multi-hop queries, aggregation, and
@@ -360,7 +360,7 @@ an in-memory index of entities, claims, and provenance, and answers queries.
   read articles, extract links. Use for sensor queries and article exploration
   beyond the metabolism CLI.
 
-These MCP servers are in the global config — all polecats inherit them.
+These MCP servers are in the global config — all sessions inherit them.
 
 ### Topology analysis
 
@@ -422,7 +422,6 @@ RSS backend fetches Atom/RSS 2.0 feeds and filters entries by query terms.
 Default feeds cover cognitive science (Nature Reviews Neuroscience, Trends in
 Cognitive Sciences), AI (arXiv cs.AI, cs.CL), and philosophy of mind (PhilPapers).
 Custom feeds via `--rss-feeds URL1,URL2,...`. No API key needed.
-Gas Town formula: `mol-curate-auto` wraps `--pipeline` for polecat execution.
 `--dream` runs a consolidation cycle (NREM-like): no new ingest, analyzes
 existing KB health via topology + lint + adit and reports maintenance
 opportunities (bridge entities, file balance, provenance splits, brief quality).
@@ -526,18 +525,14 @@ can down-weight (not exclude) sources that historically feed refuted
 claims. This matches winze's empirical-over-authoritarian bias: reputation
 is earned by the calibration record, not declared by a deny-list.
 
-### Curation formula
+### Multi-timescale laminar cycles (scheduler-agnostic)
 
-If you're a Gas Town polecat, your workflow is defined by the `mol-curate`
-formula in `.beads/formulas/`. Run `gt prime` to see your checklist.
-
-### Multi-timescale laminar cycles (Gas Town integration)
-
-Cadence belongs to Gas Town. Phase granularity and self-gating belong to
-winze. The recommended pattern: a Gas Town formula fires
-`go run ./cmd/metabolism --evolve .` on a regular clock (hourly is a
-reasonable default), and winze's per-phase gates decide what's actually
-worth running on each tick. Cost tracks opportunity, not the clock.
+Cadence belongs to whatever scheduler fires the loop (cron, a CI job, a
+systemd timer); phase granularity and self-gating belong to winze. The
+pattern: a scheduler runs `go run ./cmd/metabolism --evolve .` on a regular
+clock (hourly is a reasonable default), and winze's per-phase gates decide
+what's actually worth running on each tick. Cost tracks opportunity, not the
+clock.
 
 **Phase composition.** `--evolve` runs seven named phases: `bias`,
 `sense`, `resolve`, `ingest`, `trip`, `dream`, `calibrate`. Cheap phases
@@ -546,7 +541,7 @@ LLM or sensor cost and produce the signal the dynamic gates read.
 Expensive phases (`sense`, `resolve`, `ingest`, `trip`, plus dream's
 optional brief-tightening) self-gate against that telemetry.
 
-Gas Town can also fire a phase subset directly with `--phases`:
+A scheduler can also fire a phase subset directly with `--phases`:
 
 ```bash
 go run ./cmd/metabolism --evolve --phases=cheap .   # bias + dream + calibrate (no LLM, no sensors)
@@ -585,219 +580,31 @@ per past `--calibrate` invocation). Use it to answer "is useful signal
 trending up?" without re-running calibrate or eyeballing the JSONL.
 
 **What to ignore.** Do NOT add cron, systemd, or any cadence-management
-machinery inside winze itself. Gas Town owns cadence; winze owns
-self-gating. If a Gas Town formula needs a different rhythm, change the
-formula or set the `--*-min-*` thresholds — never grow winze a
-scheduler.
+machinery inside winze itself. The scheduler owns cadence; winze owns
+self-gating. If the schedule needs a different rhythm, change the scheduler
+or set the `--*-min-*` thresholds — never grow winze a scheduler.
 
-### Operating Gas Town from winze (recipe + gotchas)
+### Session completion
 
-The mechanics of activating, monitoring, and stopping the
-`mol-metabolism-patrol` formula — recorded because every step has at
-least one non-obvious failure mode.
+Commit and push code changes when a unit of work is done — work isn't
+complete until `git push` succeeds (never leave it stranded locally). Run the
+quality gates first (tests, `go build ./...`, `go vet ./...`, lint) if code
+changed. That's it: no ticketing system, no separate data plane.
 
-**Activate.**
+### Sharing & autonomous metabolism (the vision, decoupled from Gas Town)
 
-```bash
-gt rig boot winze                                              # starts witness + refinery if stopped
-gt daemon status                                               # MUST be running, else polecat won't auto-start
-gt daemon start                                                # if not
-bd create --type task --title "..." -d "..."                   # tracking bead
-gt sling <bead> winze --formula mol-metabolism-patrol --create # auto-spawns / reuses idle polecat
-```
+Winze's north star: instances **evolve themselves** (the metabolism `--evolve`
+loop) and **share what they learn**. Both are now infrastructure-light:
 
-Optional vars: `--var sleep_seconds=3600` (default), `--var cycles=168`
-(default = ~1 week of hourly ticks). Do NOT pass values that drop below
-the gate thresholds in spirit (e.g. `sleep_seconds=60`) without also
-overriding `--sense-min-hours`, `--ingest-min-corroborated`, etc — at
-fast cadence with default gates, every cycle hits "skip, you just did
-this," and the engine looks frozen even though it's working as
-designed.
-
-**Monitor live.**
-
-```bash
-tmux -L town-c94b8f capture-pane -t wi-<polecat> -p | tail -30  # what is the polecat doing right now
-gt polecat status winze/<polecat>                                # state: idle | working | stalled
-git log --oneline origin/main -5                                 # commits landing
-cat polecats/<polecat>/winze/.metabolism-budget.json             # spend (per-clone, NOT town-wide)
-```
-
-The town tmux socket is `town-c94b8f` and polecat sessions are named
-`wi-<polecat>`. Default tmux socket (`/tmp/tmux-1000/default`) is empty
-on Gas Town hosts — do not look there.
-
-**Stop cleanly.** All three are needed:
-
-```bash
-gt unsling winze/<polecat>     # removes the work from the hook (alone, leaves session running)
-gt session stop winze/<polecat># actually kills the tmux session
-bd close <bead>                # closes the tracking bead
-```
-
-`gt unsling` is necessary but not sufficient — the polecat session
-keeps cycling on whatever bash subprocess is in flight until you stop
-the session.
-
-**Gotchas the hard way.**
-
-1. **First-nudge model rejection.** A freshly-spawned polecat
-   sometimes refuses the first `gt prime --hook` (model judgment, not
-   a permissions issue — bypass-permissions can be on). Symptom:
-   `gt polecat status` reports `working`, the tmux session is
-   `running`, but the pane shows "You rejected gt prime --hook." with
-   no further activity. Recovery: type explicit instruction into the
-   pane (`tmux -L town-c94b8f send-keys -t wi-<polecat> "Run gt prime --hook and proceed with the formula on your hook." Enter`).
-2. **Long-running loop vs Bash tool timeout.** Claude Code's default
-   Bash timeout is 2 min; tools max out at 10 min. The patrol formula's
-   loop runs cycles back-to-back and a single iteration can take 3-5
-   min. Polecats adapt by batching cycles per Bash call (e.g. 3 per
-   call) — that's correct. They MUST NOT background the loop with
-   `nohup` or detach into a written shell script — that breaks the
-   formula lifecycle (the polecat's `gt done` would fire while the
-   bash kept cycling). If you see the polecat propose a backgrounded
-   approach, redirect it to the foreground.
-3. **Per-clone budget state.** `.metabolism-budget.json` lives in each
-   polecat clone independently (the file is gitignored, regenerated per
-   worktree). The `METABOLISM_BUDGET_CENTS` cap from `.env` is enforced
-   *per clone*, not town-wide. With one polecat this is fine; with N
-   concurrent polecats the effective cap is N × the env value.
-4. **`tmux send-keys` requires an idle pane.** If the polecat is
-   mid-thought (Claude Code's "Contemplating…" indicator), typed
-   instructions queue at "Press up to edit queued messages" and only
-   land when the model becomes idle. For a stuck session, this can be
-   many minutes.
-5. **Sling input quirks.** `gt sling <bead-or-formula> <target>` is
-   strict about positional ordering. If sling silently dumps `--help`
-   instead of executing, the args were rejected — usually because the
-   bead is already attached to a wisp. Create a fresh bead if the
-   previous run was closed; don't try to re-attach.
-6. **Branch protection on main is relaxed.** Required `test` status
-   check was dropped 2026-04-26 so polecats can push directly per
-   cycle. Force-push and deletion are still blocked. Don't re-add the
-   required check without re-thinking the formula's per-cycle push
-   strategy.
-7. **Daemon parentage.** `gt daemon`, `gt rig boot`'s witness/refinery,
-   and the town tmux server are all children of `systemd --user`, NOT
-   the shell that started them. A human Claude Code session can exit
-   without disturbing a running polecat.
-
-**Cost reasoning.** Per-cycle cost depends on which phases fire:
-- All gates skip (most cycles): ~$0.005
-- Trip + dream-fix only: ~$0.02
-- Full pipeline (sense → resolve → ingest → trip → dream): ~$0.10-0.30
-
-Smoke testing has shown estimates run ~10-20× higher than actuals; the
-conservative estimates are deliberate, since they protect the
-`METABOLISM_BUDGET_CENTS` cap.
-
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
-## Beads Issue Tracker
-
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
-
-### Quick Reference
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
-```
-
-### Rules
-
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
-
-## Session Completion
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd dolt push
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-<!-- END BEADS INTEGRATION -->
-
-## Dolt Server — Operational Awareness (All Agents)
-
-Dolt is the data plane for beads (issues, mail, identity, work history). It runs
-as a single server on port 3307 serving all databases. **It is fragile.**
-
-### If you detect Dolt trouble
-
-Symptoms: `bd` commands hang/timeout, "connection refused", "database not found",
-query latency > 5s, unexpected empty results.
-
-**BEFORE restarting Dolt, collect diagnostics.** Dolt hangs are hard to
-reproduce. A blind restart destroys the evidence. Always:
-
-```bash
-# 1. Capture goroutine dump (safe — does not kill the process)
-kill -QUIT $(cat ~/gt/.dolt-data/dolt.pid)  # Dumps stacks to Dolt's stderr log
-
-# 2. Capture server status while it's still (mis)behaving
-gt dolt status 2>&1 | tee /tmp/dolt-hang-$(date +%s).log
-
-# 3. THEN escalate with the evidence
-gt escalate -s HIGH "Dolt: <describe symptom>"
-```
-
-**Do NOT just `gt dolt stop && gt dolt start` without steps 1-2.**
-
-**Escalation path** (any agent can do this):
-```bash
-gt escalate -s HIGH "Dolt: <describe symptom>"     # Most failures
-gt escalate -s CRITICAL "Dolt: server unreachable"  # Total outage
-```
-
-The Mayor receives all escalations. Critical ones also notify the Overseer.
-
-### If you see test pollution
-
-Orphan databases (testdb_*, beads_t*, beads_pt*, doctest_*) accumulate on the
-production server and degrade performance. This is a recurring problem.
-
-```bash
-gt dolt status              # Check server health + orphan count
-gt dolt cleanup             # Remove orphan databases (safe — protects production DBs)
-```
-
-**NEVER use `rm -rf` on `~/.dolt-data/` directories.** Use `gt dolt cleanup` instead.
-
-### Key commands
-```bash
-gt dolt status              # Server health, latency, orphan count
-gt dolt start / stop        # Manage server lifecycle
-gt dolt cleanup             # Remove orphan test databases
-```
-
-### Communication hygiene
-
-Every `gt mail send` creates a permanent bead + Dolt commit. Every `gt nudge`
-creates nothing. **Default to nudge for routine agent-to-agent communication.**
-
-Only use mail when the message MUST survive the recipient's session death
-(handoffs, structured protocol messages, escalations). See `mail-protocol.md`.
+- **Autonomous metabolism** is scheduler-agnostic. Winze owns the phase
+  granularity, self-gating, and budget guard (above); *any* scheduler — cron, a
+  CI job, a systemd timer — fires `metabolism --evolve .` on a clock. Do NOT
+  grow winze its own scheduler; the cadence lives outside.
+- **Sharing** is plain GitHub: a winze instance is a fork, and instances share
+  corpus/tooling improvements by opening **pull requests between forks**. The
+  build gate is the review — a PR that doesn't compile doesn't merge. This
+  replaces the earlier Gas-Town "stamped work" idea; the GitHub infra already
+  does it.
 
 <!-- defn:begin -->
 ## Code Navigation and Editing
