@@ -70,10 +70,10 @@ func TestPlanMerge_GroupSpecRemoval(t *testing.T) {
 	got := applyPlanToFixture(t, dir, path, "KlausConrad", "MichaelShermer")
 
 	mustContain := []string{
-		`MichaelShermer = Person`,          // survivor's declaration intact
-		`Subject: MichaelShermer,`,         // claim retargeted from KlausConrad
-		`Object:  LoneConcept,`,            // unrelated reference untouched
-		`Quote: "Klaus Conrad named it`,    // prose untouched (string literal)
+		`MichaelShermer = Person`,       // survivor's declaration intact
+		`Subject: MichaelShermer,`,      // claim retargeted from KlausConrad
+		`Object:  LoneConcept,`,         // unrelated reference untouched
+		`Quote: "Klaus Conrad named it`, // prose untouched (string literal)
 	}
 	for _, w := range mustContain {
 		if !contains(got, w) {
