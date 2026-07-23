@@ -5,7 +5,14 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/justinstimatze/winze/internal/events"
 )
+
+// eventDir is the corpus the current --evolve run is working on. Set once at the
+// top of the evolve block so logGate can tag its phase events with the instance
+// without threading the dir through every gate call site.
+var eventDir string
 
 // phaseGateConfig holds the thresholds that decide whether each
 // expensive phase of --evolve fires on a given Gas Town clock tick.
@@ -188,6 +195,13 @@ func lastTripFileTime(dir string) (time.Time, error) {
 // Town logs can grep for which phases fired and why.
 func logGate(phase string, d gateDecision) {
 	fmt.Printf("[gate] %s: %s\n", phase, d)
+	if eventDir != "" {
+		decision := "skip"
+		if d.Fire {
+			decision = "allow"
+		}
+		events.Emit(eventDir, "phase", map[string]any{"phase": phase, "decision": decision, "reason": d.Reason})
+	}
 }
 
 // phaseGatesFromFlags builds a phaseGateConfig from parsed flag pointers.
@@ -200,4 +214,3 @@ func phaseGatesFromFlags(senseHrs *float64, resolveN *int, tripHrs *float64, ing
 		IngestMinCorroborated: *ingestN,
 	}
 }
-

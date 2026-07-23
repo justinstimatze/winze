@@ -26,6 +26,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/justinstimatze/winze/internal/cliutil"
+	"github.com/justinstimatze/winze/internal/events"
 	"go/format"
 	"io"
 	"net/http"
@@ -368,7 +369,10 @@ func main() {
 			os.Exit(1)
 		}
 		gates := phaseGatesFromFlags(senseMinHours, resolveMinUnresolved, tripMinHours, ingestMinCorroborated)
+		eventDir = dir // scope phase events to this corpus (read by logGate)
+		events.Emit(dir, "cycle_start", map[string]any{"phases": *phasesFlag})
 		runCycle(dir, *zimPath, *zimIndex, *llmBudget, *entityCap, *dryRun, *jsonOut, sel, gates)
+		events.Emit(dir, "cycle_end", nil)
 		return
 	}
 

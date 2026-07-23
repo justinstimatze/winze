@@ -35,6 +35,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/justinstimatze/winze/internal/events"
 )
 
 // manifestName marks a directory as a winze-meld and records what it was
@@ -127,6 +129,7 @@ func runMeld(specs []string, out string, quiet bool) error {
 	if err := writeManifest(dir, m); err != nil {
 		return err
 	}
+	emitMeldEvent("meld", entries[0].Path, entries, dir)
 
 	if quiet {
 		fmt.Println(dir)
@@ -280,8 +283,24 @@ func runDissolve(dir string) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
+	primary := dir
+	if len(m.Stores) > 0 {
+		primary = m.Stores[0].Path
+	}
+	emitMeldEvent("unmeld", primary, m.Stores, dir)
 	fmt.Printf("dissolved meld at %s (%d stores)\n", dir, len(m.Stores))
 	return nil
+}
+
+// emitMeldEvent records a meld/unmeld to the fleet event stream so a dashboard
+// can render two winzes bridging (and then dissolving) from real events. The
+// store basenames are what a consumer matches against its instance tiles.
+func emitMeldEvent(kind, primary string, stores []storeEntry, meldDir string) {
+	names := make([]string, len(stores))
+	for i, s := range stores {
+		names[i] = filepath.Base(s.Path)
+	}
+	events.Emit(primary, kind, map[string]any{"stores": names, "dir": meldDir})
 }
 
 func writeManifest(dir string, m manifest) error {
