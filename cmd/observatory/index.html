@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Winze — fleet</title>
+<style>
+  :root{
+    color-scheme: dark;
+    /* rock & vellum — a survey sheet read by lamplight underground, not a neon HUD */
+    --rock:#141009; --seam:#1b150d; --face:#0d0a05;
+    --rule:#4a3a22; --rule-hi:#6d5531;
+    --ink:#e9dec6; --dim:#a2916c; --faint:#5f5236;
+    /* vein assay states */
+    --brass:#c0a25e;      /* typed claim — assayed vein */
+    --copper:#4fa39a;     /* latent [[wikilink]] — unassayed seam */
+    --hematite:#c0503a;   /* dispute — fault */
+    --amethyst:#9a72c4;   /* conjecture — prospect */
+    /* recency temperature */
+    --warm:#d69a44; --cold:#3f6a86;
+    --mono: ui-monospace,"JetBrains Mono","Cascadia Code","SF Mono",Menlo,Consolas,monospace;
+    --serif: "Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:
+      /* faint survey grid + contour hatch on rock */
+      repeating-linear-gradient(0deg, transparent 0 46px, rgba(109,85,49,.05) 46px 47px),
+      repeating-linear-gradient(90deg, transparent 0 46px, rgba(109,85,49,.05) 46px 47px),
+      repeating-linear-gradient(45deg, transparent 0 13px, rgba(74,58,34,.035) 13px 14px),
+      radial-gradient(1400px 900px at 82% -10%, #241a0e 0%, transparent 62%),
+      var(--rock);
+    color:var(--ink); font-family:var(--mono);
+    height:100vh; height:100dvh; display:flex; flex-direction:column; overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* ---- title block ---- */
+  header{
+    display:flex; align-items:baseline; gap:1.3rem; flex-wrap:wrap;
+    padding:.6rem 1.1rem .55rem; border-bottom:1px double var(--rule);
+    background:linear-gradient(#1a140c,#120d07);
+  }
+  .mark{font-family:var(--serif); font-size:1.5rem; line-height:1; letter-spacing:.01em; color:#f2e9d2}
+  .sheet{font-size:.62rem; letter-spacing:.22em; text-transform:uppercase; color:var(--dim)}
+  .sheet .em{color:var(--copper)}
+  .agg{margin-left:auto; display:flex; gap:1.2rem; font-size:.7rem; color:var(--dim)}
+  .agg b{color:var(--ink); font-variant-numeric:tabular-nums}
+  .agg .st{color:var(--warm)}
+  .clock{color:var(--copper)}
+  /* mineral key */
+  .key{display:flex; gap:1.15rem; font-size:.6rem; letter-spacing:.06em; text-transform:uppercase; color:var(--faint);
+    padding:.32rem 1.1rem; border-bottom:1px solid var(--rule); flex-wrap:wrap; align-items:center}
+  .key span{display:inline-flex; align-items:center; gap:.4rem}
+  .key .sw{width:1.1rem; height:0; border-top-width:2px; border-top-style:solid; display:inline-block}
+  .key .dot{width:.5rem; height:.5rem; border-radius:50%; display:inline-block}
+  /* ---- sheet grid ---- */
+  #fleet{
+    flex:1; display:grid; gap:.7rem; padding:.75rem 1.1rem 1rem;
+    grid-template-columns:2fr 1fr; grid-auto-rows:1fr; min-height:0;
+  }
+  .cell{
+    position:relative; border:1px solid var(--rule); overflow:hidden; min-height:0;
+    background:radial-gradient(130% 130% at 50% 0%, #17110a 0%, var(--face) 72%);
+    box-shadow:inset 0 0 0 3px var(--rock), inset 0 0 0 4px rgba(109,85,49,.28); /* double-rule drawing frame */
+  }
+  .cell.hero{grid-row:1 / span 2}
+  /* corner registration ticks */
+  .cell .tick{position:absolute; width:9px; height:9px; border:1px solid var(--rule-hi); z-index:3; opacity:.7}
+  .cell .tick.tl{top:5px;left:5px;border-right:0;border-bottom:0}
+  .cell .tick.tr{top:5px;right:5px;border-left:0;border-bottom:0}
+  .cell .tick.bl{bottom:5px;left:5px;border-right:0;border-top:0}
+  .cell .tick.br{bottom:5px;right:5px;border-left:0;border-top:0}
+  .cell canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+  .cell-hd{position:absolute; top:0; left:0; right:0; z-index:2; display:flex; align-items:baseline; gap:.55rem;
+    padding:.55rem .8rem .4rem; pointer-events:none}
+  .cell-name{font-family:var(--serif); font-size:1.05rem; color:#f2e9d2; letter-spacing:.01em}
+  .cell-kind{font-size:.58rem; text-transform:uppercase; letter-spacing:.16em; color:var(--brass)}
+  .cell-status{margin-left:auto; font-size:.62rem; letter-spacing:.08em; text-transform:uppercase; color:var(--dim)}
+  .cell-tel{position:absolute; bottom:0; left:0; right:0; z-index:2; display:flex; align-items:center; gap:1rem;
+    padding:.4rem .8rem .5rem; font-size:.64rem; color:var(--dim); pointer-events:none;
+    background:linear-gradient(transparent, rgba(13,10,5,.82) 55%)}
+  .cell-tel b{color:var(--ink); font-variant-numeric:tabular-nums}
+  .cell-tel .chip{margin-left:auto; font-size:.58rem; font-weight:700; letter-spacing:.05em;
+    padding:.06rem .42rem; border:1px solid var(--rule-hi); color:var(--brass)}
+  footer{font-size:.58rem; color:var(--faint); letter-spacing:.03em; padding:.4rem 1.1rem .5rem;
+    border-top:1px solid var(--rule); text-align:center}
+  footer b{color:var(--dim)}
+  .live{color:var(--copper)} .live.stale{color:var(--faint)}
+  @media (max-width:760px){
+    body{height:auto; min-height:100dvh; overflow-y:auto}
+    #fleet{grid-template-columns:1fr; grid-auto-rows:minmax(240px,58vh)}
+    .cell.hero{grid-row:auto}
+    .agg{display:none}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark">Winze</div>
+  <div class="sheet">fleet</div>
+  <div class="agg">
+    <span>instances <b id="a-inst">0</b></span>
+    <span>entities <b id="a-ent">0</b></span>
+    <span>claims <b id="a-cl">0</b></span>
+    <span>budget <b id="a-spend">0</b>¢</span>
+    <span class="st" id="a-state">—</span>
+    <span class="clock" id="clock">--:--:--</span>
+    <span>· structure <span class="live" id="live">live</span></span>
+  </div>
+</header>
+<div class="key" id="key"></div>
+<div id="fleet"></div>
+<footer>
+  <b>solid lines</b> are typed claims, <b>dashed</b> are latent [[wikilinks]], <b>purple</b> are conjectures ·
+  glow shows how recently each winze ran
+</footer>
+
+<script>
+const FALLBACK = {"instances":[{"name":"winze","kind":"epistemology","tier":2,"entities":366,"claims":236,"nodes":[{"l":"MichaelDummett","c":5,"d":1},{"l":"BrouwerIntuitionism","c":5,"d":5},{"l":"Russian2020GlancingModelTe","c":2,"d":1},{"l":"HypothesisGlancingIronAste","c":2,"d":2},{"l":"JeanLeFlambeur","c":4,"d":3},{"l":"TheFractalPrince","c":4,"d":6},{"l":"PeterWatts","c":6,"d":2},{"l":"BlindsightNovel","c":6,"d":6},{"l":"DonaldEBrown","c":9,"d":3},{"l":"BrownHumanUniversalsThesis","c":9,"d":3},{"l":"MurtiAdvaitaVsAdvayaTypolo","c":9,"d":2},{"l":"Nondualism","c":7,"d":6},{"l":"Forecasting","c":9,"d":4},{"l":"Prediction","c":9,"d":1},{"l":"MichaelShermer","c":9,"d":3},{"l":"SkepticsSociety","c":9,"d":1},{"l":"Scramblers","c":6,"d":1},{"l":"DanielStoljar","c":0,"d":1},{"l":"ChalmersHardProblemThesis","c":0,"d":23},{"l":"Kulik1927Expedition","c":2,"d":3},{"l":"PodkamennayaTunguska","c":9,"d":5},{"l":"TunguskaEvent","c":2,"d":12},{"l":"Longo","c":2,"d":3},{"l":"DavidLoy","c":7,"d":2},{"l":"PerennialistCommonCoreThes","c":8,"d":3},{"l":"Farinella","c":9,"d":1},{"l":"HypothesisStonyAsteroidAir","c":9,"d":6},{"l":"SurvivorshipBias","c":3,"d":2},{"l":"CognitiveBias","c":3,"d":8},{"l":"NondualAwareness","c":8,"d":4},{"l":"DavidChalmers","c":0,"d":3},{"l":"HardProblemOfConsciousness","c":0,"d":1},{"l":"ShermerPatternicityFraming","c":9,"d":2},{"l":"Apophenia","c":9,"d":6},{"l":"Advaita","c":9,"d":5},{"l":"AdvaitaHackerVolkerNoSecon","c":9,"d":1},{"l":"JohnSearle","c":9,"d":3},{"l":"MindsBrainsAndPrograms1980","c":9,"d":1},{"l":"BaloneyDetectionKit","c":6,"d":2},{"l":"DemonHauntedWorld","c":9,"d":3},{"l":"BaseRateNeglect","c":3,"d":1},{"l":"PatriciaChurchland","c":0,"d":1},{"l":"JosephLevine","c":0,"d":1},{"l":"LoyFiveFlavorsTypology","c":7,"d":4},{"l":"FiniteOntologyIncompletene","c":7,"d":3},{"l":"AnnDruyan","c":9,"d":1},{"l":"LanguageUniversal","c":9,"d":1},{"l":"HumanUniversals","c":9,"d":7},{"l":"HypothesisLakeChekoIsCrate","c":2,"d":3},{"l":"HierarchicalPredictionMach","c":1,"d":2},{"l":"PredictiveProcessing","c":1,"d":1},{"l":"GreatWallNotUniquelyVisibl","c":9,"d":1},{"l":"ArtificialStructureSpaceVi","c":9,"d":1},{"l":"GWTDissociatesIITHypothesi","c":9,"d":1},{"l":"Consciousness","c":9,"d":7},{"l":"LakeCheko","c":9,"d":3},{"l":"LakeChekoFormedRussian2017","c":9,"d":1},{"l":"PinkerHumanNatureThesis","c":9,"d":2},{"l":"HumanCognition","c":9,"d":6},{"l":"RorschachAlien","c":6,"d":1},{"l":"FearOfDeath","c":9,"d":1},{"l":"QuantitativeForecasting","c":9,"d":2},{"l":"GerdGigerenzer","c":3,"d":1},{"l":"GigerenzerRationalDeviatio","c":3,"d":2},{"l":"FabianVolker","c":7,"d":2},{"l":"VolkerThreeTypesTypology","c":7,"d":2},{"l":"WalterTerenceStace","c":8,"d":1},{"l":"ConstructionistThesis","c":8,"d":4},{"l":"EmbodiedMindThesis","c":9,"d":2},{"l":"AvailabilityHeuristic","c":8,"d":2},{"l":"UDHRAsTheoryOfHumanRights","c":9,"d":2},{"l":"HumanRights","c":9,"d":1},{"l":"IntegratedInformationTheor","c":9,"d":1},{"l":"HypothesisCometEnckeFragme","c":2,"d":2},{"l":"Mythology","c":9,"d":1},{"l":"FramingEffect","c":3,"d":1},{"l":"TetlockCalibrationFraming","c":9,"d":2},{"l":"EstimationBiases","c":3,"d":5},{"l":"JukkaSarasti","c":6,"d":1},{"l":"ClusteringIllusion","c":9,"d":1},{"l":"KlausConrad","c":9,"d":1},{"l":"ConradApopheniaClinicalFra","c":9,"d":2},{"l":"TheCausalAngel","c":4,"d":6},{"l":"JeanLeFlambeurSeries","c":4,"d":3},{"l":"RCZaehner","c":8,"d":1},{"l":"StevenPinker","c":9,"d":4},{"l":"BlankSlate2002","c":9,"d":1},{"l":"TunguskaEnergyBenMenahem19","c":2,"d":1},{"l":"Perhonen","c":4,"d":2},{"l":"HansaMehta","c":9,"d":1},{"l":"UNCommissionOnHumanRights","c":9,"d":7},{"l":"ChristopherHill","c":0,"d":1},{"l":"VladimirABronshten","c":9,"d":1},{"l":"GiulioTononi","c":0,"d":1},{"l":"MagicalThinking","c":3,"d":1},{"l":"SuperiorPatternProcessing","c":3,"d":2},{"l":"AdvaitaAsMonismTranslation","c":9,"d":3},{"l":"StevenKatz","c":8,"d":2},{"l":"MassimoPigliucci","c":0,"d":1},{"l":"KrasnoyarskKrai","c":9,"d":2},{"l":"Chyba","c":9,"d":1},{"l":"KurtGodel","c":9,"d":3},{"l":"GodelFirstIncompletenessTh","c":5,"d":2},{"l":"DavidHilbert","c":5,"d":1},{"l":"HilbertsProgram","c":5,"d":2},{"l":"PaulChurchland","c":0,"d":1},{"l":"CarlSagan","c":9,"d":3},{"l":"DragonInGarageArgument","c":9,"d":2},{"l":"UNGeneralAssembly","c":9,"d":4},{"l":"UDHRArticle18","c":9,"d":1},{"l":"FlavioDelSanto","c":5,"d":1},{"l":"Mieli","c":4,"d":4},{"l":"DimaraTaskBasedClassificat","c":3,"d":2},{"l":"WattsConsciousnessAsDeadEn","c":6,"d":2},{"l":"NicolasGisin","c":5,"d":1},{"l":"Sekanina","c":9,"d":2},{"l":"HypothesisCometaryAirburst","c":9,"d":6},{"l":"ConfirmationBias","c":3,"d":1},{"l":"SovietAcademyOfSciences","c":2,"d":1},{"l":"TheQuantumThief","c":4,"d":7},{"l":"ErrorManagementTheoryOfApo","c":9,"d":2},{"l":"KahnemanDualProcessFraming","c":3,"d":2},{"l":"Sobornost","c":4,"d":3},{"l":"ColinMcGinn","c":0,"d":1},{"l":"UDHR1948","c":9,"d":1},{"l":"ChristofKoch","c":0,"d":1},{"l":"FormanPCEThesis","c":8,"d":2},{"l":"Russian2017LakeChekoTeam","c":2,"d":1},{"l":"VarelaThompsonRosch","c":9,"d":1},{"l":"HannuRajaniemi","c":4,"d":5},{"l":"Advaya","c":7,"d":1},{"l":"MattsonSchizophreniaSPPDys","c":1,"d":2},{"l":"Schizophrenia","c":1,"d":3},{"l":"AndyClark","c":1,"d":3},{"l":"ClarkWhateverNextPaper","c":1,"d":3},{"l":"MaxMuller","c":9,"d":1},{"l":"MusicUniversal","c":9,"d":1},{"l":"AmyKind","c":0,"d":1},{"l":"Kresak","c":2,"d":1},{"l":"EleanorRoosevelt","c":9,"d":1},{"l":"ReificationFeedbackLoop","c":1,"d":2},{"l":"HotHandFallacy","c":3,"d":1},{"l":"SeasonsCausedByAxialTilt","c":9,"d":1},{"l":"EarthSeasons","c":9,"d":2},{"l":"GlobalWorkspaceTheory","c":9,"d":1},{"l":"IITIntractabilityHypothesi","c":9,"d":1},{"l":"FreeEnergyPrinciple","c":9,"d":1},{"l":"LakeChekoFormedBologna2007","c":9,"d":1},{"l":"BoundedFinitude","c":7,"d":1},{"l":"GodelSecondIncompletenessT","c":9,"d":1},{"l":"Exomemory","c":6,"d":3},{"l":"NedBlock","c":0,"d":1},{"l":"MauriceLeblanc","c":4,"d":1},{"l":"HaseltonBuss","c":9,"d":1},{"l":"Oubliette","c":4,"d":1},{"l":"EastSiberianTaiga","c":9,"d":1},{"l":"UDHRArticle1","c":9,"d":1},{"l":"JohnHumphrey","c":9,"d":1},{"l":"Falsifiability","c":9,"d":1},{"l":"DanielKahneman","c":3,"d":1},{"l":"Kulik","c":2,"d":3},{"l":"MathematicalFoundations","c":5,"d":4},{"l":"GalenStrawson","c":0,"d":1},{"l":"ThomasWhite","c":1,"d":2},{"l":"WhiteShergillUsingIllusion","c":1,"d":3},{"l":"SukhiShergill","c":1,"d":1},{"l":"UniversityOfBologna","c":2,"d":2},{"l":"NigelJTThomas","c":0,"d":1},{"l":"MarkMattson","c":1,"d":3},{"l":"AdvaitaStandardNondualism","c":9,"d":1},{"l":"Kundt","c":2,"d":1},{"l":"HypothesisNaturalGasReleas","c":2,"d":2},{"l":"ReneCassin","c":9,"d":1},{"l":"DavidLewis","c":0,"d":1},{"l":"SearleBiologicalNaturalism","c":9,"d":2},{"l":"WhiteShergillReducedTopDow","c":1,"d":2},{"l":"OnFormallyUndecidablePropo","c":9,"d":1},{"l":"BaloneyDetectionKitThesis","c":9,"d":2},{"l":"DunningKrugerEffect","c":9,"d":2},{"l":"AtmosphericEntryHeatFromAd","c":1,"d":2},{"l":"AtmosphericEntryHeating","c":1,"d":1},{"l":"DouglasHofstadter","c":0,"d":1},{"l":"ThomasNagel","c":0,"d":1},{"l":"ReificationRisk","c":1,"d":3},{"l":"Vanavara","c":9,"d":1},{"l":"SmithsonianAstrophysicalOb","c":9,"d":1},{"l":"WhyPeopleBelieveWeirdThing","c":9,"d":1},{"l":"MattsonSPPThesis","c":1,"d":2},{"l":"PhilipTetlock","c":9,"d":1},{"l":"ReificationRiskHypothesis","c":1,"d":1},{"l":"BernardBaars","c":0,"d":1},{"l":"AdvaitaMullerMonism","c":9,"d":1},{"l":"UnnamedTheorists","c":9,"d":1},{"l":"RobertKirk","c":0,"d":1},{"l":"DimaraEtAl2020","c":3,"d":1},{"l":"FEPSubsumesPPHypothesis","c":9,"d":1},{"l":"SiriKeeton","c":6,"d":1},{"l":"SelfAuditEffectivenessHypo","c":9,"d":1},{"l":"SelfAuditEpiphenomenalism","c":9,"d":1},{"l":"TunguskaEnergyBoslough2007","c":2,"d":1},{"l":"Whipple","c":9,"d":1},{"l":"Murti","c":9,"d":1},{"l":"QualitativeForecasting","c":9,"d":1},{"l":"UDHRArticle3","c":9,"d":1},{"l":"ChineseRoomArgument","c":9,"d":1},{"l":"AlanWatts","c":9,"d":1},{"l":"ToolMaking","c":9,"d":1},{"l":"Pareidolia","c":9,"d":1},{"l":"ConsciousnessAsOverheadHyp","c":9,"d":1},{"l":"Echopraxia","c":9,"d":1},{"l":"AnchoringBias","c":3,"d":1},{"l":"DopamineHypothesisOfSchizo","c":1,"d":1},{"l":"PengChunChang","c":9,"d":1},{"l":"BrownHumanUniversalsBook19","c":9,"d":1},{"l":"AnilSeth","c":0,"d":1},{"l":"MarriageUniversal","c":9,"d":1},{"l":"FranciscoVarela","c":0,"d":1},{"l":"KeithCampbell","c":0,"d":1},{"l":"SubstrateIndependenceHypot","c":9,"d":1},{"l":"PermutationCityConcept","c":9,"d":1},{"l":"RobertForman","c":8,"d":1},{"l":"Mattson2014SPPPaper","c":1,"d":1},{"l":"FiniteOntologyHypothesis","c":7,"d":1},{"l":"LEJBrouwer","c":5,"d":1},{"l":"ScientificSkepticism","c":9,"d":1},{"l":"CharlesMalik","c":9,"d":1},{"l":"DanielDennett","c":0,"d":1},{"l":"TunguskaEnergyKulikEra","c":2,"d":1}],"edges":[[0,1],[2,3],[4,5],[6,7],[8,9],[10,11],[12,13],[14,15],[16,7],[17,18],[19,20],[21,22],[23,24],[25,26],[27,28],[24,29],[30,31],[32,33],[34,35],[36,37],[38,39],[40,28],[41,18],[42,18],[43,44],[45,39],[46,47],[48,21],[49,50],[9,47],[51,52],[53,54],[55,56],[57,58],[59,7],[60,47],[61,12],[62,63],[64,65],[66,67],[68,58],[23,43],[67,29],[69,29],[70,71],[72,54],[73,21],[74,47],[75,28],[76,12],[77,28],[78,7],[79,33],[80,81],[82,83],[84,67],[85,86],[21,87],[88,82],[89,90],[91,18],[92,26],[93,18],[94,95],[96,34],[97,24],[98,18],[20,99],[100,26],[4,82],[101,102],[103,104],[105,18],[106,107],[108,109],[110,1],[55,20],[111,33],[85,9],[112,28],[111,5],[88,5],[113,54],[114,1],[115,116],[117,28],[19,118],[119,83],[120,33],[121,28],[22,116],[122,119],[123,18],[90,124],[64,43],[18,54],[125,18],[126,29],[127,48],[85,8],[128,68],[129,119],[4,119],[11,130],[131,132],[133,134],[135,96],[136,47],[129,133],[137,18],[63,28],[111,82],[138,73],[139,90],[85,57],[140,134],[141,77],[142,143],[144,54],[145,54],[146,58],[55,147],[129,5],[148,44],[101,149],[150,7],[27,95],[151,18],[129,152],[153,120],[154,119],[133,49],[5,83],[155,99],[108,156],[157,90],[107,158],[159,121],[160,19],[102,161],[162,18],[104,161],[163,164],[165,164],[22,166],[161,11],[167,18],[168,131],[122,5],[34,169],[170,171],[166,48],[172,90],[173,18],[36,174],[163,175],[111,119],[101,176],[106,177],[30,18],[178,61],[179,180],[181,30],[182,18],[179,183],[1,161],[184,20],[185,116],[175,132],[14,186],[3,21],[168,187],[188,76],[189,183],[129,82],[97,67],[190,18],[34,191],[192,116],[43,11],[187,58],[193,18],[194,112],[174,54],[195,58],[196,7],[197,198],[21,199],[200,116],[26,21],[6,113],[81,33],[58,143],[201,10],[202,12],[108,203],[36,204],[150,119],[205,96],[21,160],[178,77],[106,39],[206,47],[21,20],[171,21],[207,33],[208,209],[210,77],[211,132],[69,77],[160,26],[122,82],[212,90],[65,11],[8,213],[214,18],[115,26],[14,32],[215,47],[216,18],[217,18],[108,70],[218,219],[220,126],[168,221],[222,44],[223,1],[177,224],[11,34],[140,183],[225,90],[150,38],[164,134],[116,21],[226,18],[21,227]],"efam":[3,2,5,5,2,1,4,6,5,2,0,0,2,2,4,1,5,1,0,5,4,4,3,2,1,5,4,1,1,1,1,1,0,1,5,4,4,2,2,3,1,2,1,5,1,4,1,4,4,1,4,5,4,2,4,3,5,0,5,6,3,2,2,4,1,3,3,0,2,5,2,2,3,2,2,2,0,5,2,1,5,5,1,2,3,4,0,4,1,1,3,5,2,5,3,1,2,1,3,6,2,5,5,4,1,5,2,4,6,2,1,5,2,6,2,5,4,1,4,1,4,0,5,1,2,5,5,2,6,2,5,2,4,0,2,6,1,2,0,1,3,1,5,5,6,5,3,2,5,0,2,2,6,2,2,2,5,5,2,2,5,1,6,1,1,1,0,2,1,5,1,2,2,1,5,2,3,0,2,1,1,1,2,1,1,5,1,0,2,1,2,1,5,2,4,2,5,5,3,0,4,5,4,0,1,4,1,4,1,4,2,5,6,1,5,3,2,2,4,2,1,2,1,2,5,1,2,1,4,4,6,5,5,1,3,0],"trips":[[174,121,4],[57,63,4],[107,104,4],[104,131,4],[104,177,4],[121,187,4],[36,101,4],[121,175,4],[81,121,4],[32,63,4]]},{"name":"winze-memory","kind":"memory","tier":1,"entities":43,"claims":0,"nodes":[{"c":1,"d":0},{"c":2,"d":0},{"c":3,"d":0},{"c":1,"d":0},{"c":4,"d":0},{"c":1,"d":0},{"c":2,"d":0},{"c":2,"d":0},{"c":4,"d":0},{"c":1,"d":0},{"c":1,"d":0},{"c":1,"d":0},{"c":2,"d":0},{"c":4,"d":0},{"c":4,"d":0},{"c":2,"d":0},{"c":1,"d":0},{"c":1,"d":0},{"c":2,"d":0},{"c":1,"d":0},{"c":2,"d":0},{"c":0,"d":0},{"c":1,"d":0},{"c":0,"d":0},{"c":1,"d":0},{"c":3,"d":0},{"c":1,"d":0},{"c":1,"d":0},{"c":2,"d":0},{"c":2,"d":0},{"c":3,"d":0},{"c":2,"d":0},{"c":1,"d":0},{"c":0,"d":0},{"c":0,"d":0},{"c":2,"d":0},{"c":1,"d":0},{"c":3,"d":0},{"c":3,"d":0},{"c":0,"d":0},{"c":0,"d":0},{"c":3,"d":0},{"c":3,"d":0}],"edges":[],"trips":[]},{"name":"winze-defn","kind":"memory","tier":3,"entities":64,"claims":0,"nodes":[{"c":5,"d":0},{"c":1,"d":0},{"c":4,"d":0},{"c":5,"d":0},{"c":2,"d":0},{"c":3,"d":0},{"c":0,"d":0},{"c":1,"d":0},{"c":2,"d":0},{"c":4,"d":0},{"c":5,"d":0},{"c":3,"d":0},{"c":0,"d":0},{"c":5,"d":0},{"c":1,"d":0},{"c":3,"d":0},{"c":5,"d":0},{"c":4,"d":0},{"c":4,"d":0},{"c":5,"d":0},{"c":5,"d":0},{"c":3,"d":0},{"c":1,"d":0},{"c":5,"d":0},{"c":5,"d":0},{"c":5,"d":0},{"c":5,"d":0},{"c":5,"d":0},{"c":4,"d":0},{"c":1,"d":0},{"c":5,"d":0},{"c":1,"d":0},{"c":5,"d":0},{"c":0,"d":0},{"c":3,"d":0},{"c":3,"d":0},{"c":2,"d":0},{"c":2,"d":0},{"c":5,"d":0},{"c":5,"d":0},{"c":0,"d":0},{"c":3,"d":0},{"c":1,"d":0},{"c":3,"d":0},{"c":5,"d":0},{"c":5,"d":0},{"c":5,"d":0},{"c":1,"d":0},{"c":2,"d":0},{"c":3,"d":0},{"c":3,"d":0},{"c":3,"d":0},{"c":0,"d":0},{"c":4,"d":0},{"c":3,"d":0},{"c":4,"d":0},{"c":5,"d":0},{"c":5,"d":0},{"c":1,"d":0},{"c":5,"d":0},{"c":2,"d":0},{"c":0,"d":0},{"c":3,"d":0},{"c":3,"d":0}],"edges":[],"trips":[]}]};
+let FLEET = FALLBACK;
+
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+function getVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+// mineral specimens by community — earthy assay tones, USGS-adjacent, never neon
+const MINERAL = ['#4f9e6b','#3f6ea5','#c0503a','#c39a3e','#8a63a8','#3f9e93','#b8863f','#8a94a0','#b5533a','#9c7bc2'];
+
+document.getElementById('key').innerHTML =
+  `<span><i class="sw" style="border-top-color:${getVar('--brass')}"></i>typed claim</span>`+
+  `<span><i class="sw" style="border-top-color:${getVar('--copper')};border-top-style:dashed"></i>latent link</span>`+
+  `<span><i class="sw" style="border-top-color:${getVar('--hematite')}"></i>dispute</span>`+
+  `<span><i class="sw" style="border-top-color:${getVar('--amethyst')};border-top-style:dashed"></i>conjecture</span>`+
+  `<span><i class="dot" style="background:${getVar('--warm')}"></i>active recently</span>`+
+  `<span><i class="dot" style="background:${getVar('--cold')}"></i>idle</span>`;
+
+// ---- layout: settle once, then only decoration + real signals animate ----
+function settle(nodes, edges){
+  const n=nodes.length;
+  const P=nodes.map((_,i)=>({x:Math.cos(i*2.399)*0.4+0.5+Math.random()*.02, y:Math.sin(i*2.399)*0.4+0.5+Math.random()*.02, vx:0,vy:0}));
+  const it=n>150?260:180;
+  for(let s=0;s<it;s++){
+    const k=0.0009, rep=0.00028;
+    for(let i=0;i<n;i++){ let fx=0,fy=0;
+      for(let j=0;j<n;j++){ if(i===j)continue; let dx=P[i].x-P[j].x, dy=P[i].y-P[j].y, d2=dx*dx+dy*dy+1e-4; const f=rep/d2; fx+=dx*f; fy+=dy*f; }
+      fx+=(0.5-P[i].x)*0.004; fy+=(0.5-P[i].y)*0.004;
+      P[i].vx=(P[i].vx+fx)*0.86; P[i].vy=(P[i].vy+fy)*0.86;
+    }
+    for(const [a,b] of edges){ let dx=P[b].x-P[a].x, dy=P[b].y-P[a].y; P[a].vx+=dx*k; P[a].vy+=dy*k; P[b].vx-=dx*k; P[b].vy-=dy*k; }
+    for(const p of P){ p.x+=p.vx; p.y+=p.vy; }
+  }
+  const xs=P.map(p=>p.x), ys=P.map(p=>p.y);
+  const nx=Math.min(...xs),Xx=Math.max(...xs),ny=Math.min(...ys),Xy=Math.max(...ys);
+  for(const p of P){ p.x=0.07+0.86*(p.x-nx)/(Xx-nx||1); p.y=0.11+0.80*(p.y-ny)/(Xy-ny||1); }
+  return P;
+}
+function scatter(nodes){ return nodes.map((_,i)=>{ const a=i*2.399, r=0.08+0.4*Math.sqrt((i+1)/nodes.length); return {x:0.5+Math.cos(a)*r, y:0.52+Math.sin(a)*r}; }); }
+
+// ---- real recency signal ----
+function warmth(inst){ // 1 = freshly metabolized, → 0.18 as it goes cold; memory stores read dormant
+  if(!inst.last_activity) return 0.24;
+  const ageH=(Date.now()/1000 - inst.last_activity)/3600;
+  return Math.max(0.18, Math.min(1, 1 - ageH/48));
+}
+function agoText(unix){ if(!unix) return null; const s=Date.now()/1000-unix;
+  if(s<3600) return Math.round(s/60)+'m ago'; if(s<86400) return Math.round(s/3600)+'h ago'; return Math.round(s/86400)+'d ago'; }
+function statusText(inst){
+  if(inst.kind==='memory') return 'memory store';
+  const a=agoText(inst.last_activity);
+  return a ? 'last cycle '+a : 'never run';
+}
+
+// ---- cells ----
+const fleetEl = document.getElementById('fleet');
+let cells = [];
+function buildCells(){
+  fleetEl.innerHTML='';
+  cells = FLEET.instances.map((inst, idx)=>{
+    const fig=document.createElement('figure');
+    fig.className='cell'+(idx===0?' hero':'');
+    fig.innerHTML=`<canvas role="img" aria-label="${inst.name}: ${inst.entities} entities, ${inst.claims} claims, ${inst.kind}"></canvas>
+      <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
+      <figcaption class="cell-hd"><span class="cell-name">${inst.name}</span><span class="cell-kind">${inst.kind}</span><span class="cell-status">${statusText(inst)}</span></figcaption>
+      <div class="cell-tel"><span><b>${inst.entities}</b> entities</span><span><b>${inst.claims}</b> claims</span>
+      <span>budget <b>${inst.spent||0}</b>/<b>${inst.cap||300}</b>¢</span><span class="chip">tier ${inst.tier}</span></div>`;
+    fleetEl.appendChild(fig);
+    const cv=fig.querySelector('canvas'), ctx=cv.getContext('2d');
+    const hasEdges = inst.edges && inst.edges.length;
+    const pos = hasEdges ? settle(inst.nodes, inst.edges) : scatter(inst.nodes);
+    return {inst,fig,cv,ctx,pos,statusEl:fig.querySelector('.cell-status'),offset:Math.random()*10};
+  });
+  recomputeAgg();
+  fitAll();
+  if(reduce) drawStatic();
+}
+function recomputeAgg(){
+  const sum=k=>FLEET.instances.reduce((s,i)=>s+(i[k]||0),0);
+  document.getElementById('a-inst').textContent=FLEET.instances.length;
+  document.getElementById('a-ent').textContent=sum('entities');
+  document.getElementById('a-cl').textContent=sum('claims');
+  document.getElementById('a-spend').textContent=sum('spent');
+  // honest fleet state: newest last_activity across workings
+  const newest=Math.max(0,...FLEET.instances.map(i=>i.last_activity||0));
+  const a=agoText(newest);
+  document.getElementById('a-state').textContent = a ? 'last cycle '+a : 'idle';
+}
+
+// ---- resize ----
+function fitCanvas(cell){ const r=cell.cv.getBoundingClientRect(); cell.cv.width=Math.max(1,r.width*DPR); cell.cv.height=Math.max(1,r.height*DPR); cell.w=r.width; cell.h=r.height; }
+function fitAll(){ cells.forEach(fitCanvas); }
+addEventListener('resize', fitAll);
+
+function withAlpha(hex,a){ const n=parseInt(hex.slice(1),16); return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`; }
+
+function drawCell(cell, time){
+  const {ctx,inst,pos}=cell; const W=cell.w*DPR, H=cell.h*DPR;
+  ctx.clearRect(0,0,W,H);
+  const w=warmth(inst);                          // REAL recency, 0.18..1
+  const br=reduce?1:1+0.010*Math.sin(time*0.6+cell.offset);
+  const X=p=>(0.5+(p.x-0.5)*br)*W, Y=p=>(0.5+(p.y-0.5)*br)*H;
+
+  // veins (typed claim edges) + latent seams (wikilinks) + faults (disputes)
+  if(inst.edges) for(let e=0;e<inst.edges.length;e++){
+    const [a,b]=inst.edges[e]; const fam=inst.efam?inst.efam[e]:0;
+    if(fam===3){ ctx.setLineDash([]); ctx.strokeStyle=withAlpha(getVar('--hematite'), (0.22+0.16*(0.5+0.5*Math.sin(time*2.2+e)))*(0.5+0.5*w)); ctx.lineWidth=1.1*DPR; }
+    else if(fam===7){ ctx.setLineDash([2.5*DPR,4*DPR]); ctx.strokeStyle=withAlpha(getVar('--copper'), 0.16*(0.5+0.5*w)); ctx.lineWidth=0.7*DPR; }
+    else { ctx.setLineDash([]); ctx.strokeStyle=withAlpha(getVar('--brass'), 0.15*(0.5+0.5*w)); ctx.lineWidth=0.7*DPR; }
+    ctx.beginPath(); ctx.moveTo(X(pos[a]),Y(pos[a])); ctx.lineTo(X(pos[b]),Y(pos[b])); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // prospects — REAL trip conjectures, shown continuously as faint pulsing prospect veins
+  if(inst.trips) for(let t=0;t<inst.trips.length;t++){
+    const [a,b,sc]=inst.trips[t]; if(a>=pos.length||b>=pos.length) continue;
+    const pulse=0.18+0.22*(0.5+0.5*Math.sin(time*1.1+t*1.3));
+    const ax=X(pos[a]),ay=Y(pos[a]),bx=X(pos[b]),by=Y(pos[b]);
+    const mx=(ax+bx)/2+(ay-by)*0.22, my=(ay+by)/2+(bx-ax)*0.22;
+    ctx.setLineDash([2*DPR,5*DPR]); ctx.strokeStyle=withAlpha(getVar('--amethyst'), pulse*(sc>=4?1:0.7));
+    ctx.lineWidth=1.1*DPR; ctx.beginPath(); ctx.moveTo(ax,ay); ctx.quadraticCurveTo(mx,my,bx,by); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // specimens (nodes) — mineral by community, size by degree, brightness by REAL recency
+  for(let i=0;i<pos.length;i++){
+    const nd=inst.nodes[i]; const col=MINERAL[nd.c%MINERAL.length]; const deg=nd.d||0;
+    const rad=(1.5+Math.min(deg,24)*0.16)*DPR; const x=X(pos[i]),y=Y(pos[i]);
+    const shimmer=reduce?0.8:0.62+0.38*Math.sin(time*1.0+i*0.6);
+    const thin=deg<=1?0.5:1;
+    const lum=(0.35+0.65*w)*thin;                // recency drives luminance
+    const g=ctx.createRadialGradient(x,y,0,x,y,rad*3.2);
+    g.addColorStop(0,withAlpha(col, 0.5*lum*shimmer)); g.addColorStop(1,withAlpha(col,0));
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,rad*3.2,0,7); ctx.fill();
+    ctx.fillStyle=withAlpha(col, 0.85*lum); ctx.beginPath(); ctx.arc(x,y,rad,0,7); ctx.fill();
+  }
+
+  // recency temperature wash: warm lamplight when freshly worked, cold when dormant
+  const temp = w>0.5 ? getVar('--warm') : getVar('--cold');
+  const vg=ctx.createRadialGradient(W*0.5,H*0.5,0,W*0.5,H*0.5,Math.max(W,H)*0.75);
+  vg.addColorStop(0,withAlpha(temp, 0.018+0.03*Math.abs(w-0.5))); vg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+
+  if(cell.statusEl) cell.statusEl.textContent=statusText(inst); // recency text stays current
+}
+function drawStatic(){ for(const c of cells) drawCell(c,2); }
+
+// ---- clock + live loader ----
+const clockEl=document.getElementById('clock'), liveEl=document.getElementById('live');
+function updateClock(){ const d=new Date(); clockEl.textContent=[d.getHours(),d.getMinutes(),d.getSeconds()].map(x=>String(x).padStart(2,'0')).join(':'); }
+function sig(f){ return f.instances.map(i=>`${i.name}:${i.entities}:${i.claims}:${(i.edges||[]).length}`).join('|'); }
+async function refresh(){
+  try{ const r=await fetch('/api/fleet.json',{cache:'no-store'}); if(!r.ok) throw 0;
+    const data=await r.json(); if(data.instances && data.instances.length){
+      if(sig(data)!==sig(FLEET)){ FLEET=data; buildCells(); } else { FLEET=data; recomputeAgg(); }
+      liveEl.textContent='live'; liveEl.classList.remove('stale'); }
+  }catch(e){ liveEl.textContent='snapshot'; liveEl.classList.add('stale'); }
+}
+
+buildCells();
+refresh();
+setInterval(refresh, 20000);
+setInterval(updateClock, 1000); updateClock();
+
+let t0=null, lastDraw=0;
+function frame(ts){
+  requestAnimationFrame(frame);
+  if(ts-lastDraw < 33) return;   // ~30fps for an always-on sheet
+  lastDraw=ts;
+  if(t0===null)t0=ts; const time=(ts-t0)/1000;
+  for(const c of cells) drawCell(c,time);
+}
+if(reduce) drawStatic(); else requestAnimationFrame(frame);
+</script>
+</body>
+</html>
