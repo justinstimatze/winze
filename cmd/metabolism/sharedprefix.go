@@ -135,6 +135,7 @@ func extractRoleGlosses() string {
 		"- Facility: a built installation that runs, operates, or causes events.",
 		"- Instrument: a tool or apparatus operated by a person or organization.",
 		"- Substance: a material that can be released, shipped, or contaminate a place.",
+		"- LearningGoal: a self-directed curiosity target the corpus is pursuing — a chosen topic to acquire, advanced by the Concepts ingested toward it (AdvancesGoal). Not a knowledge claim; the corpus's own intention.",
 	}, "\n")
 }
 
