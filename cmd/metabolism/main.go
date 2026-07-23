@@ -1309,7 +1309,6 @@ State your final classification: irrelevant, corroborated, or challenged.`,
 		return "", err
 	}
 	recordActualUsage(string(anthropic.ModelClaudeSonnet4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
-	debugCacheUsage("resolve", resp.Usage)
 
 	raw := ""
 	for _, block := range resp.Content {

@@ -1495,7 +1495,6 @@ func generateGroupConnection(client anthropic.Client, sharedPrefix string, group
 		return TripConnection{}, fmt.Errorf("API error: %w", err)
 	}
 	recordActualUsage(string(anthropic.ModelClaudeSonnet4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
-	debugCacheUsage("group-trip", resp.Usage)
 
 	var narrative string
 	for _, block := range resp.Content {
