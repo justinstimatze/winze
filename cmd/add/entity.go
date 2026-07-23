@@ -44,9 +44,14 @@ func runEntity(o entityOpts) int {
 			used[c.VarName] = true
 		}
 	}
-	name := sanitizeIdent(o.name)
+	var name, display string
+	if strings.TrimSpace(o.name) != "" {
+		name, display = explicitName(o.name)
+	} else {
+		name, display = deriveNames(o.brief)
+	}
 	if name == "" {
-		name = nameFromBrief(o.brief)
+		name, display = deriveNames(o.brief)
 	}
 	name = uniqueName(name, proposal{}, used)
 
@@ -60,7 +65,7 @@ func runEntity(o entityOpts) int {
 			aliases = append(aliases, a)
 		}
 	}
-	decl := renderEntity(o.role, name, kind, o.brief, aliases)
+	decl := renderEntity(o.role, name, display, kind, o.brief, aliases)
 
 	if o.dryRun {
 		fmt.Printf("--- would append to %s ---\n%s\n", o.target, decl)
@@ -75,12 +80,12 @@ func runEntity(o entityOpts) int {
 }
 
 // renderEntity emits `var Name = Role{&Entity{...}}`, the role-wrapper form the
-// corpus uses. Name (display) is derived from the var name; ID is a slug.
-func renderEntity(role, varName, kind, brief string, aliases []string) string {
+// corpus uses. display is the human-facing Name; ID is a slug of the var name.
+func renderEntity(role, varName, display, kind, brief string, aliases []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\nvar %s = %s{&Entity{\n", varName, role)
 	fmt.Fprintf(&b, "\tID:    %q,\n", kind+"-"+slug(varName))
-	fmt.Fprintf(&b, "\tName:  %q,\n", humanize(varName))
+	fmt.Fprintf(&b, "\tName:  %q,\n", display)
 	fmt.Fprintf(&b, "\tKind:  %q,\n", kind)
 	if len(aliases) > 0 {
 		quoted := make([]string, len(aliases))
@@ -94,30 +99,94 @@ func renderEntity(role, varName, kind, brief string, aliases []string) string {
 	return b.String()
 }
 
-// nameFromBrief builds a CamelCase Go identifier from the first few significant
-// words of the brief, falling back to a timestamp when nothing usable survives.
-func nameFromBrief(brief string) string {
-	var parts []string
-	for _, w := range strings.Fields(brief) {
-		clean := strings.Map(func(r rune) rune {
-			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-				return r
-			}
-			return -1
-		}, w)
-		if len(clean) < 3 {
-			continue // skip short filler words
+// explicitName handles a user-supplied --name that may be either a Go
+// identifier ("RecallHookGate") or a free-text title ("recall hook gate").
+// A multi-word title is CamelCased for the varName but kept verbatim for the
+// display Name — the words were chosen deliberately, so no stopword pruning.
+func explicitName(raw string) (varName, display string) {
+	raw = strings.TrimSpace(raw)
+	if !strings.ContainsAny(raw, " \t-") {
+		id := sanitizeIdent(raw)
+		return id, humanize(id)
+	}
+	var camel []string
+	for _, w := range strings.Fields(raw) {
+		if clean := lettersDigits(w); clean != "" {
+			camel = append(camel, strings.ToUpper(clean[:1])+clean[1:])
 		}
-		parts = append(parts, strings.ToUpper(clean[:1])+clean[1:])
-		if len(parts) >= 5 {
+	}
+	return sanitizeIdent(strings.Join(camel, "")), capitalizeFirst(raw)
+}
+
+// deriveNames turns a free-text brief into a Go identifier (varName) and a
+// human-facing display Name. A brief is usually a full sentence, not a title,
+// so the naive "first N words" gives clumsy results ("The ... Winzemem"):
+// leading stopwords survive, and the window runs past the natural title into
+// a mid-phrase fragment. Instead: take the leading title segment (up to the
+// first colon/dash/paren/sentence break), drop stopwords, keep the first few
+// content words. varName CamelCases them; display keeps the original words so
+// "winze-memory agentic interface" stays readable. Falls back to a timestamp
+// note when nothing usable survives. An explicit --name bypasses all of this.
+func deriveNames(brief string) (varName, display string) {
+	seg := titleSegment(brief)
+	var camel, words []string
+	for _, w := range strings.Fields(seg) {
+		clean := lettersDigits(w)
+		if len(clean) < 3 || isStopword(strings.ToLower(clean)) {
+			continue // skip filler and function words
+		}
+		camel = append(camel, strings.ToUpper(clean[:1])+clean[1:])
+		words = append(words, strings.Trim(w, `.,;:—-()"'`))
+		if len(camel) >= 4 {
 			break
 		}
 	}
-	name := sanitizeIdent(strings.Join(parts, ""))
-	if name == "" {
-		return "Note" + time.Now().UTC().Format("20060102150405")
+	varName = sanitizeIdent(strings.Join(camel, ""))
+	if varName == "" {
+		ts := "Note" + time.Now().UTC().Format("20060102150405")
+		return ts, "Note " + time.Now().UTC().Format("2006-01-02")
 	}
-	return name
+	return varName, capitalizeFirst(strings.Join(words, " "))
+}
+
+// titleSegment returns the leading clause of a brief — the part before the
+// first strong boundary (colon, sentence break, dash clause, or parenthetical).
+// That clause is where a title-like phrase lives; the rest is elaboration.
+func titleSegment(brief string) string {
+	best := len(brief)
+	for _, bnd := range []string{": ", ":", ". ", "; ", " — ", " - ", " ("} {
+		if i := strings.Index(brief, bnd); i >= 0 && i < best {
+			best = i
+		}
+	}
+	return strings.TrimSpace(brief[:best])
+}
+
+func lettersDigits(w string) string {
+	return strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return -1
+	}, w)
+}
+
+// stopwords are function words that make poor identifier/title leads.
+var stopwords = map[string]bool{
+	"the": true, "a": true, "an": true, "and": true, "or": true, "but": true,
+	"of": true, "to": true, "in": true, "on": true, "at": true, "for": true,
+	"is": true, "are": true, "was": true, "were": true, "be": true, "as": true,
+	"by": true, "from": true, "into": true, "via": true, "that": true,
+	"this": true, "it": true, "its": true, "with": true, "we": true, "our": true,
+}
+
+func isStopword(w string) bool { return stopwords[w] }
+
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func humanize(varName string) string {
