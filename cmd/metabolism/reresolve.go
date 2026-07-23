@@ -107,6 +107,7 @@ func runReresolveIrrelevant(dir string, n int, requireSnippet, dryRun, jsonOut b
 		os.Exit(1)
 	}
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
+	sharedPrefix := sharedMetabolismPrefix(dir)
 
 	today := time.Now().Format("2006-01-02")
 	flipped := map[string]int{}
@@ -125,7 +126,7 @@ func runReresolveIrrelevant(dir string, n int, requireSnippet, dryRun, jsonOut b
 	for _, i := range targetIdx {
 		c := mlog.Cycles[i]
 		brief := lookupBrief(c.Hypothesis)
-		verdict, err := llmResolve(client, c.Hypothesis, brief, c.Papers)
+		verdict, err := llmResolve(client, sharedPrefix, c.Hypothesis, brief, c.Papers)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  cycle %d %s: error: %v\n", i, c.Hypothesis, err)
 			errors++
@@ -152,12 +153,12 @@ func runReresolveIrrelevant(dir string, n int, requireSnippet, dryRun, jsonOut b
 
 	if jsonOut {
 		type Report struct {
-			Sampled       int         `json:"sampled"`
-			Flipped       int         `json:"flipped"`
-			Kept          int         `json:"kept_irrelevant"`
-			Errors        int         `json:"errors"`
+			Sampled       int            `json:"sampled"`
+			Flipped       int            `json:"flipped"`
+			Kept          int            `json:"kept_irrelevant"`
+			Errors        int            `json:"errors"`
 			FlipBreakdown map[string]int `json:"flip_breakdown"`
-			Flips         []flipEntry `json:"flips"`
+			Flips         []flipEntry    `json:"flips"`
 		}
 		report := Report{
 			Sampled:       len(targetIdx),

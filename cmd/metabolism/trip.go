@@ -317,6 +317,9 @@ func runGroupTrip(dir string, entities []tripEntity, temperature float64, prompt
 		os.Exit(1)
 	}
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
+	// Shared Sonnet system prefix — same block resolve uses, so group-trip
+	// and resolve calls share one Sonnet cache entry within a cycle.
+	sharedPrefix := sharedMetabolismPrefix(dir)
 
 	var connections []TripConnection
 	for i, g := range groups {
@@ -326,7 +329,7 @@ func runGroupTrip(dir string, entities []tripEntity, temperature float64, prompt
 		}
 		fmt.Printf("  [%d/%d] %s ... ", i+1, len(groups), strings.Join(names, " ~ "))
 
-		conn, err := generateGroupConnection(client, g, promptType, temperature)
+		conn, err := generateGroupConnection(client, sharedPrefix, g, promptType, temperature)
 		if err != nil {
 			fmt.Printf("error: %v\n", err)
 			continue
@@ -1464,7 +1467,7 @@ func pickWeightedGroup(pool []weightedEntity, groupSize int) []tripEntity {
 // generateGroupConnection calls the LLM to generate a narrative connection
 // for a group of 3-5 entities (confluence/synthesis modes). Uses a two-pass
 // approach: first generate the narrative, then score it separately.
-func generateGroupConnection(client anthropic.Client, group tripGroup, promptType string, temperature float64) (TripConnection, error) {
+func generateGroupConnection(client anthropic.Client, sharedPrefix string, group tripGroup, promptType string, temperature float64) (TripConnection, error) {
 	prompt := buildGroupPrompt(group, promptType)
 
 	maxTokens := int64(1024)
@@ -1483,6 +1486,7 @@ func generateGroupConnection(client anthropic.Client, group tripGroup, promptTyp
 		Model:       anthropic.ModelClaudeSonnet4_5,
 		MaxTokens:   maxTokens,
 		Temperature: anthropic.Float(apiTemp),
+		System:      sharedSystemBlock(sharedPrefix),
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
 		},

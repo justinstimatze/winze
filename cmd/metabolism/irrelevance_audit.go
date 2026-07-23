@@ -29,24 +29,24 @@ import (
 // whether to tune the production prompt.
 
 type irrelevanceAuditEntry struct {
-	CycleIndex       int      `json:"cycle_index"`
-	Hypothesis       string   `json:"hypothesis"`
-	Backend          string   `json:"backend"`
-	OriginalVerdict  string   `json:"original_verdict"`
-	AuditVerdict     string   `json:"audit_verdict"`
-	Flipped          bool     `json:"flipped"`
-	PaperTitles      []string `json:"paper_titles"`
-	SnippetPreview   string   `json:"snippet_preview,omitempty"`
+	CycleIndex      int      `json:"cycle_index"`
+	Hypothesis      string   `json:"hypothesis"`
+	Backend         string   `json:"backend"`
+	OriginalVerdict string   `json:"original_verdict"`
+	AuditVerdict    string   `json:"audit_verdict"`
+	Flipped         bool     `json:"flipped"`
+	PaperTitles     []string `json:"paper_titles"`
+	SnippetPreview  string   `json:"snippet_preview,omitempty"`
 }
 
 type irrelevanceAuditReport struct {
-	Sampled          int                     `json:"sampled"`
-	TotalIrrelevant  int                     `json:"total_irrelevant"`
-	Flipped          int                     `json:"flipped"`
-	FlipRate         float64                 `json:"flip_rate"`
-	FlipBreakdown    map[string]int          `json:"flip_breakdown"`
-	ModelUsed        string                  `json:"model"`
-	Entries          []irrelevanceAuditEntry `json:"entries"`
+	Sampled         int                     `json:"sampled"`
+	TotalIrrelevant int                     `json:"total_irrelevant"`
+	Flipped         int                     `json:"flipped"`
+	FlipRate        float64                 `json:"flip_rate"`
+	FlipBreakdown   map[string]int          `json:"flip_breakdown"`
+	ModelUsed       string                  `json:"model"`
+	Entries         []irrelevanceAuditEntry `json:"entries"`
 }
 
 // runIrrelevanceAudit samples n "irrelevant" cycles from the log and
@@ -116,9 +116,10 @@ func runIrrelevanceAudit(dir string, n int, jsonOut bool, useHaiku, requireSnipp
 		ModelUsed:       modelName + "/" + mode,
 	}
 
+	sharedPrefix := sharedMetabolismPrefix(dir)
 	for _, ci := range sample {
 		c := mlog.Cycles[ci]
-		verdict, err := reclassifyUnderMode(client, model, c, mode)
+		verdict, err := reclassifyUnderMode(client, sharedPrefix, model, c, mode)
 		entry := irrelevanceAuditEntry{
 			CycleIndex:      ci,
 			Hypothesis:      c.Hypothesis,
@@ -160,7 +161,7 @@ func runIrrelevanceAudit(dir string, n int, jsonOut bool, useHaiku, requireSnipp
 
 // reclassifyUnderMode dispatches to the neutral reclassifier or the
 // production llmResolve call based on mode.
-func reclassifyUnderMode(client anthropic.Client, model anthropic.Model, c Cycle, mode string) (string, error) {
+func reclassifyUnderMode(client anthropic.Client, sharedPrefix string, model anthropic.Model, c Cycle, mode string) (string, error) {
 	if mode == "production" {
 		// llmResolve is hard-coded to Sonnet internally. For cheap
 		// auditing we ideally reuse the same prompt at the audit's
@@ -169,7 +170,7 @@ func reclassifyUnderMode(client anthropic.Client, model anthropic.Model, c Cycle
 		// readout of "what production will actually do." Accept the
 		// higher cost as a tradeoff.
 		_ = model
-		return llmResolve(client, c.Hypothesis, lookupBrief(c.Hypothesis), c.Papers)
+		return llmResolve(client, sharedPrefix, c.Hypothesis, lookupBrief(c.Hypothesis), c.Papers)
 	}
 	return reclassifyNeutral(client, model, c)
 }

@@ -1188,9 +1188,14 @@ func autoResolve(dir string) []resolveResult {
 	}
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
 
+	// Shared Sonnet system prefix (predicate vocab + rubric + trust boundary),
+	// cache_control'd so every resolve call in this loop after the first reads
+	// it at ~10%. Built once from the live corpus vocab; "" => uncached fallback.
+	sharedPrefix := sharedMetabolismPrefix(dir)
+
 	var results []resolveResult
 	for _, cand := range candidates {
-		outcome, err := llmResolve(client, cand.hypothesis, cand.brief, cand.papers)
+		outcome, err := llmResolve(client, sharedPrefix, cand.hypothesis, cand.brief, cand.papers)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[auto-resolve] %s: LLM error: %v\n", cand.hypothesis, err)
 			continue
@@ -1218,7 +1223,7 @@ func autoResolve(dir string) []resolveResult {
 	return results
 }
 
-func llmResolve(client anthropic.Client, hypothesis, brief string, papers []PaperSummary) (string, error) {
+func llmResolve(client anthropic.Client, sharedPrefix, hypothesis, brief string, papers []PaperSummary) (string, error) {
 	// Build source descriptions with snippets when available. Sanitise for
 	// control chars, cap length, and strip obvious prompt-injection markers
 	// before the text is embedded in the classifier's prompt.
@@ -1295,6 +1300,7 @@ State your final classification: irrelevant, corroborated, or challenged.`,
 	resp, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaudeSonnet4_5,
 		MaxTokens: 1024,
+		System:    sharedSystemBlock(sharedPrefix),
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
 		},
