@@ -22,6 +22,11 @@ func TestTierInvocation(t *testing.T) {
 		if strings.Contains(joined, "ingest") || strings.Contains(joined, "resolve") || strings.Contains(joined, "trip") {
 			t.Errorf("tier 1 must exclude mutating phases, got %q", joined)
 		}
+		// reify regenerates tracked predictions.go — a write. A sense-only tier
+		// must not carry it, or an unattended timer dirties the tree each tick.
+		if strings.Contains(joined, "reify") {
+			t.Errorf("tier 1 must exclude the reify phase (writes predictions.go), got %q", joined)
+		}
 		if !strings.Contains(joined, "--phases=") {
 			t.Errorf("tier 1 must pin an explicit phase subset, got %q", joined)
 		}
@@ -95,5 +100,27 @@ func TestConfigPathHonorsXDG(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/xdg")
 	if got, want := configPath(), filepath.FromSlash("/xdg/winze/metabolize.json"); got != want {
 		t.Errorf("configPath = %q, want %q", got, want)
+	}
+}
+
+// TestNormalizeInstanceDir guards the systemd %f/%I escaping round-trip: a path
+// that lost its leading slash (the %I bug) must be restored to absolute, not
+// resolved against the service's home working dir (which doubled it).
+func TestNormalizeInstanceDir(t *testing.T) {
+	// A real absolute dir passes through unchanged.
+	abs := t.TempDir()
+	if got := normalizeInstanceDir(abs); got != abs {
+		t.Errorf("absolute dir changed: got %q want %q", got, abs)
+	}
+	// The lost-slash form of that same dir (leading slash stripped) is restored.
+	stripped := strings.TrimPrefix(abs, "/")
+	if got := normalizeInstanceDir(stripped); got != abs {
+		t.Errorf("lost-slash %q not restored: got %q want %q", stripped, got, abs)
+	}
+	// A genuinely relative path that is not a lost-slash absolute is left alone
+	// (rooting it at / names nothing), so Abs still resolves it against cwd.
+	rel := "definitely/not/a/real/rooted/dir/xyzzy"
+	if got := normalizeInstanceDir(rel); got != rel {
+		t.Errorf("plain relative path changed: got %q want %q", got, rel)
 	}
 }

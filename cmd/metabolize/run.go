@@ -27,6 +27,27 @@ func tierInvocation(tier int) (args []string, push bool, err error) {
 	}
 }
 
+// normalizeInstanceDir guards the systemd escaping round-trip. The unit passes
+// the corpus path via %f (absolute), but a bare filepath.Abs on a path that
+// lost its leading slash would double it against the service's home working dir
+// — the %I bug (%I unescapes a path-escaped instance without the leading
+// slash). If dir isn't absolute but rooting it at / names a real directory,
+// that's the lost-slash case: restore the slash rather than resolve against cwd.
+func normalizeInstanceDir(dir string) string {
+	if !filepath.IsAbs(dir) {
+		if rooted := "/" + dir; dirExists(rooted) {
+			return rooted
+		}
+	}
+	return dir
+}
+
+// dirExists reports whether path names an existing directory.
+func dirExists(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
+}
+
 // metabolismBin resolves the winze-metabolism binary: under WINZE_BIN when set,
 // else the bare name via PATH (after `make install`). Matches cmd/mem's convention.
 func metabolismBin() string {
@@ -41,7 +62,7 @@ func metabolismBin() string {
 // push. A disabled or unregistered instance is a no-op exit 0 — a stale timer
 // must never fail loudly or spend.
 func runInstance(dir string) error {
-	abs, err := filepath.Abs(dir)
+	abs, err := filepath.Abs(normalizeInstanceDir(dir))
 	if err != nil {
 		return err
 	}

@@ -6,7 +6,10 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 # Installed by `winze-metabolize install`, which substitutes the placeholders
-# below with the resolved binary paths. %I is the unescaped instance name =
-# the corpus directory. WINZE_BIN lets the runner find winze-metabolism.
+# below with the resolved binary paths. %f is the unescaped instance name with
+# a leading slash — the absolute corpus directory. (%I drops the leading slash
+# for a path-escaped instance, so the runner's filepath.Abs would double it
+# against the service's home working dir.) WINZE_BIN lets the runner find
+# winze-metabolism.
 Environment=WINZE_BIN=__WINZE_BIN__
-ExecStart=__RUNNER__ run %I
+ExecStart=__RUNNER__ run %f
