@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/justinstimatze/winze/internal/cliutil"
 )
@@ -32,9 +33,28 @@ const (
 	embedModel    = "all-minilm"
 	ollamaEmbed   = "http://localhost:11434/api/embeddings"
 	embedCacheDir = ".winze-embed"
+	// maxEmbedChars caps embed input. all-minilm truncates at ~256 tokens and
+	// ollama returns HTTP 500 (not a truncated vector) for input past that,
+	// which would fail the whole semantic pass because of one long Brief.
+	// Char count is only a proxy for token count — code-heavy prose (paths,
+	// snake_case, backticks) tokenizes far denser than plain English — so this
+	// is set conservatively and embed() also halves-and-retries on a 500. An
+	// embedding captures a Brief's gist from its opening prose, so tail loss is
+	// immaterial for recall. Truncated on a rune boundary (no split UTF-8).
+	maxEmbedChars = 512
 )
 
 func embed(text string) ([]float32, error) {
+	if len(text) > maxEmbedChars {
+		text = truncateRunes(text, maxEmbedChars)
+	}
+	return embedRetry(text, 3)
+}
+
+// embedRetry POSTs text to ollama, halving the input and retrying on a 500 (the
+// over-length signal) so a denser-than-expected Brief degrades to a shorter
+// embedding rather than failing the whole semantic pass.
+func embedRetry(text string, tries int) ([]float32, error) {
 	body, _ := json.Marshal(map[string]string{"model": embedModel, "prompt": text})
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Post(ollamaEmbed, "application/json", bytes.NewReader(body))
@@ -43,6 +63,9 @@ func embed(text string) ([]float32, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusInternalServerError && tries > 1 && len(text) > 64 {
+			return embedRetry(truncateRunes(text, len(text)/2), tries-1)
+		}
 		return nil, fmt.Errorf("ollama embed status %d (have you run `ollama pull %s`?)", resp.StatusCode, embedModel)
 	}
 	var out struct {
@@ -55,6 +78,18 @@ func embed(text string) ([]float32, error) {
 		return nil, fmt.Errorf("ollama returned an empty embedding")
 	}
 	return normalize(out.Embedding), nil
+}
+
+// truncateRunes returns the longest prefix of s that is at most n bytes and
+// ends on a UTF-8 rune boundary (never emits an invalid partial rune).
+func truncateRunes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // normalize to unit length so cosine similarity reduces to a dot product.
