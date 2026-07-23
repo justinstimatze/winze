@@ -87,6 +87,17 @@ sources are all already in the corpus provenance is tautological (no_gap);
 one with at least one novel source is real external signal. Recomputed each
 run because novelty is a moving target as the corpus grows.
 
+The prediction-type breakdown splits by whether a prediction can be wrong.
+**Falsifiable predictions** (`structural_fragility`: topology flags a fragile
+hypothesis, then the sensor either finds curation evidence or doesn't) carry a
+real hit rate — that number is the calibration. **Durability checks** (`trip_*`:
+a claim already promoted through the build gate is "predicted" to pass that
+gate) sit at ~100% by construction, so their hit rate is not calibration — it is
+reported as a "still hold" rate, and their real signal is drift on the
+`--durability` recheck, where a verdict can flip as the corpus and resolver code
+evolve. Reporting the tautological 100% as a hit rate would flatter the
+calibration, so the two are labeled apart.
+
 `--irrelevance-audit` re-classifies a sample of "irrelevant" cycles under
 a neutral prompt (no "default to irrelevant" framing) and reports the
 flip rate. Diagnostic only — does not mutate the log. Flags:

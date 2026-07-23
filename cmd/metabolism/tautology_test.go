@@ -88,3 +88,24 @@ func TestClassifyGapStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestIsFalsifiablePredictionType(t *testing.T) {
+	// The sensor-based predictor and its legacy empty alias are falsifiable;
+	// every trip_* durability check is tautological at promotion.
+	falsifiable := []string{"", "structural_fragility"}
+	for _, pt := range falsifiable {
+		if !isFalsifiablePredictionType(pt) {
+			t.Errorf("%q should be falsifiable", pt)
+		}
+	}
+	durability := []string{
+		"trip_lint_durability", "trip_functional_durability",
+		"trip_llm_durability", "trip_promotion_attempt",
+		"trip_lint_durability_recheck",
+	}
+	for _, pt := range durability {
+		if isFalsifiablePredictionType(pt) {
+			t.Errorf("%q is a durability check, not falsifiable", pt)
+		}
+	}
+}

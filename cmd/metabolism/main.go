@@ -1434,6 +1434,18 @@ func isMiss(verdict string) bool {
 	return verdict == "irrelevant" || verdict == "no_signal" || verdict == "refuted"
 }
 
+// isFalsifiablePredictionType reports whether a prediction type can actually be
+// wrong. structural_fragility (empty is its legacy alias) is the sensor-based
+// predictor — topology flags a hypothesis, then the sensor either finds
+// curation evidence or doesn't, so its hit rate is real calibration. Every
+// other type (trip_*) is a durability check on a claim already promoted through
+// the build gate: ~100% at promotion by construction, informative only as drift
+// on --durability recheck. Same structural_fragility convention as
+// classifyGapStatus in tautology.go.
+func isFalsifiablePredictionType(pt string) bool {
+	return pt == "" || pt == "structural_fragility"
+}
+
 // sensorVerdict reproduces the original sensor-resolution majority-vote logic
 // for backward compatibility. Factored out so the extended scoreHypotheses
 // can dispatch between sensor-based and KB-internal verdict rules.
@@ -1898,36 +1910,40 @@ func runCalibrate(dir string, jsonOut bool) {
 		}
 	}
 
-	// By prediction type — primary bucketing. Separates tautological
-	// sensor-based predictions from KB-internal resolvers so their hit
-	// rates are not averaged together.
-	hasNonDefault := false
+	// By prediction type — split by whether the prediction can be wrong.
+	// A falsifiable prediction (structural_fragility: topology flags a
+	// hypothesis, then the sensor either finds curation evidence or doesn't)
+	// has a real hit rate — that is the calibration. A durability check
+	// (trip_*: a claim already promoted through the build gate is predicted
+	// to pass that gate) is ~100% at promotion by construction; its only
+	// signal is whether the verdict still HOLDS when re-run against the
+	// evolved corpus (--durability). Reporting the tautological 100% as a
+	// "hit rate" flatters the calibration — so the two are labeled apart.
+	var falsifiable, durability []string
 	for k := range byPredTypeAcc {
-		if k != "structural_fragility" {
-			hasNonDefault = true
-			break
+		if isFalsifiablePredictionType(k) {
+			falsifiable = append(falsifiable, k)
+		} else {
+			durability = append(durability, k)
 		}
 	}
-	if hasNonDefault {
-		fmt.Printf("\n  by prediction type:\n")
-		var types []string
-		hasDefault := false
-		for k := range byPredTypeAcc {
-			if k == "structural_fragility" {
-				hasDefault = true
-				continue
-			}
-			types = append(types, k)
-		}
-		sort.Strings(types)
-		if hasDefault {
-			types = append([]string{"structural_fragility"}, types...)
-		}
-		for _, pt := range types {
+	sort.Strings(falsifiable)
+	sort.Strings(durability)
+
+	if len(falsifiable) > 0 {
+		fmt.Printf("\n  falsifiable predictions (can be wrong — this is the calibration):\n")
+		for _, pt := range falsifiable {
 			a := byPredTypeAcc[pt]
-			hitRate := pct(a.hits, a.hits+a.misses)
 			fmt.Printf("    %-25s %.0f%% hit rate (%d/%d hypotheses, %d pending)\n",
-				pt, hitRate, a.hits, a.hits+a.misses, a.pending)
+				pt, pct(a.hits, a.hits+a.misses), a.hits, a.hits+a.misses, a.pending)
+		}
+	}
+	if len(durability) > 0 {
+		fmt.Printf("\n  durability checks (~100%% at promotion by construction; real signal is drift on --durability recheck):\n")
+		for _, pt := range durability {
+			a := byPredTypeAcc[pt]
+			fmt.Printf("    %-25s %.0f%% still hold (%d/%d, %d pending)\n",
+				pt, pct(a.hits, a.hits+a.misses), a.hits, a.hits+a.misses, a.pending)
 		}
 	}
 
