@@ -12,4 +12,11 @@ Type=oneshot
 # against the service's home working dir.) WINZE_BIN lets the runner find
 # winze-metabolism.
 Environment=WINZE_BIN=__WINZE_BIN__
+# Load the corpus's own .env (ANTHROPIC_API_KEY, KAGI_API_KEY, budget) so
+# tier-2+ LLM phases can fire unattended. %f is the corpus dir; the leading
+# '-' makes it non-fatal when a corpus has no .env (that corpus just runs
+# keyless, same as before). The key stays out of this world-readable unit
+# file — it lives only in the gitignored .env the interactive path already
+# uses. Systemd parses NAME=value lines directly (no shell 'export').
+EnvironmentFile=-%f/.env
 ExecStart=__RUNNER__ run %f
