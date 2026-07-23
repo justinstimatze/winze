@@ -84,6 +84,7 @@ func main() {
 	disputes := flag.Bool("disputes", false, "show all disputes in the KB")
 	stats := flag.Bool("stats", false, "show KB summary statistics")
 	schema := flag.Bool("schema", false, "print the corpus schema: roles, predicate signatures, attribution modes")
+	reverie := flag.Bool("reverie", false, "associative walk over the claim graph from an optional seed entity (random start if none) — the KB daydreaming down real links")
 	ask := flag.Bool("ask", false, "natural language query via LLM (needs ANTHROPIC_API_KEY)")
 	jsonOut := flag.Bool("json", false, "JSON output")
 	fulltext := flag.String("fulltext", "", "BM25 fulltext search over entity Briefs and provenance Quotes")
@@ -140,6 +141,8 @@ func main() {
 		runDupes(dir, *dupes, *jsonOut)
 	case *hybrid != "":
 		runHybrid(kb, *hybrid, dir, *typeFilter, *expand, *jsonOut)
+	case *reverie:
+		runReverie(kb, query, *jsonOut)
 	case *ask && query != "":
 		runAsk(kb, dir, query)
 	case *ask:

@@ -344,6 +344,7 @@ go run ./cmd/query --provenance "Sagan" .          # provenance trail for a sour
 go run ./cmd/query --disputes .                    # all active disputes
 go run ./cmd/query --stats .                       # KB summary statistics
 go run ./cmd/query --schema .                       # the type model: roles, predicate signatures, attribution modes
+go run ./cmd/query --reverie .                      # associative walk over the claim graph (random start; add a seed to steer); the grounded "trip"
 go run ./cmd/query --json "consciousness" .        # JSON output
 go run ./cmd/query --ask "What theories compete on consciousness?" .  # LLM-powered natural language query
 go run ./cmd/query --ask .                         # interactive REPL mode
