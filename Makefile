@@ -6,7 +6,7 @@
 # the operation a knowledge base exists to make cheap. Build once, then query
 # at native speed.
 
-CMDS := query lint topology metabolism add edit sensor rot-probe predicates-suggest benchmark mcp mem
+CMDS := query lint topology metabolism add edit sensor rot-probe predicates-suggest benchmark mcp mem meld
 BIN  := bin
 
 .PHONY: all build install clean test gate
