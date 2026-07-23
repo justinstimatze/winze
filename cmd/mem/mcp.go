@@ -49,6 +49,15 @@ func runServe() {
 		mcp.WithString("title", mcp.Description("Optional: also update the display Name.")),
 	), handleUpdate)
 
+	s.AddTool(mcp.NewTool("winze_link",
+		mcp.WithDescription("Relate two existing memories with a typed claim (RelatesTo, Supersedes, ...), through the build gate, then auto-commit. Records the connection structurally instead of leaving it in prose. The link is winze's OWN assertion (a Conjecture) — no source is invented. Use RelatesTo for a general see-also, Supersedes when one memory replaces a now-stale one."),
+		mcp.WithString("from", mcp.Required(), mcp.Description("Subject memory var name (as shown in winze_recall results).")),
+		mcp.WithString("to", mcp.Required(), mcp.Description("Object memory var name.")),
+		mcp.WithString("rationale", mcp.Required(), mcp.Description("Why the link holds — winze's own reasoning. Recorded on the Conjecture; a self-asserted link carries no source quote.")),
+		mcp.WithString("relation", mcp.Description("Predicate type (default RelatesTo). Any predicate in the store schema (see winze-query --schema) works; the build gate validates the slot types.")),
+		mcp.WithString("name", mcp.Description("Optional claim var name; auto-derived from the relation and endpoints if omitted. Re-linking the same pair fails the gate, giving free dedup.")),
+	), handleLink)
+
 	fmt.Fprintf(os.Stderr, "winze-memory MCP: serving (store: %s)\n", memRoot())
 	if err := server.ServeStdio(s); err != nil {
 		fmt.Fprintf(os.Stderr, "winze-memory MCP error: %v\n", err)
@@ -202,6 +211,71 @@ func execSetBrief(varName, brief, title string) (string, error) {
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 	return buf.String(), cmd.Run()
+}
+
+func handleLink(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	from, _ := args["from"].(string)
+	to, _ := args["to"].(string)
+	rationale, _ := args["rationale"].(string)
+	from, to, rationale = strings.TrimSpace(from), strings.TrimSpace(to), strings.TrimSpace(rationale)
+	if from == "" || to == "" {
+		return mcp.NewToolResultError("from and to: required memory var names"), nil
+	}
+	if rationale == "" {
+		return mcp.NewToolResultError("rationale: required (winze's own reasoning for the link)"), nil
+	}
+	relation := "RelatesTo"
+	if r, ok := args["relation"].(string); ok && strings.TrimSpace(r) != "" {
+		relation = strings.TrimSpace(r)
+	}
+	name := ""
+	if n, ok := args["name"].(string); ok {
+		name = strings.TrimSpace(n)
+	}
+	if name == "" {
+		name = deriveLinkName(relation, from, to)
+	}
+
+	out, err := execLink(from, to, relation, rationale, name)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("link failed at the build gate (not committed) — a name collision here means the link already exists:\n%s", out)), nil
+	}
+	if _, cerr := gitCommitMemory("link " + from + " " + relation + " " + to); cerr != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("linked %s %s %s (gate passed) but NOT committed: %v", from, relation, to, cerr)), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf("linked: %s %s %s and committed.\n%s", from, relation, to, strings.TrimSpace(out))), nil
+}
+
+// execLink runs winze-add --conjecture to relate two memories with a typed
+// claim. Conjecture (not Provenance) because the link is winze's own assertion:
+// it has no external source, so it carries a Rationale and no Quote.
+func execLink(from, to, relation, rationale, name string) (string, error) {
+	args := []string{
+		"--to", "memory.go", "--root", memRoot(),
+		"--name", name, "--predicate", relation,
+		"--subject", from, "--object", to,
+		"--conjecture", "--rationale", rationale, "--generated-by", "winze-link",
+	}
+	cmd := exec.Command(addBin(), args...)
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	return buf.String(), cmd.Run()
+}
+
+// deriveLinkName builds a deterministic claim var name from the relation and
+// endpoints so re-linking the same pair collides on the var name and the build
+// gate rejects it — dedup for free. Endpoints are truncated to keep the name
+// readable; a rare truncation collision is caught by the gate too.
+func deriveLinkName(relation, from, to string) string {
+	short := func(s string) string {
+		if len(s) > 24 {
+			return s[:24]
+		}
+		return s
+	}
+	return relation + short(from) + "To" + short(to)
 }
 
 // nearestMemory returns the single most semantically-similar existing memory to
