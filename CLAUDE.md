@@ -336,6 +336,7 @@ go run ./cmd/query --claims "Chalmers" .           # all claims involving an ent
 go run ./cmd/query --provenance "Sagan" .          # provenance trail for a source
 go run ./cmd/query --disputes .                    # all active disputes
 go run ./cmd/query --stats .                       # KB summary statistics
+go run ./cmd/query --schema .                       # the type model: roles, predicate signatures, attribution modes
 go run ./cmd/query --json "consciousness" .        # JSON output
 go run ./cmd/query --ask "What theories compete on consciousness?" .  # LLM-powered natural language query
 go run ./cmd/query --ask .                         # interactive REPL mode

@@ -83,6 +83,7 @@ func main() {
 	provenance := flag.String("provenance", "", "show provenance trail for source or entity")
 	disputes := flag.Bool("disputes", false, "show all disputes in the KB")
 	stats := flag.Bool("stats", false, "show KB summary statistics")
+	schema := flag.Bool("schema", false, "print the corpus schema: roles, predicate signatures, attribution modes")
 	ask := flag.Bool("ask", false, "natural language query via LLM (needs ANTHROPIC_API_KEY)")
 	jsonOut := flag.Bool("json", false, "JSON output")
 	fulltext := flag.String("fulltext", "", "BM25 fulltext search over entity Briefs and provenance Quotes")
@@ -106,6 +107,13 @@ func main() {
 	}
 
 	defer usagelog.Log(dir, "query", os.Args[1:], start)
+
+	// --schema reads type declarations directly; no need for the full index (and
+	// it should work on a minimal corpus the index build might reject).
+	if *schema {
+		runSchema(dir, *jsonOut)
+		return
+	}
 
 	kb, err := buildIndex(dir)
 	if err != nil {
