@@ -690,3 +690,49 @@ func TestDrugProfile(t *testing.T) {
 		}
 	}
 }
+
+// TestPredicateSlotsMatchCorpus pins every hardcoded trip predicateSlots entry
+// to what predicates.go actually declares. Catches the slow drift where the
+// corpus retypes or renames a predicate and the trip map silently disagrees —
+// a disagreement that surfaces only as wrong role-validation, never an error.
+func TestPredicateSlotsMatchCorpus(t *testing.T) {
+	corpus := collectPredicateSlots(repoRoot(t))
+	for name, slots := range predicateSlots {
+		got, ok := corpus[name]
+		if !ok {
+			t.Errorf("predicateSlots has %q but predicates.go does not declare it — stale entry", name)
+			continue
+		}
+		if got[0] != slots.Subject || got[1] != slots.Object {
+			t.Errorf("predicateSlots[%q] = {%s→%s}, corpus declares {%s→%s} — drift",
+				name, slots.Subject, slots.Object, got[0], got[1])
+		}
+	}
+}
+
+// TestAnalogyPredicatesReachTrip is the regression guard for the bug that
+// stranded 48 cross-cluster analogies at NONE: StructurallyAnalogousTo, whose
+// entire reason for existing is analogy-mode trip cycles, was absent from the
+// trip emit map, so compatiblePredicates("Hypothesis","Hypothesis") returned
+// nothing and the predicate enum offered the model only NONE. Every
+// [Hypothesis,Hypothesis] predicate in the corpus is inherently a structural
+// relation between ideas — trip's home turf — and must reach the emit menu.
+func TestAnalogyPredicatesReachTrip(t *testing.T) {
+	corpus := collectPredicateSlots(repoRoot(t))
+	offered := map[string]bool{}
+	for _, p := range tripCompatiblePredicates("Hypothesis", "Hypothesis") {
+		offered[p] = true
+	}
+	for name, slots := range corpus {
+		if slots[0] == "Hypothesis" && slots[1] == "Hypothesis" {
+			if !offered[name] {
+				t.Errorf("corpus predicate %q is [Hypothesis,Hypothesis] but the trip cycle never offers it "+
+					"for a Hypothesis pair — every such analogy is forced to NONE. Add it to predicateSlots.", name)
+			}
+		}
+	}
+	// Pin the specific predicate this test was written for.
+	if !offered["StructurallyAnalogousTo"] {
+		t.Error("StructurallyAnalogousTo not offered for a Hypothesis pair — the analogy predicate is dark")
+	}
+}

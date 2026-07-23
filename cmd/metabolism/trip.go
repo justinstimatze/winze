@@ -427,6 +427,16 @@ func printTripReport(report TripReport, jsonOut bool) {
 // predicate that trip promotion knows how to emit. Keep in sync with predicates.go.
 // A predicate not listed here cannot be promoted — add it deliberately.
 //
+// This is a CURATED emit menu, not a type-derived one: a predicate can be
+// role-compatible with a pair yet be the wrong thing for a trip to speculate
+// (AppearsIn is Concept→Concept but is fiction-provenance, not structural
+// analogy). So the set is chosen by hand. Two tests guard it — one asserts
+// every entry's slots match predicates.go (no stale slots), the other asserts
+// every [Hypothesis,Hypothesis] predicate in the corpus is present here (the
+// analogy shape is trip's home turf; a missing one silently forces every
+// cross-cluster analogy to NONE, which is exactly how StructurallyAnalogousTo
+// went dark and stranded 48 pairs in .metabolism-trip-isolated.jsonl).
+//
 // IMPORTANT: when adding a Person-attribution predicate (Proposes-family,
 // Authored-family, Accepts-family, InfluencedBy, EarlyFormulationOf,
 // ResolvedAs, or anything else asserting intellectual/biographical fact
@@ -438,14 +448,15 @@ var predicateSlots = map[string]struct {
 	Subject string
 	Object  string
 }{
-	"InfluencedBy": {"Person", "Person"},
-	"DerivedFrom":  {"Concept", "Concept"},
-	"BelongsTo":    {"Concept", "Concept"},
-	"Disputes":     {"Person", "Hypothesis"},
-	"Proposes":     {"Person", "Hypothesis"},
-	"Accepts":      {"Person", "Hypothesis"},
-	"TheoryOf":     {"Hypothesis", "Concept"},
-	"CommentaryOn": {"Concept", "Concept"},
+	"InfluencedBy":            {"Person", "Person"},
+	"DerivedFrom":             {"Concept", "Concept"},
+	"BelongsTo":               {"Concept", "Concept"},
+	"Disputes":                {"Person", "Hypothesis"},
+	"Proposes":                {"Person", "Hypothesis"},
+	"Accepts":                 {"Person", "Hypothesis"},
+	"TheoryOf":                {"Hypothesis", "Concept"},
+	"CommentaryOn":            {"Concept", "Concept"},
+	"StructurallyAnalogousTo": {"Hypothesis", "Hypothesis"},
 }
 
 // validatePredicate returns true iff predicate's type constraints match subjRole→objRole.
