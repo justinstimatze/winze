@@ -34,6 +34,18 @@ type Instrument struct{ *Entity }
 // node that Proposes / Disputes / HypothesisExplains relations attach to.
 type Hypothesis struct{ *Entity }
 
+// LearningGoal: a self-directed curiosity target — territory the corpus has
+// decided to acquire, as opposed to fragility it is shoring up. Where
+// topology's sensor targets are inward-facing (find external evidence for a
+// structurally weak hypothesis), a LearningGoal is outward-facing: it steers
+// the sense phase toward a chosen topic the corpus does not yet cover. The
+// exploration drive that sits beside topology's exploitation drive. A goal is
+// a first-class entity so the corpus's own intentions are typed, git-tracked,
+// and queryable — the same move reify made for predictions. Operational
+// parameters (search seeds, coverage threshold, in-domain vs fork) live on a
+// companion GoalSpec in goals.go, which the metabolism sense phase reads.
+type LearningGoal struct{ *Entity }
+
 // Concept: a term or idea that is itself the subject of claims — as
 // opposed to a concrete referent in the world. Added for the Nondualism
 // ingest, where the article is literally about a "polyvalent term" and

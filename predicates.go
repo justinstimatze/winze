@@ -561,9 +561,9 @@ type Credence BinaryRelation[Hypothesis, *CredenceLevel]
 // ResolutionOutcome records the ground-truth result of a prediction
 // once the predicted event's time horizon has passed. Result values:
 //
-//   confirmed  — prediction confirmed (evidence found, whether corroborating or challenging)
-//   refuted    — prediction refuted (no signal: no papers found at all)
-//   ambiguous  — inconclusive (papers found but irrelevant — sensor miscalibration, not prediction failure)
+//	confirmed  — prediction confirmed (evidence found, whether corroborating or challenging)
+//	refuted    — prediction refuted (no signal: no papers found at all)
+//	ambiguous  — inconclusive (papers found but irrelevant — sensor miscalibration, not prediction failure)
 //
 // The meta-prediction is "structural fragility predicts findable external
 // evidence." Both corroborated and challenged metabolism resolutions confirm
@@ -614,3 +614,14 @@ type ResolvedAs BinaryRelation[Event, *ResolutionOutcome]
 // the survivor var. Not functional: a survivor can absorb several alternates
 // over time.
 type AbsorbedAlternate UnaryClaim[*Entity]
+
+// AdvancesGoal: a Concept advances a LearningGoal — it is knowledge the corpus
+// acquired in pursuit of that goal. The coverage substrate for self-directed
+// learning: the metabolism sense phase counts the AdvancesGoal claims pointing
+// at a goal, and when the count reaches the goal's CoverAt threshold the goal
+// is satisfied and stops generating sensor targets. Curiosity with a defined
+// "full". Object is a LearningGoal; Subject is Concept because goal-driven
+// ingest lands its findings as Concepts (a HypothesisAdvancesGoal variant is a
+// later addition if a source forces it). Not functional — one goal is advanced
+// by many Concepts, and one Concept may advance more than one goal.
+type AdvancesGoal BinaryRelation[Concept, LearningGoal]
