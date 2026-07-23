@@ -93,6 +93,10 @@ func main() {
 	typeFilter := flag.String("type", "", "with --hybrid: restrict results to a verified entity role (e.g. Hypothesis, Concept, Person)")
 	expand := flag.Bool("expand", false, "with --hybrid: show each result's typed claim neighborhood (reasoning-ready context)")
 	dupes := flag.String("dupes", "", "show entities structurally near-identical to NAME (shared claim-neighborhood) — the coin-time dedup query")
+	docsRecall := flag.String("docs-recall", "", "semantic recall over docs/*.md: given a prompt, print the file#anchor sections it implicates (for the per-prompt hook)")
+	docsTopN := flag.Int("docs-top", 0, "with --docs-recall: max sections to surface (default 3)")
+	docsFloor := flag.Float64("docs-floor", -1, "with --docs-recall: cosine floor for a section to surface (default 0.30)")
+	docsHook := flag.Bool("docs-hook", false, "UserPromptSubmit-hook mode: read the hook payload from stdin and emit docs-recall pointers (never fails the hook)")
 	flag.Parse()
 
 	dir := "."
@@ -113,6 +117,18 @@ func main() {
 	// it should work on a minimal corpus the index build might reject).
 	if *schema {
 		runSchema(dir, *jsonOut)
+		return
+	}
+
+	// --docs-recall / --docs-hook read markdown, not the corpus — dispatch
+	// before the index build so they work even when the KB doesn't (and cost
+	// nothing when it does).
+	if *docsHook {
+		runDocsHook(dir)
+		return
+	}
+	if *docsRecall != "" {
+		runDocsRecall(dir, *docsRecall, *docsTopN, *docsFloor, *jsonOut)
 		return
 	}
 
