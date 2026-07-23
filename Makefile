@@ -9,7 +9,7 @@
 CMDS := query lint topology metabolism add edit sensor rot-probe predicates-suggest benchmark mcp mem meld metabolize observatory
 BIN  := bin
 
-.PHONY: all build install clean test gate jscheck
+.PHONY: all build install clean test gate jscheck docs-coverage
 
 all: build
 
@@ -40,6 +40,10 @@ test:
 ## Run `npm --prefix cmd/observatory ci` once to install the tooling.
 jscheck:
 	npm --prefix cmd/observatory run check
+
+## docs-coverage: fail if any cmd/ binary is named in no doc
+docs-coverage:
+	go run ./cmd/query --docs-coverage .
 
 ## clean: remove built binaries
 clean:

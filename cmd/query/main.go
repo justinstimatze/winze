@@ -97,6 +97,7 @@ func main() {
 	docsTopN := flag.Int("docs-top", 0, "with --docs-recall: max sections to surface (default 3)")
 	docsFloor := flag.Float64("docs-floor", -1, "with --docs-recall: cosine floor for a section to surface (default 0.30)")
 	docsHook := flag.Bool("docs-hook", false, "UserPromptSubmit-hook mode: read the hook payload from stdin and emit docs-recall pointers (never fails the hook)")
+	docsCoverage := flag.Bool("docs-coverage", false, "gate: fail (exit 1) if any cmd/ binary is named in no doc")
 	flag.Parse()
 
 	dir := "."
@@ -125,6 +126,10 @@ func main() {
 	// nothing when it does).
 	if *docsHook {
 		runDocsHook(dir)
+		return
+	}
+	if *docsCoverage {
+		runDocsCoverage(dir)
 		return
 	}
 	if *docsRecall != "" {
