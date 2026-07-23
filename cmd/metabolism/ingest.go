@@ -18,8 +18,8 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/justinstimatze/winze/internal/astutil"
 	zim "github.com/justinstimatze/gozim"
+	"github.com/justinstimatze/winze/internal/astutil"
 )
 
 // claimDelimiter separates extracted claims in LLM responses.
@@ -95,11 +95,11 @@ func truncateForLog(s string) string {
 
 // ingestOutcome holds the result of an LLM-assisted ingest run.
 type ingestOutcome struct {
-	OutPath      string            // first modified file (for pipeline reporting)
-	ClaimCount   int               // number of claims extracted
-	Backups      map[string][]byte // original file contents for rollback
-	CycleIndices   []int           // indices into MetabolismLog.Cycles that were ingested
-	PipelineClaims []PipelineClaim // per-claim accept/reject decisions
+	OutPath        string            // first modified file (for pipeline reporting)
+	ClaimCount     int               // number of claims extracted
+	Backups        map[string][]byte // original file contents for rollback
+	CycleIndices   []int             // indices into MetabolismLog.Cycles that were ingested
+	PipelineClaims []PipelineClaim   // per-claim accept/reject decisions
 }
 
 // runIngest performs LLM-assisted ingest from corroborated ZIM metabolism cycles.
@@ -136,8 +136,8 @@ func runIngest(dir, zimPath, zimIndex string) ingestOutcome {
 	type ingestTarget struct {
 		hypothesis string
 		prediction string
-		articles   []PaperSummary      // papers across backends
-		backends   map[string]string   // paper.ID -> backend name (for dispatch)
+		articles   []PaperSummary    // papers across backends
+		backends   map[string]string // paper.ID -> backend name (for dispatch)
 	}
 	seen := map[string]*ingestTarget{}
 	var order []string
@@ -234,12 +234,12 @@ func runIngest(dir, zimPath, zimIndex string) ingestOutcome {
 
 	// Group generated claim sections by target file (append to existing corpus files)
 	fileSections := map[string][]string{} // filepath → code sections to append
-	cycleNum := nextCycleNumber(dir) // used in provenance metadata
+	cycleNum := nextCycleNumber(dir)      // used in provenance metadata
 
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
 	totalClaims := 0
-	seenVars := map[string]bool{}       // track generated var names to avoid redeclaration
-	var pipelineClaims []PipelineClaim   // per-claim accept/reject log
+	seenVars := map[string]bool{}      // track generated var names to avoid redeclaration
+	var pipelineClaims []PipelineClaim // per-claim accept/reject log
 
 	for _, hypName := range order {
 		t := seen[hypName]
@@ -477,6 +477,15 @@ func runIngest(dir, zimPath, zimIndex string) ingestOutcome {
 				section := generateClaimCode(hypName, needType, article, result, cycleNum, knownVars, isUnary)
 				fileSections[targetFile] = append(fileSections[targetFile], section)
 				totalClaims++
+
+				// Close the learning-goal coverage loop. A Concept ingested
+				// under a goal-driven cycle (Hypothesis "goal:<Var>") advances
+				// that goal — emit the AdvancesGoal tag countGoalTagged reads
+				// to know when the goal is satisfied. Concept-only, because
+				// AdvancesGoal's Subject slot is Concept.
+				if goalVar := strings.TrimPrefix(hypName, "goal:"); goalVar != hypName && entityRole == "Concept" {
+					fileSections[targetFile] = append(fileSections[targetFile], goalTagSection(varName, goalVar))
+				}
 			}
 		}
 	}
@@ -767,6 +776,23 @@ func parseIngestResponse(response string) []*ingestResult {
 // generateClaimCode produces Go source code for a single extracted claim.
 // knownVars tracks variable names that already exist (in KB or emitted earlier in this file)
 // to avoid redeclaration. New declarations are added to knownVars.
+// goalTagSection renders an AdvancesGoal claim linking a goal-ingested Concept
+// to its LearningGoal. Conjecture-attributed: the tag is winze's own record
+// that it acquired this concept while pursuing the goal — not a source
+// commitment — so it carries no Quote by construction, the same fence that
+// keeps every generated claim from wearing a fabricated source.
+func goalTagSection(conceptVar, goalVar string) string {
+	return fmt.Sprintf(`var %sAdvances%s = AdvancesGoal{
+	Subject: %s,
+	Object:  %s,
+	Prov: Conjecture{
+		GeneratedBy: "metabolism-goal-ingest",
+		Rationale:   "Concept acquired while pursuing learning goal %s.",
+		GeneratedAt: %q,
+	},
+}`, conceptVar, goalVar, conceptVar, goalVar, goalVar, time.Now().Format("2006-01-02"))
+}
+
 func generateClaimCode(hypName, claimType string, article PaperSummary, result *ingestResult, cycleNum int, knownVars map[string]bool, isUnary bool) string {
 	var b strings.Builder
 
@@ -928,9 +954,9 @@ type kbVarInfo struct {
 // determining which file to append new claims to.
 // kbMetadata holds all KB introspection results from a single AST pass.
 type kbMetadata struct {
-	Vars    map[string]kbVarInfo  // var name → file + role type
-	Briefs  map[string]string     // entity name → Brief text
-	Claims  map[string][]string   // hypothesis → existing claim descriptions
+	Vars   map[string]kbVarInfo // var name → file + role type
+	Briefs map[string]string    // entity name → Brief text
+	Claims map[string][]string  // hypothesis → existing claim descriptions
 }
 
 // collectKBMetadata walks all corpus .go files once and extracts vars, briefs,
@@ -1027,7 +1053,7 @@ func collectKBVarNames(dir string) map[string]bool {
 	}
 	return names
 }
-func collectKBBriefs(dir string) map[string]string    { return collectKBMetadata(dir).Briefs }
+func collectKBBriefs(dir string) map[string]string       { return collectKBMetadata(dir).Briefs }
 func collectClaimContext(dir string) map[string][]string { return collectKBMetadata(dir).Claims }
 
 // collectPredicateSlots parses predicates.go to extract type constraints for
@@ -1101,7 +1127,6 @@ func typeParamName(e ast.Expr) string {
 	return ""
 }
 
-
 // kindToRole maps LLM entity kind strings to Go role type names.
 func kindToRole(kind string) string {
 	switch strings.ToLower(kind) {
@@ -1124,11 +1149,13 @@ func kindToRole(kind string) string {
 
 // --- AST helpers (delegate to internal/astutil) ---
 
-func extractEntityBrief(cl *ast.CompositeLit) string  { return astutil.ExtractEntityBrief(cl) }
-func compositeTypeName(cl *ast.CompositeLit) string    { return astutil.CompositeTypeName(cl) }
-func extractSubjectObject(cl *ast.CompositeLit) (string, string) { return astutil.ExtractSubjectObject(cl) }
-func resolveStringExpr(e ast.Expr) string              { return astutil.ResolveStringExpr(e) }
-func unquote(e ast.Expr) string                        { return astutil.Unquote(e) }
+func extractEntityBrief(cl *ast.CompositeLit) string { return astutil.ExtractEntityBrief(cl) }
+func compositeTypeName(cl *ast.CompositeLit) string  { return astutil.CompositeTypeName(cl) }
+func extractSubjectObject(cl *ast.CompositeLit) (string, string) {
+	return astutil.ExtractSubjectObject(cl)
+}
+func resolveStringExpr(e ast.Expr) string { return astutil.ResolveStringExpr(e) }
+func unquote(e ast.Expr) string           { return astutil.Unquote(e) }
 
 func toPascalCase(name string) string {
 	words := strings.Fields(name)

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -70,5 +71,30 @@ var qcSpec = GoalSpec{Goal: QC, Seeds: []string{"surface code"}, InDomain: false
 	}
 	if got := len(goalSensorTargets(dir)); got != 0 {
 		t.Errorf("cross-domain goal must not target main, got %d targets", got)
+	}
+}
+
+// TestGoalTagSection pins the coverage-tag emission: an AdvancesGoal claim,
+// Conjecture-attributed (winze's own bookkeeping), carrying NO Quote — the
+// concept was acquired pursuing the goal, not committed to by a source.
+func TestGoalTagSection(t *testing.T) {
+	got := goalTagSection("AberrantPrecision", "GoalPredictiveHallucination")
+	for _, want := range []string{
+		"= AdvancesGoal{",
+		"Subject: AberrantPrecision,",
+		"Object:  GoalPredictiveHallucination,",
+		"Prov: Conjecture{",
+		`GeneratedBy: "metabolism-goal-ingest"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("goalTagSection missing %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "Quote") {
+		t.Error("AdvancesGoal tag must not carry a Quote — it is a Conjecture, not a sourced claim")
+	}
+	// Var name must be a valid, unique identifier.
+	if !strings.HasPrefix(got, "var AberrantPrecisionAdvancesGoalPredictiveHallucination = ") {
+		t.Errorf("unexpected var name in: %s", got)
 	}
 }
