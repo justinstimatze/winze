@@ -124,3 +124,6 @@ bin/
 
 # self-telemetry (usage-frequency log; local only)
 .winze-usage.jsonl
+
+# observatory JS tooling
+cmd/observatory/node_modules/

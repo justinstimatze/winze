@@ -1,0 +1,16 @@
+{
+  "name": "winze-observatory",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Frontend for winze-observatory. Vanilla JS (no bundler) served via go:embed; typechecked with tsc (checkJs) and linted with biome.",
+  "scripts": {
+    "typecheck": "tsc -p jsconfig.json",
+    "lint": "biome lint app.js",
+    "check": "npm run typecheck && npm run lint"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.11",
+    "typescript": "^5.7.0"
+  }
+}

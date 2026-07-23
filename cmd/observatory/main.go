@@ -25,6 +25,9 @@ import (
 //go:embed index.html
 var indexHTML []byte
 
+//go:embed app.js
+var appJS []byte
+
 func main() {
 	// Default to loopback: the dashboard can render private memory stores, so it
 	// must not be exposed on the LAN unless explicitly asked (--addr 0.0.0.0:PORT).
@@ -41,6 +44,10 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(indexHTML)
+	})
+	mux.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Write(appJS)
 	})
 	mux.HandleFunc("/api/fleet.json", func(w http.ResponseWriter, r *http.Request) {
 		data, err := buildFleet(dirs)
