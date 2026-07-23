@@ -1,0 +1,12 @@
+[Unit]
+Description=winze metabolism run for %I
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Installed by `winze-metabolize install`, which substitutes the placeholders
+# below with the resolved binary paths. %I is the unescaped instance name =
+# the corpus directory. WINZE_BIN lets the runner find winze-metabolism.
+Environment=WINZE_BIN=__WINZE_BIN__
+ExecStart=__RUNNER__ run %I

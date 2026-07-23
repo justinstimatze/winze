@@ -1,0 +1,14 @@
+[Unit]
+Description=winze metabolism timer for %I
+
+[Timer]
+# Hourly rhythm with a jittered start so a dozen instances don't fire at once.
+# winze's per-phase gates decide what actually runs each tick; the timer is
+# just the clock. Persistent catches up one missed run after downtime.
+OnBootSec=15min
+OnUnitActiveSec=1h
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
