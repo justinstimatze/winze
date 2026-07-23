@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // tierInvocation maps an autonomy tier to the metabolism arguments it runs and
@@ -100,10 +101,93 @@ func runInstance(dir string) error {
 		return fmt.Errorf("metabolism failed: %w", err)
 	}
 
+	// Sweep-commit whatever corpus state the cycle wrote but did not
+	// self-commit. Only the ingest pipeline commits its own files; reify
+	// (predictions.go) and trip promotion (metabolism_cycle*.go) do not, so
+	// without this a tier-2 cycle leaves a dirty tree that grows every run —
+	// the "T2 commits to local main" contract would be a lie. T1 never
+	// mutates the corpus, so it is a no-op there.
+	if in.Tier >= TierEvolve {
+		if err := commitCycleState(abs, in.Tier); err != nil {
+			return fmt.Errorf("commit cycle state: %w", err)
+		}
+	}
+
 	if push {
 		return gitPush(abs)
 	}
 	return nil
+}
+
+// commitCycleState stages and commits the root-level *.go corpus files an
+// autonomous cycle changed. Root-level only: the reify and trip phases write
+// predictions.go and metabolism_cycle*.go at the corpus root, never under cmd/
+// or internal/ — a changed tooling file is never swept. Stages each file by
+// explicit path (never `git add -A`), re-runs the corpus build gate as a guard
+// so a broken cycle is left dirty for the next run rather than committed, and
+// on a quiet cycle stages nothing and returns without a commit.
+//
+// Found empirically 2026-07-23: a clean tier-2 --evolve left predictions.go
+// modified and uncommitted after the reify phase.
+func commitCycleState(dir string, tier int) error {
+	changed, err := changedRootGoFiles(dir)
+	if err != nil {
+		return err
+	}
+	if len(changed) == 0 {
+		return nil // quiet cycle — nothing the ingest pipeline didn't already commit
+	}
+
+	// Consistency guard: the committed corpus must compile. The phases
+	// build-gate their own writes, but re-check the exact tree we are about
+	// to freeze. On failure, leave it dirty — the next cycle retries and the
+	// journal shows the error rather than persisting a broken corpus.
+	build := exec.Command("go", "build", ".")
+	build.Dir = dir
+	if out, berr := build.CombinedOutput(); berr != nil {
+		return fmt.Errorf("build gate failed, not committing cycle state: %w\n%s", berr, out)
+	}
+
+	for _, f := range changed {
+		add := exec.Command("git", "-C", dir, "add", "--", f)
+		add.Stderr = os.Stderr
+		if err := add.Run(); err != nil {
+			return fmt.Errorf("git add %s: %w", f, err)
+		}
+	}
+
+	msg := fmt.Sprintf("metabolism: tier-%d autonomous cycle — %s", tier, strings.Join(changed, ", "))
+	commit := exec.Command("git", "-C", dir, "commit", "-m", msg)
+	commit.Stdout, commit.Stderr = os.Stdout, os.Stderr
+	if err := commit.Run(); err != nil {
+		return fmt.Errorf("git commit: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "winze-metabolize: committed cycle state (%s)\n", strings.Join(changed, ", "))
+	return nil
+}
+
+// changedRootGoFiles returns root-level (no path separator) *.go files with
+// uncommitted changes — modified or newly added. Git's `*.go` pathspec matches
+// at any depth, so the no-slash filter is what restricts the sweep to the
+// corpus root.
+func changedRootGoFiles(dir string) ([]string, error) {
+	out, err := exec.Command("git", "-C", dir, "status", "--porcelain", "--", "*.go").Output()
+	if err != nil {
+		return nil, fmt.Errorf("git status: %w", err)
+	}
+	var files []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		// Porcelain v1: two status columns, a space, then the path.
+		path := strings.TrimSpace(line[3:])
+		if path == "" || strings.Contains(path, "/") || !strings.HasSuffix(path, ".go") {
+			continue
+		}
+		files = append(files, path)
+	}
+	return files, nil
 }
 
 // gitPush pushes the instance's default branch. Only tier 3 reaches here, and

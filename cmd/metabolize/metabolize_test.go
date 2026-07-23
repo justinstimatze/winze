@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -122,5 +124,59 @@ func TestNormalizeInstanceDir(t *testing.T) {
 	rel := "definitely/not/a/real/rooted/dir/xyzzy"
 	if got := normalizeInstanceDir(rel); got != rel {
 		t.Errorf("plain relative path changed: got %q want %q", got, rel)
+	}
+}
+
+// TestChangedRootGoFiles pins the sweep's discriminating logic: it must pick up
+// root-level *.go the cycle changed (predictions.go, metabolism_cycle*.go) and
+// never a tooling file under a subdir. Git's `*.go` pathspec matches at any
+// depth, so the no-slash filter is the load-bearing part — a regression would
+// let commitCycleState sweep cmd/ or internal/ edits into an autonomous commit.
+func TestChangedRootGoFiles(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		c := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	git("init", "-q")
+	git("config", "user.email", "t@t")
+	git("config", "user.name", "t")
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A committed clean baseline.
+	write("schema.go", "package winze\n")
+	git("add", "-A")
+	git("commit", "-qm", "base")
+
+	// The cycle's writes: a modified root file, a new root cycle file, and a
+	// tooling edit under cmd/ that must NOT be swept.
+	write("schema.go", "package winze\n\n// touched\n")
+	write("metabolism_cycle9.go", "package winze\n")
+	write("predictions.go", "package winze\n")
+	write("cmd/metabolize/run.go", "package main\n")
+
+	got, err := changedRootGoFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"schema.go": true, "metabolism_cycle9.go": true, "predictions.go": true}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want the 3 root files %v", got, want)
+	}
+	for _, f := range got {
+		if !want[f] {
+			t.Errorf("swept %q — not an expected root corpus file (a subdir/tooling file leaked in)", f)
+		}
 	}
 }
