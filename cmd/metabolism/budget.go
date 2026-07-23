@@ -21,11 +21,11 @@ const budgetSchema = 1
 // in measured token counts; for now the file-backed running total is
 // "estimated cumulative cost" and the gate is conservative.
 const (
-	costSenseCents     = 13 // 5 Kagi targets × $0.025 = $0.125
-	costResolveCents   = 10 // Sonnet, midpoint of $0.05-0.15 range
-	costIngestCents    = 20 // Sonnet pipeline, midpoint of $0.10-0.30
-	costTripCents      = 15 // Sonnet narrative + Haiku scoring
-	costDreamFixCents  = 1  // Haiku Brief tightening
+	costSenseCents    = 13 // 5 Kagi targets × $0.025 = $0.125
+	costResolveCents  = 10 // Sonnet, midpoint of $0.05-0.15 range
+	costIngestCents   = 20 // Sonnet pipeline, midpoint of $0.10-0.30
+	costTripCents     = 15 // Sonnet narrative + Haiku scoring
+	costDreamFixCents = 1  // Haiku Brief tightening
 )
 
 // budgetState is what gets persisted to .metabolism-budget.json. The
@@ -43,15 +43,27 @@ type budgetState struct {
 	SpentCents       int     `json:"spent_cents"`        // accumulated estimated spend this month
 	ActualSpentCents float64 `json:"actual_spent_cents"` // measured spend from anthropic.Usage this month
 	UpdatedAt        string  `json:"updated_at"`         // RFC3339, last write
+
+	// Cache-effectiveness telemetry (this month). CacheReadTokens is input
+	// served from the prompt cache (billed ~10%); FreshInputTokens is
+	// uncached input (full price). The hit ratio CacheRead/(CacheRead+Fresh)
+	// answers "is the shared cache_control'd prefix actually landing?" — a
+	// silent regression (prefix drift below the model's min-cacheable floor,
+	// a structure change, a TTL miss) shows up as the ratio collapsing.
+	// Note: cache_creation tokens (the one-time establishing write, +25%) are
+	// not captured here, so the ratio slightly overstates — it measures reads
+	// against fresh input, not against total prompt tokens.
+	CacheReadTokens  int64 `json:"cache_read_tokens"`
+	FreshInputTokens int64 `json:"fresh_input_tokens"`
 }
 
 // budgetGuard wraps the persisted state plus the cap loaded from
 // METABOLISM_BUDGET_CENTS. Cap of 0 means unlimited (no gating).
 type budgetGuard struct {
-	dir       string
-	capCents  int
-	state     budgetState
-	loaded    bool
+	dir      string
+	capCents int
+	state    budgetState
+	loaded   bool
 }
 
 // loadBudgetGuard reads .metabolism-budget.json (creating a fresh state
@@ -82,6 +94,8 @@ func loadBudgetGuard(dir string) *budgetGuard {
 	if g.state.Month != currentMonth() {
 		g.state.Month = currentMonth()
 		g.state.SpentCents = 0
+		g.state.CacheReadTokens = 0
+		g.state.FreshInputTokens = 0
 		g.state.SchemaVersion = budgetSchema
 	}
 	g.loaded = true
@@ -162,11 +176,33 @@ func loadBudgetSnapshot(dir string) (estCents, capCents int, actualCents float64
 func (g *budgetGuard) summary() string {
 	if g.capCents <= 0 {
 		if g.state.ActualSpentCents > 0 {
-			return fmt.Sprintf("budget: unlimited; actual %.2f¢ this month (%s)", g.state.ActualSpentCents, g.state.Month)
+			return fmt.Sprintf("budget: unlimited; actual %.2f¢ this month (%s)%s", g.state.ActualSpentCents, g.state.Month, g.cacheSuffix())
 		}
 		return "budget: unlimited (METABOLISM_BUDGET_CENTS unset)"
 	}
-	return fmt.Sprintf("budget: %d¢ est / %.2f¢ actual / %d¢ cap this month (%s)", g.state.SpentCents, g.state.ActualSpentCents, g.capCents, g.state.Month)
+	return fmt.Sprintf("budget: %d¢ est / %.2f¢ actual / %d¢ cap this month (%s)%s", g.state.SpentCents, g.state.ActualSpentCents, g.capCents, g.state.Month, g.cacheSuffix())
+}
+
+// cacheHitPct reports the share of input tokens served from the prompt
+// cache this month, as read/(read+fresh). Returns (0, false) before any
+// LLM call has been billed, so the caller can omit the stat rather than
+// print a meaningless 0%.
+func (g *budgetGuard) cacheHitPct() (float64, bool) {
+	total := g.state.CacheReadTokens + g.state.FreshInputTokens
+	if total == 0 {
+		return 0, false
+	}
+	return 100 * float64(g.state.CacheReadTokens) / float64(total), true
+}
+
+// cacheSuffix renders the hit-ratio clause for the budget line, or "" when
+// there is no usage data yet.
+func (g *budgetGuard) cacheSuffix() string {
+	pct, ok := g.cacheHitPct()
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf(" | cache %.0f%% hit (%d read / %d fresh tok)", pct, g.state.CacheReadTokens, g.state.FreshInputTokens)
 }
 
 func currentMonth() string {
@@ -184,17 +220,17 @@ func currentMonth() string {
 // modelPricing in dollars per million tokens. Source: anthropic.com/pricing
 // (verified April 2026). Add new model entries here when bumping the SDK.
 type modelPricing struct {
-	inputPerMTok  float64
-	outputPerMTok float64
+	inputPerMTok     float64
+	outputPerMTok    float64
 	cacheReadPerMTok float64 // 10% of input price for Sonnet/Haiku 4.x
 }
 
 var pricingByModel = map[string]modelPricing{
-	"claude-sonnet-4-5":     {inputPerMTok: 3.00, outputPerMTok: 15.00, cacheReadPerMTok: 0.30},
+	"claude-sonnet-4-5":            {inputPerMTok: 3.00, outputPerMTok: 15.00, cacheReadPerMTok: 0.30},
 	"claude-sonnet-4-5-2025-09-29": {inputPerMTok: 3.00, outputPerMTok: 15.00, cacheReadPerMTok: 0.30},
-	"claude-sonnet-4-6":     {inputPerMTok: 3.00, outputPerMTok: 15.00, cacheReadPerMTok: 0.30},
-	"claude-haiku-4-5":      {inputPerMTok: 1.00, outputPerMTok: 5.00,  cacheReadPerMTok: 0.10},
-	"claude-haiku-4-5-20251001": {inputPerMTok: 1.00, outputPerMTok: 5.00,  cacheReadPerMTok: 0.10},
+	"claude-sonnet-4-6":            {inputPerMTok: 3.00, outputPerMTok: 15.00, cacheReadPerMTok: 0.30},
+	"claude-haiku-4-5":             {inputPerMTok: 1.00, outputPerMTok: 5.00, cacheReadPerMTok: 0.10},
+	"claude-haiku-4-5-20251001":    {inputPerMTok: 1.00, outputPerMTok: 5.00, cacheReadPerMTok: 0.10},
 }
 
 // costCents converts measured tokens to a fractional-cent cost.
@@ -221,6 +257,8 @@ func (g *budgetGuard) chargeActual(model string, inputTokens, cachedReadTokens, 
 		return
 	}
 	g.state.ActualSpentCents += cents
+	g.state.CacheReadTokens += cachedReadTokens
+	g.state.FreshInputTokens += inputTokens
 	g.state.UpdatedAt = time.Now().Format(time.RFC3339)
 	g.state.SchemaVersion = budgetSchema
 	path := filepath.Join(g.dir, ".metabolism-budget.json")

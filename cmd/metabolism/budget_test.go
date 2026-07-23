@@ -242,3 +242,19 @@ func TestLoadBudgetSnapshot_StaleMonthReturnsZero(t *testing.T) {
 		t.Errorf("cap should still come from env: %d", cap)
 	}
 }
+
+func TestCacheHitPct(t *testing.T) {
+	g := &budgetGuard{}
+	if _, ok := g.cacheHitPct(); ok {
+		t.Error("no usage yet → cacheHitPct must report ok=false, not a meaningless 0%")
+	}
+	g.state.CacheReadTokens = 900
+	g.state.FreshInputTokens = 100
+	pct, ok := g.cacheHitPct()
+	if !ok || pct != 90 {
+		t.Errorf("900 read / 100 fresh → want 90%% ok, got %.1f%% ok=%v", pct, ok)
+	}
+	if s := g.cacheSuffix(); !strings.Contains(s, "cache 90% hit") {
+		t.Errorf("suffix = %q, want it to contain the hit clause", s)
+	}
+}

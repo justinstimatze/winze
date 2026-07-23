@@ -18,14 +18,16 @@ import (
 
 type InstanceStatus struct {
 	Instance
-	SpentCents  int       // this month, from .metabolism-budget.json
-	Month       string    // budget accounting month (YYYY-MM)
-	TimerActive bool      // systemd timer ActiveState == active
-	HasTimer    bool      // systemctl query returned a unit
-	NextFire    time.Time // zero if unparseable
-	NextFireRaw string    // raw systemd string (always shown if present)
-	LastRun     time.Time
-	LastRunRaw  string
+	SpentCents       int       // this month, from .metabolism-budget.json
+	Month            string    // budget accounting month (YYYY-MM)
+	CacheReadTokens  int64     // input served from prompt cache this month
+	FreshInputTokens int64     // uncached input this month
+	TimerActive      bool      // systemd timer ActiveState == active
+	HasTimer         bool      // systemctl query returned a unit
+	NextFire         time.Time // zero if unparseable
+	NextFireRaw      string    // raw systemd string (always shown if present)
+	LastRun          time.Time
+	LastRunRaw       string
 }
 
 // gatherStatus builds the full read-model for every registered instance.
@@ -37,7 +39,7 @@ func gatherStatus() ([]InstanceStatus, error) {
 	out := make([]InstanceStatus, 0, len(reg.Instances))
 	for _, in := range reg.Instances {
 		st := InstanceStatus{Instance: in}
-		st.SpentCents, st.Month = readBudget(in.Dir)
+		st.SpentCents, st.Month, st.CacheReadTokens, st.FreshInputTokens = readBudget(in.Dir)
 		if in.Enabled {
 			readTimer(in.Dir, &st)
 		}
@@ -46,19 +48,32 @@ func gatherStatus() ([]InstanceStatus, error) {
 	return out, nil
 }
 
-func readBudget(dir string) (spent int, month string) {
+func readBudget(dir string) (spent int, month string, cacheRead, freshInput int64) {
 	data, err := os.ReadFile(filepath.Join(dir, ".metabolism-budget.json"))
 	if err != nil {
-		return 0, ""
+		return 0, "", 0, 0
 	}
 	var b struct {
-		SpentCents int    `json:"spent_cents"`
-		Month      string `json:"month"`
+		SpentCents       int    `json:"spent_cents"`
+		Month            string `json:"month"`
+		CacheReadTokens  int64  `json:"cache_read_tokens"`
+		FreshInputTokens int64  `json:"fresh_input_tokens"`
 	}
 	if json.Unmarshal(data, &b) != nil {
-		return 0, ""
+		return 0, "", 0, 0
 	}
-	return b.SpentCents, b.Month
+	return b.SpentCents, b.Month, b.CacheReadTokens, b.FreshInputTokens
+}
+
+// cacheCell renders the prompt-cache hit ratio for the status table, or "—"
+// before any LLM call has been billed this month. Read/(read+fresh) — the
+// same measure the metabolism cycle line prints.
+func cacheCell(cacheRead, freshInput int64) string {
+	total := cacheRead + freshInput
+	if total == 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.0f%%", 100*float64(cacheRead)/float64(total))
 }
 
 // readTimer fills the systemd-derived fields. Best-effort: any failure leaves
@@ -151,7 +166,7 @@ func cmdStatus(_ []string) error {
 		return nil
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(w, "TIER\tTIMER\tNEXT\tLAST\tBUDGET\tDIR")
+	fmt.Fprintln(w, "TIER\tTIMER\tNEXT\tLAST\tBUDGET\tCACHE\tDIR")
 	for _, s := range sts {
 		timer := "off"
 		if s.Enabled {
@@ -165,8 +180,9 @@ func cmdStatus(_ []string) error {
 			next = relFire(s.NextFire, s.NextFireRaw)
 			last = relFire(s.LastRun, s.LastRunRaw)
 		}
-		fmt.Fprintf(w, "%d %s\t%s\t%s\t%s\t%d/%d¢\t%s\n",
-			s.Tier, tierName(s.Tier), timer, next, last, s.SpentCents, s.BudgetCents, s.Dir)
+		fmt.Fprintf(w, "%d %s\t%s\t%s\t%s\t%d/%d¢\t%s\t%s\n",
+			s.Tier, tierName(s.Tier), timer, next, last, s.SpentCents, s.BudgetCents,
+			cacheCell(s.CacheReadTokens, s.FreshInputTokens), s.Dir)
 	}
 	return w.Flush()
 }
