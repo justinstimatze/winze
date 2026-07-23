@@ -57,7 +57,7 @@ var testClaimPredicates = map[string]bool{
 	"FormedAt": true, "EnergyEstimate": true, "EnglishTranslationOf": true,
 	"IsCognitiveBias": true, "IsPolyvalentTerm": true,
 	"IsFictionalWork": true, "IsFictional": true,
-	"CorrectsCommonMisconception": true,
+	"CorrectsCommonMisconception":   true,
 	"GrantsBroadAuthorityOverWinze": true, "PrefersTerseResponses": true,
 	"PushesBackOnOverengineering": true, "PrefersOrganicSchemaGrowth": true,
 	// Main-schema predicates with no current corpus usage (Tunguska-domain)
@@ -268,7 +268,7 @@ func TestNoOrphanEntities(t *testing.T) {
 	// Known exceptions: bootstrap entities that describe the project itself
 	// (not external knowledge claims).
 	exceptions := map[string]bool{
-		"Winze": true, "Defn": true, "Dolt": true, "GasTown": true,
+		"Winze": true, "Defn": true, "Dolt": true,
 		"ClaudeCode": true, "CursorAI": true,
 		// Kirk/Campbell/Nagel wired via EarlyFormulationOf.
 		// RCZaehner and WalterTerenceStace removed (mirror-source violation).

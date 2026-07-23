@@ -74,21 +74,7 @@ var (
 		ID:    "dolt",
 		Name:  "Dolt",
 		Kind:  "tool",
-		Brief: "SQL database with git semantics (branch, merge, diff, blame on structured data). Used by defn for the reference graph and by Gas Town as the state store.",
-	}
-
-	GasTown = &Entity{
-		ID:    "gastown",
-		Name:  "Gas Town",
-		Kind:  "tool",
-		Brief: "Yegge's Go-based orchestrator for fleets of Claude Code instances. Built on Dolt. Worker roles: Mayor, Polecats, Convoys. Merge queue and quality gates built in. Winze runs as a Gas Town project, not a fork.",
-	}
-
-	Wasteland = &Entity{
-		ID:    "wasteland",
-		Name:  "The Wasteland",
-		Kind:  "tool",
-		Brief: "Federation layer over Gas Towns via Dolt fork/merge. Shared Wanted Board of work across users. Relevant to winze only if knowledge-sharing across users becomes a goal.",
+		Brief: "SQL database with git semantics (branch, merge, diff, blame on structured data). Used by defn for the reference graph.",
 	}
 )
 
@@ -170,12 +156,6 @@ var (
 		Rationale: "Drops every format assumption that optimizes for eyeballs (markdown, frontmatter, hierarchy prettiness). Ugliness is free. Encoding optimizes for agent operations: short stable symbols, co-located references, aggressive refactor churn allowed because no human has a mental model to invalidate.",
 	}
 
-	GasTownIsTheOrchestrator = &Decision{
-		ID:        "dec-use-gastown",
-		Title:     "Use Gas Town as the worker-agent orchestrator. Do not fork.",
-		Rationale: "Gas Town already solves multi-agent orchestration over Dolt with merge queues and quality gates. Winze is a codebase Gas Town points at, not a replacement for it. Winze-specific workers become Gas Town polecat skill packages. Gas Town is a moving target; tracking upstream as a user is cheaper than tracking it as a fork.",
-	}
-
 	LLMAsExpensiveLintRule = &Decision{
 		ID:        "dec-llm-as-lint",
 		Title:     "LLM judgment is one lint rule among many, not a separate architectural stage",
@@ -183,20 +163,20 @@ var (
 	}
 
 	ProseIsInputOutputNotState = &Decision{
-		ID:    "dec-prose-is-io",
-		Title: "winze storage is 100% typed code. Prose is an input/output format, not state. Source documents are transient.",
+		ID:        "dec-prose-is-io",
+		Title:     "winze storage is 100% typed code. Prose is an input/output format, not state. Source documents are transient.",
 		Rationale: "Embedding prose as //go:embed sidecars was considered and rejected: it preserves essays losslessly but makes every entity mention inside the prose invisible to the graph, breaking rename propagation and contradiction detection at the sidecar boundary. Instead: ingest workers consume prose sources and produce typed claims as their commit. Query workers render typed claims back to prose on demand. Source documents are NOT retained by winze as live ground truth — the KB is the canonical representation of the knowledge, full stop. Each claim's Provenance holds a human hint (Origin), an ingest date, and the specific source fragment (Quote) that supported the extraction; when the source is gone, the quote IS the audit record. Markdown re-export (query workers rendering typed claims back to prose) is icing that can be built later. This makes the encoding harder (sentence/claim schemas must type the prose itself) but keeps the compiler check covering the whole KB.",
 	}
 
 	AditIsTheCostOracle = &Decision{
 		ID:        "dec-adit-oracle",
 		Title:     "adit is the cost oracle for winze authoring ergonomics",
-		Rationale: "adit already measures 'how expensive is this artifact for an agent to work with' and is validated against SWE-bench trajectories. The same metrics (file size, grep noise, blast radius, ambiguous names, unneeded reads) apply to winze with no modification, because of dec-same-picture. adit runs as a Gas Town quality gate: bad scores block commits.",
+		Rationale: "adit already measures 'how expensive is this artifact for an agent to work with' and is validated against SWE-bench trajectories. The same metrics (file size, grep noise, blast radius, ambiguous names, unneeded reads) apply to winze with no modification, because of dec-same-picture. adit runs as a winze quality gate: bad scores block commits.",
 	}
 
 	NoUpperOntologyImport = &Decision{
-		ID:    "dec-no-upper-ontology",
-		Title: "Do not import an upper ontology. Use existing vocabularies only as a naming oracle during ingest.",
+		ID:        "dec-no-upper-ontology",
+		Title:     "Do not import an upper ontology. Use existing vocabularies only as a naming oracle during ingest.",
 		Rationale: "Importing Cyc/DOLCE/SUMO/BFO/Schema.org as a dependency forces winze's shape to fit theirs, and the Cyc cautionary tale (fm-ontology-churn) warns that upper-ontology migration is the exact 100-person-year sinkhole we want to avoid. The vast majority of a personal KB's claims live below the level any upper ontology operates at. But the naming-churn subclass of ontology churn IS cheaply mitigable: when an ingest worker invents a novel type name, a lint rule grounds it against a lookup table of well-known external terms (Schema.org, WordNet, Wikidata class names) and prefers the established name on promotion from pending/. This is the Mathlib naming-discipline pattern — don't import mathematics, but don't let a worker call something Foo when Monoid is the standard name. Wikidata is kept separately in scope as an entity-linking oracle (distinct from ontology import): real-world entities like Church Rock spill or United Nuclear can be resolved to Q-IDs by an enrichment worker; fictional entities stay winze-native.",
 	}
 )
@@ -207,23 +187,23 @@ var (
 
 var (
 	OntologyChurn = &FailureMode{
-		ID:       "fm-ontology-churn",
-		Title:    "The Cyc curve: ontology churn outpaces fact authoring",
-		Severity: 2,
+		ID:          "fm-ontology-churn",
+		Title:       "The Cyc curve: ontology churn outpaces fact authoring",
+		Severity:    2,
 		Description: "LLM worker re-types the world every few iterations. Tokens spent on structural refactoring dominate tokens spent adding knowledge. Proven real by Cyc (~100 person-years on one migration). Proven survivable by Mathlib via rename-with-deprecation grace period + auto-migration + bot-assisted PR review. Mitigation is engineering, not research.",
 	}
 
 	QueryabilityMirage = &FailureMode{
-		ID:       "fm-queryability-mirage",
-		Title:    "Agents default to grep even when structured queries exist",
-		Severity: 2,
+		ID:          "fm-queryability-mirage",
+		Title:       "Agents default to grep even when structured queries exist",
+		Severity:    2,
 		Description: "Empirical: Claude Code's own architecture prefers lexical search; Augment's SWE-bench analysis found grep beat embeddings because agents persisted rather than chose better tools; LSP-in-agents studies show agents fall back to grep when structured tools require precision. Engineerable via forced-briefing patterns, grep-hostile substrates, and structured-tool outputs strictly smaller than grep outputs.",
 	}
 
 	ConsistencyIsNotCorrectness = &FailureMode{
-		ID:       "fm-consistency-vs-correctness",
-		Title:    "go build passes even on contradictory claims",
-		Severity: 3,
+		ID:          "fm-consistency-vs-correctness",
+		Title:       "go build passes even on contradictory claims",
+		Severity:    3,
 		Description: "The most dangerous failure mode. The compiler catches references and type mismatches; it does not catch 'Betty trusts Quamash' AND 'Betty distrusts Quamash' both being present. SOTA LLMs accept adversarial contradictions ~80% of the time. Best-in-class hybrid logic+LLM contradiction detectors hit only 60% recall. Requires a dedicated contradiction-detection lint rule running post-commit with a separate-prompt separate-context LLM.",
 	}
 )
@@ -303,18 +283,6 @@ var (
 // implementation work that depends on them.
 // -----------------------------------------------------------------------------
 
-func DefineWinzeWorkerRoles() *OpenQuestion {
-	_ = GasTown
-	_ = Defn
-	_ = Adit
-	return &OpenQuestion{
-		ID:         "oq-worker-roles",
-		Title:      "Define winze worker roles as Gas Town polecat skill packages: ingest, lint, audit, curator, refactor. What does each prompt look like, what context does it need, what tools does it call?",
-		Blocking:   false,
-		Resolution: "Resolved. Curation formula (5-step workflow: load-context, source-analysis, ingest, validate, submit). Autonomous metabolism cycles operational.",
-	}
-}
-
 func DesignRuleRegistry() *OpenQuestion {
 	_ = LLMAsExpensiveLintRule
 	return &OpenQuestion{
@@ -373,32 +341,32 @@ func ContradictionDetectionLintRule() *OpenQuestion {
 
 var (
 	SchemaAccretionRate = &Decision{
-		ID:    "dec-schema-accretion-rate",
-		Title: "Schema accretes at 0-1 new predicates per distinct corpus shape",
+		ID:        "dec-schema-accretion-rate",
+		Title:     "Schema accretes at 0-1 new predicates per distinct corpus shape",
 		Rationale: "After 17+ ingests across 8 corpus shapes (Wikipedia articles, journal papers, fiction, legal documents, game design docs, course handouts, commentaries, taxonomy lists), the predicate vocabulary converged. 11 consecutive slices required zero new predicates. New predicates emerge only when a structurally novel corpus shape forces them (CommentaryOn from paper-on-paper, AuthoredOrg from institutional authorship).",
 	}
 
 	ValueConflictIsSemantic = &Decision{
-		ID:    "dec-value-conflict-semantic",
-		Title: "Value-conflict lint operates at the semantic level (same subject+predicate+different objects), not type-level disjointness",
+		ID:        "dec-value-conflict-semantic",
+		Title:     "Value-conflict lint operates at the semantic level (same subject+predicate+different objects), not type-level disjointness",
 		Rationale: "The original mit-predicate-disjoint proposed compile-time pragma-based disjointness (e.g., Trusts vs Distrusts). Implementation revealed the real pattern is functional-predicate value conflicts: the same (predicate, subject) pair with different object values. This is caught by the //winze:functional pragma on predicate type declarations.",
 	}
 
 	ReificationOverSchemaExtension = &Decision{
-		ID:    "dec-reification-over-extension",
-		Title: "Handle competing theories via Hypothesis entities + TheoryOf, not new role types",
+		ID:        "dec-reification-over-extension",
+		Title:     "Handle competing theories via Hypothesis entities + TheoryOf, not new role types",
 		Rationale: "When multiple theories compete to explain a concept (consciousness, human cognition, mathematical foundations), each theory is a Hypothesis entity with a TheoryOf claim pointing at the contested Concept. The //winze:contested annotation on TheoryOf signals that multiple subjects per object is expected. This avoids schema proliferation (no ConsciousnessTheoryA role type) and lets the contested-concept lint rule surface the landscape automatically.",
 	}
 
 	MirrorSourceCommitmentsValidated = &Decision{
-		ID:    "dec-mirror-source",
-		Title: "Ingest workers refuse to structure claims the source leaves unstructured",
+		ID:        "dec-mirror-source",
+		Title:     "Ingest workers refuse to structure claims the source leaves unstructured",
 		Rationale: "If a source mentions a concept without committing to a specific relationship, the ingest worker records it in the Brief (free text) but does not fabricate a typed claim. This discipline was validated by the misconceptions slice: the source refused to state the misconceptions themselves, so winze records only the corrections. Provenance.Quote is the audit mechanism.",
 	}
 
 	SlotTypeDisciplineValidated = &Decision{
-		ID:    "dec-slot-type-validated",
-		Title: "Role-typed predicate slots catch real concept/claim category errors at compile time",
+		ID:        "dec-slot-type-validated",
+		Title:     "Role-typed predicate slots catch real concept/claim category errors at compile time",
 		Rationale: "Validated by the UDHR ingest: attempting to use Authored[Person, Concept] for institutional authorship (UN General Assembly) failed to compile, forcing the creation of AuthoredOrg[Organization, Concept]. The compiler caught a category error that prose-based KBs would silently accept.",
 	}
 )
@@ -414,21 +382,5 @@ func ClaimSchemaDesign() *OpenQuestion {
 		Title:      "Design the claim-level schema: what is a Claim, a Scene, a Relationship, a TemporalMarker, an Assertion? How granular? How does a sentence map to graph nodes? How are aliases and coreferences resolved at ingest time? This is the hard encoding problem we were dodging with //go:embed sidecars. Expect the schema to churn (see fm-ontology-churn) and use rename-with-deprecation from day one.",
 		Blocking:   false,
 		Resolution: "Resolved. Claims are typed predicate instances: BinaryRelation[S,O] (two-slot) and UnaryClaim[S] (one-slot). 48 predicates across 8 families in predicates.go. 16 role types in roles.go grounded in Schema.org/WordNet/Wikidata. Schema accreted organically — 11 consecutive slices required zero new predicates.",
-	}
-}
-
-// GasTownProjectAwareness captures the point that a naive agent orchestrator
-// pointed at winze will try to "build features" and "fix bugs" — wrong tasks.
-// The skill package must teach it what kinds of tasks exist in a KB project
-// (ingest, audit, rename-propagation, claim-gap-filling, contradiction-sweep)
-// so it generates the right work for worker agents.
-func GasTownProjectAwareness() *OpenQuestion {
-	_ = GasTown
-	_ = GasTownIsTheOrchestrator
-	return &OpenQuestion{
-		ID:         "oq-gastown-awareness",
-		Title:      "Write the winze skill package for Gas Town. It must encode not just worker prompts but project-type awareness: what tasks exist in a winze project, what quality gates apply, what the Mayor's backlog should look like. Without this, Gas Town will generate code-shaped tasks against a KB-shaped repo.",
-		Blocking:   false,
-		Resolution: "Resolved. Skill package with curation formula (5-step: load-context, source-analysis, ingest, validate, submit) and health patrol plugin. Issue tracking integrated. Autonomous operation verified.",
 	}
 }
