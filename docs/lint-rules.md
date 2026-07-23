@@ -4,7 +4,8 @@
 for the LLM contradiction check.
 
 The rules: naming-oracle, orphan-report, value-conflict, contested-concept,
-brief-check, provenance-split, llm-contradiction, brief-drift, structural-dedup.
+brief-check, provenance-split, llm-contradiction, brief-drift, structural-dedup,
+lexicon-fence.
 
 ## structural-dedup
 
@@ -39,3 +40,15 @@ a gate (exit 1) on any unexempted assertion-candidate — for a triaged corpus
 where every Brief mention is either claimed or explicitly acknowledged. Two
 hops rather than one because the house pattern routes a person to a concept
 through an intermediate framing entity.
+
+## lexicon-fence
+
+`lexicon-fence` keeps lexicon's private, non-redistributable content out of the
+public corpus. A `Provenance` whose Origin or Quote references a lexicon locator
+(`lex-NNNN` or `lexicon:`) is a hard failure (exit 1): lexicon is a *stimulus*
+winze reads to spark connections, never a *source* it quotes. The correct
+attribution for anything lexicon-derived is a `Conjecture` (`From:
+"lexicon:lex-NNNN"`), which carries no `Quote` by design, so nothing leaks. The
+compiler closes the `Conjecture` side; this rule closes the free-string
+`Provenance` side it can't reach. Matched precisely enough that the ordinary
+word "lexicon" in prose doesn't trip it. See `docs/lexicon.md`.
