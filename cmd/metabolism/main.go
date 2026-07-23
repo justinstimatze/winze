@@ -2265,11 +2265,19 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 		} else {
 			// Run one sensor cycle
 			targets, report, err := runTopology(dir)
+			if err == nil {
+				// Exploration: prepend active learning-goal targets so an
+				// unsatisfied goal gets sensor priority over fragility repair
+				// (the per-cycle limit queries only the first few targets).
+				// Empty when no goals are active, so a goal-less corpus is
+				// unchanged. See goals.go / goalSensorTargets.
+				targets = append(goalSensorTargets(dir), targets...)
+			}
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[cycle] topology: %v\n", err)
 				failures++
 			} else if len(targets) > 0 {
-				fmt.Printf("[cycle] %d sensor targets from topology (%d entities, %d claims)\n",
+				fmt.Printf("[cycle] %d sensor targets (topology + goals; %d entities, %d claims)\n",
 					len(targets), report.Entities, report.Claims)
 
 				// Query backends for first 3 targets
