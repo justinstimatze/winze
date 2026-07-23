@@ -36,8 +36,10 @@ func runServe() {
 	), handleRemember)
 
 	s.AddTool(mcp.NewTool("winze_recall",
-		mcp.WithDescription("Associative recall from winze-memory: hybrid BM25+semantic search over memory briefs. Returns the most relevant memories. Call when starting a task or when a past decision/fact might exist."),
+		mcp.WithDescription("Associative recall from winze-memory: hybrid BM25+semantic search over memory briefs. Returns the most relevant memories as compact headlines (name, var_name, role, score, truncated brief). Call when starting a task or when a past decision/fact might exist. To read one memory in full, call again with a tighter query and brief_chars=0."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("What to recall (natural language or keywords).")),
+		mcp.WithNumber("limit", mcp.Description("Max memories to return (default 5).")),
+		mcp.WithNumber("brief_chars", mcp.Description("Truncate each brief to this many chars to keep results compact (default 240). Set 0 for full briefs — pair with a small limit so the result stays under the tool-result size cap.")),
 	), handleRecall)
 
 	s.AddTool(mcp.NewTool("winze_update",
@@ -54,10 +56,28 @@ func runServe() {
 	}
 }
 
+// recall result-shaping defaults. Recall exists for interactive latency, so it
+// returns compact headlines: capped to a handful of hits, each brief truncated.
+// Without these a wide query over kilobyte-scale project memories inlines every
+// full brief and overshoots the per-tool-result size cap, forcing the harness to
+// spill to disk and the reader to round-trip — the opposite of associative recall.
+const (
+	recallDefaultLimit      = 5
+	recallDefaultBriefChars = 240
+)
+
 func handleRecall(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	query, ok := req.GetArguments()["query"].(string)
 	if !ok || strings.TrimSpace(query) == "" {
 		return mcp.NewToolResultError("query: required string argument"), nil
+	}
+	limit := recallDefaultLimit
+	if v, ok := req.GetArguments()["limit"].(float64); ok && v > 0 {
+		limit = int(v)
+	}
+	briefChars := recallDefaultBriefChars
+	if v, ok := req.GetArguments()["brief_chars"].(float64); ok && v >= 0 {
+		briefChars = int(v)
 	}
 	res, ok := runQueryJSON("--hybrid", query)
 	if !ok {
@@ -66,7 +86,20 @@ func handleRecall(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	if len(res.Hits) == 0 {
 		return mcp.NewToolResultText("no memories matched — nothing recalled."), nil
 	}
-	out, _ := json.MarshalIndent(res, "", "  ")
+	hits := res.Hits
+	if len(hits) > limit {
+		hits = hits[:limit]
+	}
+	if briefChars > 0 {
+		for i := range hits {
+			hits[i].Brief = truncate(hits[i].Brief, briefChars)
+		}
+	}
+	out, _ := json.MarshalIndent(struct {
+		Matched int        `json:"matched"` // total hits before the limit cap
+		Shown   int        `json:"shown"`
+		Hits    []queryHit `json:"hits"`
+	}{Matched: res.Count, Shown: len(hits), Hits: hits}, "", "  ")
 	return mcp.NewToolResultText(string(out)), nil
 }
 
