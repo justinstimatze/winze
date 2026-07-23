@@ -44,6 +44,8 @@ func main() {
 		os.Exit(cmdRename(os.Args[2:]))
 	case "merge":
 		os.Exit(cmdMerge(os.Args[2:]))
+	case "set-brief":
+		os.Exit(cmdSetBrief(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -64,8 +66,9 @@ Subcommands:
   rename   rename a top-level var across the corpus, rewriting every reference
   merge    fold entity A into entity B: retarget every reference, remove A's
            declaration; claims retarget automatically, the build gate validates
+  set-brief revise an entity's Brief (and optionally Name) in place
 
-Run 'winze-edit rename -h' or 'winze-edit merge -h' for flags.
+Run 'winze-edit <subcommand> -h' for flags.
 `)
 }
 
