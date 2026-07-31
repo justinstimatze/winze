@@ -8,6 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/justinstimatze/gozim v0.1.0
 	github.com/mark3labs/mcp-go v0.48.0
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
@@ -70,5 +71,4 @@ require (
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

@@ -40,9 +40,17 @@ The output isn't a status report. It's better answers the next time someone asks
 
 **Current sprint:** Growing the graph around contested theories of consciousness and cognition (IIT, Global Workspace Theory, Free Energy Principle). The KB also contains meta-claims about its own limitations — predictions the system can resolve about itself.
 
-**Shipped:** MCP server (`cmd/mcp`) — any agent queries structured epistemic metadata (what's known, how confident, what's contested) via `mcp__winze__{claims,disputes,provenance,search,stats,theories}` without knowing the infrastructure. Laminar metabolism with phase-level self-gating, hard monthly spend cap, and per-call actual-spend telemetry.
+**Shipped:** MCP server (`cmd/mcp`) — any agent queries structured epistemic metadata (what's known, how confident, what's contested) via `mcp__winze__{claims,disputes,provenance,search,stats,theories}` without knowing the infrastructure. Laminar metabolism with phase-level self-gating, hard monthly spend cap, and per-call actual-spend telemetry. OKF export (`cmd/okf`) — see below.
 
-**Next:** Source reputation — per-domain corroborated/challenged/refuted rates computed from the calibration time-series, surfaced as a sensor down-weight (not deny-list). Z3-based lint rules for formal verification of ontological constraints.
+**Next:** Source reputation — per-domain corroborated/challenged/refuted rates computed from the calibration time-series, surfaced as a sensor down-weight (not deny-list). Z3-based lint rules for formal verification of ontological constraints. An OKF `relations:` proposal upstream, and OKF *import* on the untrusted path so other producers' bundles are ingestible as sensor input rather than as fact.
+
+### Interop: Google's Open Knowledge Format
+
+[OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) (Google Cloud, June 2026) is a directory of markdown files with YAML frontmatter, and it reached winze's central thesis independently: v0.2 added `generated` / `verified` trust tiers over a `sources` family — a generated-vs-sourced distinction, arrived at from the same premise. Where it parts is enforcement. OKF's conformance floor is one required field, and consumers are forbidden from rejecting unknown types or broken links; it is buying adoption. Winze's floor is `go build`; it is buying integrity.
+
+Those bets compose in one direction: a corpus that satisfies the compiler always projects down to a bundle that satisfies the floor, and never the reverse. So `winze-okf --out` emits a conformant bundle — 322 concepts, zero warnings — and the projection is the argument in a form other tools can read.
+
+Two things survive that the format alone would drop. OKF links carry no relationship kind (the spec puts it in "surrounding prose"), so claims are emitted under `## <Predicate>` headings: conformant, and a consumer that looks recovers the typed edge. And the attribution split holds structurally — a `Provenance`-backed claim contributes a `sources:` entry and a footnote carrying its exact Quote, while a `Conjecture`-backed claim contributes *nothing* to `sources:` and lands in its own `# Conjectures` section. Not by a rule in the exporter: `Conjecture` has no `Quote` field, so there is no value to put there. Trust tiers then fall out rather than being asserted — sourced documents reach machine-confirmed via the build gate, conjecture-only documents stay unverified and draft. See [docs/okf.md](docs/okf.md) for what the projection loses, too.
 
 **Known problems:**
 - Wikipedia provenance concentration (HHI 0.49, 65% Wikipedia). The availability-heuristic bias gate skips ZIM when this fires; Kagi fills the resulting signal gap. Structural fix still requires diversified ingest landing as actual cycles, not just plumbing.

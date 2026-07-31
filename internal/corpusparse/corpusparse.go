@@ -38,6 +38,20 @@ type Entity struct {
 	Brief    string
 	Aliases  []string
 	File     string
+
+	// Refs holds the entity's typed code citations, present only on SourceDoc
+	// carriers. Symbol is the compile-checked half and has no textual form, so
+	// only the human label and note survive the parse.
+	Refs []CodeRef
+}
+
+// CodeRef is the parseable half of a schema.go CodeRef: the doc→code typed
+// citation's label and assertion. Its Symbol field is what the compiler checks
+// and what makes the citation unable to go stale silently; a parser sees only
+// the prose that travels alongside it.
+type CodeRef struct {
+	Path string
+	Note string
 }
 
 // Claim is a typed predicate instance: var X = PredicateType{Subject: A, Object: B, Prov: ...}.
@@ -50,6 +64,15 @@ type Claim struct {
 	File          string
 	TripGenerated bool // matches IsTripGenerated(VarName)
 	Conjectural   bool // Prov is a Conjecture (winze's own generation), not a sourced Provenance
+
+	// Attribution detail. Exactly one of these is populated on a well-formed
+	// claim, mirroring the sealed Attribution sum in schema.go: ProvVar names a
+	// shared `var fooSource = Provenance{...}`, ProvInline holds a provenance
+	// literal written at the call site, and Conj holds a conjecture literal.
+	// Conjectural is true iff Conj != nil.
+	ProvVar    string
+	ProvInline *Provenance
+	Conj       *Conjecture
 }
 
 // tripCycleClaimRE matches var names of trip-cycle-promoted claims:
@@ -90,12 +113,24 @@ func IsReifyMachinery(varName string) bool {
 // skips files it cannot parse and vars whose composite-literal shape
 // doesn't match the entity-or-claim pattern.
 func ParseCorpus(dir string) ([]Entity, []Claim, error) {
+	c, err := ParseCorpusFull(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	return c.Entities, c.Claims, nil
+}
+
+// ParseCorpusFull is ParseCorpus plus the corpus's provenance vars — the parse
+// callers need when they care not just what a claim says but what backs it.
+// Same conservatism: unparseable files and unrecognised var shapes are skipped.
+func ParseCorpusFull(dir string) (*Corpus, error) {
 	var entities []Entity
 	var claims []Claim
+	var provs []Provenance
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	fset := token.NewFileSet()
 	for _, e := range entries {
@@ -129,6 +164,10 @@ func ParseCorpus(dir string) ([]Entity, []Claim, error) {
 						entities = append(entities, ent)
 						continue
 					}
+					if p, ok := tryParseProvenance(nameIdent.Name, cl, e.Name()); ok {
+						provs = append(provs, p)
+						continue
+					}
 					if c, ok := tryParseClaim(nameIdent.Name, cl, e.Name()); ok {
 						claims = append(claims, c)
 					}
@@ -136,7 +175,7 @@ func ParseCorpus(dir string) ([]Entity, []Claim, error) {
 			}
 		}
 	}
-	return entities, claims, nil
+	return &Corpus{Entities: entities, Claims: claims, Provenance: provs}, nil
 }
 
 // LoadPredicates walks dir/predicates.go and returns all top-level type
@@ -177,6 +216,14 @@ func tryParseEntity(varName string, cl *ast.CompositeLit, file string) (Entity, 
 		return Entity{}, false
 	}
 	for _, elt := range cl.Elts {
+		// A role wrapper embeds *Entity positionally (`Concept{&Entity{...}}`),
+		// but a struct with more than the embedded field writes it keyed
+		// (`SourceDoc{Entity: &Entity{...}, Refs: ...}`). Unwrap the key so both
+		// shapes are recognised — before this, every keyed carrier was silently
+		// dropped from the parse.
+		if kv, ok := elt.(*ast.KeyValueExpr); ok {
+			elt = kv.Value
+		}
 		ue, ok := elt.(*ast.UnaryExpr)
 		if !ok {
 			continue
@@ -188,7 +235,7 @@ func tryParseEntity(varName string, cl *ast.CompositeLit, file string) (Entity, 
 		if typeIdent(inner.Type) != "Entity" {
 			continue
 		}
-		ent := Entity{VarName: varName, RoleType: roleType, File: file}
+		ent := Entity{VarName: varName, RoleType: roleType, File: file, Refs: codeRefs(cl)}
 		for _, ie := range inner.Elts {
 			kv, ok := ie.(*ast.KeyValueExpr)
 			if !ok {
@@ -243,8 +290,18 @@ func tryParseClaim(varName string, cl *ast.CompositeLit, file string) (Claim, bo
 			// Distinguish a sourced Provenance from a Conjecture (winze's own
 			// generation). The type name on the Prov value literal is the
 			// verified epistemic status — no heuristic needed.
-			if pcl, ok := kv.Value.(*ast.CompositeLit); ok && typeIdent(pcl.Type) == "Conjecture" {
-				c.Conjectural = true
+			switch pv := kv.Value.(type) {
+			case *ast.CompositeLit:
+				switch typeIdent(pv.Type) {
+				case "Conjecture":
+					c.Conjectural = true
+					c.Conj = conjectureFields(pv)
+				case "Provenance":
+					p := provenanceFields("", pv, file)
+					c.ProvInline = &p
+				}
+			default:
+				c.ProvVar = identName(kv.Value)
 			}
 		}
 	}

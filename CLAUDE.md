@@ -78,6 +78,7 @@ stays small so it can stay current. To pull a topic yourself:
 - `docs/skeptical-ingest.md` — sensor input is untrusted; injection defense
 - `docs/lexicon.md` — lexicon as a private reference pool; the `lexicon-fence` rule
 - `docs/meld.md` — `winze-meld`: read-only union of stores for cross-store query
+- `docs/okf.md` — `winze-okf`: export/validate a Google OKF v0.2 bundle; what the projection preserves and loses
 - `docs/observatory.md` — `winze-observatory`: standalone fleet dashboard
 - `docs/benchmark.md` — `winze-benchmark`: retrieval benchmark (grep/bm25/defn/ast)
 - `docs/mcp-tools.md` — defn / adit / wikipedia-zim
