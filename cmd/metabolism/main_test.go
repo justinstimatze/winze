@@ -337,8 +337,8 @@ func TestExtractClassification_RealLLMResponse(t *testing.T) {
 
 func TestScoreHypotheses(t *testing.T) {
 	cases := []struct {
-		name       string
-		cycles     []Cycle
+		name        string
+		cycles      []Cycle
 		wantVerdict string
 		wantTotal   int
 	}{

@@ -267,11 +267,11 @@ func searchKagi(query string, limit int) ([]PaperSummary, error) {
 // feeds via --rss-feeds flag (comma-separated URLs).
 var defaultFeeds = []string{
 	// Cognitive science / neuroscience
-	"https://www.nature.com/nrn.rss",                   // Nature Reviews Neuroscience
+	"https://www.nature.com/nrn.rss",                              // Nature Reviews Neuroscience
 	"https://rss.sciencedirect.com/publication/science/1364-6613", // Trends in Cognitive Sciences
 	// AI / ML
-	"https://arxiv.org/rss/cs.AI",   // arXiv cs.AI new submissions
-	"https://arxiv.org/rss/cs.CL",   // arXiv cs.CL (computation + language)
+	"https://arxiv.org/rss/cs.AI", // arXiv cs.AI new submissions
+	"https://arxiv.org/rss/cs.CL", // arXiv cs.CL (computation + language)
 	// Philosophy of mind
 	"https://philpapers.org/asearch.pl?filterMode=filt&start=0&format=atom&sqc=&categorizerModule=default&onlineOnly=&newWindow=&publishedOnly=&langFilter=&catId=5892", // PhilPapers consciousness
 }

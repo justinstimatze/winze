@@ -191,10 +191,10 @@ func TestAnalyzeRealCorpus(t *testing.T) {
 
 func TestCountClusters(t *testing.T) {
 	cases := []struct {
-		name string
-		adj  map[string]map[string]bool
+		name     string
+		adj      map[string]map[string]bool
 		entities []entityInfo
-		want int
+		want     int
 	}{
 		{
 			name: "two disconnected components",

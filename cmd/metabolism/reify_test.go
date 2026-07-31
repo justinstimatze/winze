@@ -10,10 +10,10 @@ func TestMapResolution(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"corroborated", "confirmed"},  // found evidence that strengthens
-		{"challenged", "confirmed"},    // found evidence that challenges — prediction still confirmed
-		{"irrelevant", "ambiguous"},    // papers found but not relevant — sensor miscalibration
-		{"no_signal", "refuted"},       // no papers found — prediction was wrong
+		{"corroborated", "confirmed"}, // found evidence that strengthens
+		{"challenged", "confirmed"},   // found evidence that challenges — prediction still confirmed
+		{"irrelevant", "ambiguous"},   // papers found but not relevant — sensor miscalibration
+		{"no_signal", "refuted"},      // no papers found — prediction was wrong
 		{"", "ambiguous"},             // unknown resolution
 		{"something_else", "ambiguous"},
 	}

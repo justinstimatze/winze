@@ -69,7 +69,7 @@ func TestParseCriticVerdict_AmbiguousDefaultsToAccept(t *testing.T) {
 	cases := []string{
 		"",
 		"I think this claim is fine.",
-		"REJECT this claim",     // missing VERDICT prefix
+		"REJECT this claim", // missing VERDICT prefix
 		"VERDICT: maybe",
 	}
 	for _, in := range cases {

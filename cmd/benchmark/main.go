@@ -33,8 +33,6 @@ type Result struct {
 	Latency    time.Duration
 }
 
-
-
 func computeSetRecall(retrieved, gold []string) float64 {
 	if len(gold) == 0 {
 		return 1.0

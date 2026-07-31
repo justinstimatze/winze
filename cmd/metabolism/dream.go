@@ -461,8 +461,6 @@ func analyzeBriefQualityDefn(client *defndb.Client) ([]DreamFinding, error) {
 	return findings, nil
 }
 
-
-
 // runAditScoring runs adit score-file on each corpus .go file if adit CLI is available.
 func runAditScoring(dir string) []DreamFinding {
 	// Check if adit CLI is available
@@ -525,8 +523,8 @@ func runAditScoring(dir string) []DreamFinding {
 
 // --- dream helpers (delegate to internal/astutil) ---
 
-func goFileFilter(info os.FileInfo) bool  { return astutil.GoFileFilter(info) }
-func isInfraFile(name string) bool        { return astutil.IsInfraFile(name) }
+func goFileFilter(info os.FileInfo) bool { return astutil.GoFileFilter(info) }
+func isInfraFile(name string) bool       { return astutil.IsInfraFile(name) }
 
 func collectDreamRoleTypes(pkgs map[string]*ast.Package) map[string]bool {
 	return astutil.CollectRoleTypes(pkgs)

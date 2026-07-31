@@ -53,15 +53,15 @@ type BiasReport struct {
 
 // BiasAuditorResult is a single auditor's output.
 type BiasAuditorResult struct {
-	Bias       string  `json:"bias"`        // KB entity variable name
-	BiasName   string  `json:"bias_name"`   // human-readable name
-	Metric     string  `json:"metric"`      // what was measured
-	Value      float64 `json:"value"`       // measured value
-	Threshold  float64 `json:"threshold"`   // alerting threshold
-	Triggered  bool    `json:"triggered"`   // value exceeds threshold
-	Severity   string  `json:"severity"`    // info, warning, critical
-	Detail     string  `json:"detail"`      // explanation
-	Conclusion string  `json:"conclusion"`  // what this means for the KB
+	Bias       string  `json:"bias"`       // KB entity variable name
+	BiasName   string  `json:"bias_name"`  // human-readable name
+	Metric     string  `json:"metric"`     // what was measured
+	Value      float64 `json:"value"`      // measured value
+	Threshold  float64 `json:"threshold"`  // alerting threshold
+	Triggered  bool    `json:"triggered"`  // value exceeds threshold
+	Severity   string  `json:"severity"`   // info, warning, critical
+	Detail     string  `json:"detail"`     // explanation
+	Conclusion string  `json:"conclusion"` // what this means for the KB
 }
 
 func runDreamBias(dir string, jsonOut bool) {
@@ -131,13 +131,13 @@ type calibrationStateEntry struct {
 
 // calibrationState is the snapshot written by --calibrate for --ask context.
 type calibrationState struct {
-	TotalCycles  int                      `json:"total_cycles"`
-	Corroborated int                      `json:"corroborated"`
-	Challenged   int                      `json:"challenged"`
-	NoSignal     int                      `json:"no_signal"`
-	GapConfirmed int                      `json:"gap_confirmed"`
-	NoGap        int                      `json:"no_gap"`
-	Hypotheses   []calibrationStateEntry  `json:"hypotheses"`
+	TotalCycles  int                     `json:"total_cycles"`
+	Corroborated int                     `json:"corroborated"`
+	Challenged   int                     `json:"challenged"`
+	NoSignal     int                     `json:"no_signal"`
+	GapConfirmed int                     `json:"gap_confirmed"`
+	NoGap        int                     `json:"no_gap"`
+	Hypotheses   []calibrationStateEntry `json:"hypotheses"`
 }
 
 // writeCalibrationState persists a per-hypothesis calibration snapshot to
@@ -893,10 +893,10 @@ func auditFramingEffect(dir string) BiasAuditorResult {
 					// misconception/concept but evaluative for a hypothesis.
 					entityType := typeName
 					roleAware := map[string][]string{
-						"debunked":    {"Concept"},     // factual for misconceptions
-						"discredited": {"Concept"},     // factual for misconceptions
-						"celebrated":  {"Person"},      // factual for notable people
-						"pioneering":  {"Person"},      // factual for notable people
+						"debunked":    {"Concept"}, // factual for misconceptions
+						"discredited": {"Concept"}, // factual for misconceptions
+						"celebrated":  {"Person"},  // factual for notable people
+						"pioneering":  {"Person"},  // factual for notable people
 					}
 
 					matched := false
@@ -1555,11 +1555,11 @@ func auditPrematureClosure(dir string) BiasAuditorResult {
 
 	// --- Pass 5: combine signals ---
 	type closureFinding struct {
-		entity     string
-		phrase     string
-		isLeaf     bool
+		entity       string
+		phrase       string
+		isLeaf       bool
 		weakUpstream bool
-		severity   string
+		severity     string
 	}
 	var findings []closureFinding
 

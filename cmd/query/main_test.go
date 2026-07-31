@@ -162,12 +162,12 @@ func TestMatchEntity(t *testing.T) {
 		query string
 		want  bool
 	}{
-		{"chalmers", true},            // VarName match (case-insensitive)
-		{"hard problem", true},        // Name match
+		{"chalmers", true},              // VarName match (case-insensitive)
+		{"hard problem", true},          // Name match
 		{"subjective experience", true}, // Brief match
-		{"explanatory gap", true},     // Alias match
-		{"tennis", false},             // No match
-		{"consciousness", true},       // Name match (query must be pre-lowered)
+		{"explanatory gap", true},       // Alias match
+		{"tennis", false},               // No match
+		{"consciousness", true},         // Name match (query must be pre-lowered)
 	}
 	for _, tc := range cases {
 		t.Run(tc.query, func(t *testing.T) {

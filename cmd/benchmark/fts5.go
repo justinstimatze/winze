@@ -2,7 +2,7 @@ package main
 
 import (
 	"math"
-"sort"
+	"sort"
 	"strings"
 )
 
@@ -72,7 +72,7 @@ func (idx *bm25Index) score(queryTokens []string, docIdx int) float64 {
 		if dfVal == 0 {
 			continue
 		}
-		idf := math.Log((float64(idx.docCount)-float64(dfVal)+0.5) / (float64(dfVal) + 0.5))
+		idf := math.Log((float64(idx.docCount) - float64(dfVal) + 0.5) / (float64(dfVal) + 0.5))
 		if idf < 0 {
 			idf = 0
 		}

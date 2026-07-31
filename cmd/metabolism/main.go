@@ -402,7 +402,7 @@ func main() {
 	}
 
 	if *pkm != "" {
-		runPKMIngest(dir, *pkm, entityCap, *dryRun, *jsonOut)
+		runVaultIngest(dir, *pkm, entityCap, *dryRun, *jsonOut)
 		return
 	}
 

@@ -161,9 +161,9 @@ func TestContainsWord(t *testing.T) {
 		{"a groundbreaking discovery", "groundbreaking", true},
 		{"no match here", "groundbreaking", false},
 		{"the controversial claim that X", "controversial", false}, // excluded
-		{"a controversial hypothesis", "controversial", true},     // not excluded
-		{"a simplistic model of mind", "simplistic", false},       // excluded
-		{"a simplistic view of reality", "simplistic", true},      // not excluded
+		{"a controversial hypothesis", "controversial", true},      // not excluded
+		{"a simplistic model of mind", "simplistic", false},        // excluded
+		{"a simplistic view of reality", "simplistic", true},       // not excluded
 		{"", "groundbreaking", false},
 	}
 	for _, tc := range cases {

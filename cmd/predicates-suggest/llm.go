@@ -17,14 +17,14 @@ import (
 // predicateCandidate is one promotable predicate the LLM proposes after
 // clustering trip-isolated entries by shape.
 type predicateCandidate struct {
-	Name          string   `json:"name"`            // suggested Go type name, e.g. "MutuallyAnticipates"
-	SubjectSlot   string   `json:"subject_slot"`    // role type, e.g. "Hypothesis"
-	ObjectSlot    string   `json:"object_slot"`     // role type, e.g. "Hypothesis"; empty for unary
-	IsUnary       bool     `json:"is_unary"`        // true if UnaryClaim shape
-	IsFunctional  bool     `json:"is_functional"`   // suggested //winze:functional pragma
-	Rationale     string   `json:"rationale"`       // why this predicate is needed; what gap it closes
-	SampleEntries []string `json:"sample_entries"`  // entity-pair descriptions from trip-isolated
-	SampleClaims  []string `json:"sample_claims"`   // 2-3 concrete claims it would encode
+	Name          string   `json:"name"`           // suggested Go type name, e.g. "MutuallyAnticipates"
+	SubjectSlot   string   `json:"subject_slot"`   // role type, e.g. "Hypothesis"
+	ObjectSlot    string   `json:"object_slot"`    // role type, e.g. "Hypothesis"; empty for unary
+	IsUnary       bool     `json:"is_unary"`       // true if UnaryClaim shape
+	IsFunctional  bool     `json:"is_functional"`  // suggested //winze:functional pragma
+	Rationale     string   `json:"rationale"`      // why this predicate is needed; what gap it closes
+	SampleEntries []string `json:"sample_entries"` // entity-pair descriptions from trip-isolated
+	SampleClaims  []string `json:"sample_claims"`  // 2-3 concrete claims it would encode
 }
 
 // proposeCandidates sends the filtered trip-isolated entries to the LLM

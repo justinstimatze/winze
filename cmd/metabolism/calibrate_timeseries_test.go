@@ -29,8 +29,8 @@ func TestComputeCalibrationRow(t *testing.T) {
 	}
 	// 3 total cycles; 1 corroborated_novel, 0 challenged_novel → useful = 1/3 = 33.33%
 	row := computeCalibrationRow(mlog, auditors,
-		/*corrobTotal*/ 2, /*corrobNovel*/ 1,
-		/*challTotal*/ 0, /*challNovel*/ 0,
+		/*corrobTotal*/ 2 /*corrobNovel*/, 1,
+		/*challTotal*/ 0 /*challNovel*/, 0,
 		backendTotals)
 
 	if row.SchemaVersion != calibrationTimeseriesSchema {

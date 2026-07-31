@@ -116,15 +116,17 @@ files) so drift can be attributed to corpus-change vs oracle-code-change.
 Read-only by default; `--durability --write` appends _recheck entries to
 the log so next `--calibrate` sees time-series signal.
 
-## PKM ingest
+## Vault ingest
 
-`--pkm` reads a directory of markdown notes (Obsidian vaults, Zettelkasten, plain
-markdown) and generates typed Go corpus files (`pkm_*.go`). Mechanical extraction:
-parses titles, authors, wikilinks, and `**Prediction**:` lines. No LLM needed.
-Generated files are clearly separated by `pkm_` prefix, cleanly removable
-(`rm pkm_*.go && go build ./...`), and repeatable (re-running regenerates from
-scratch). The demo vault is at `../winze-demo-vault/` (separate repo, separate
-git history). Use `--entity-cap 300` when ingesting alongside the starter corpus.
+`--pkm` reads a directory of markdown notes and generates typed Go corpus files
+(`vault_*.go`, one per vault directory). Mechanical, no LLM. See
+[docs/vault-ingest.md](vault-ingest.md) for the full mapping, the link dialects
+handled, and the reporting.
+
+Generated files are cleanly removable (`rm vault_*.go && go build ./...`) and
+deterministic — re-ingesting an unchanged vault produces byte-identical files.
+Use `--entity-cap` when ingesting alongside the starter corpus; the default cap
+is 300 and a real vault will exceed it.
 
 ## Multi-timescale laminar cycles (scheduler-agnostic)
 

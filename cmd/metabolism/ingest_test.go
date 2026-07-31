@@ -9,10 +9,10 @@ import (
 
 func TestClassifyFabricatedName(t *testing.T) {
 	cases := []struct {
-		name    string
-		input   string
-		kind    string
-		wantOK  bool   // true means accepted (empty reason)
+		name       string
+		input      string
+		kind       string
+		wantOK     bool // true means accepted (empty reason)
 		wantReason string
 	}{
 		{name: "plain person", input: "Daniel Kahneman", kind: "person", wantOK: true},
@@ -213,7 +213,7 @@ func TestToPascalCase(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"daniel-dennett", "Danieldennett"},   // hyphen stripped, single word (split on spaces only)
+		{"daniel-dennett", "Danieldennett"}, // hyphen stripped, single word (split on spaces only)
 		{"Word Learning", "WordLearning"},
 		{"consciousness", "Consciousness"},
 		{"already-PascalCase", "AlreadyPascalCase"}, // hyphen stripped, P preserved
@@ -221,7 +221,7 @@ func TestToPascalCase(t *testing.T) {
 		{"", ""},
 		{"a b c", "ABC"},
 		{"multi   space", "MultiSpace"},
-		{"Daniel Dennett", "DanielDennett"},  // space-separated → proper PascalCase
+		{"Daniel Dennett", "DanielDennett"}, // space-separated → proper PascalCase
 	}
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {

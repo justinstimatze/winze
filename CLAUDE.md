@@ -73,6 +73,7 @@ stays small so it can stay current. To pull a topic yourself:
 - `docs/predicates.md` — the predicate families
 - `docs/topology.md` — structural vulnerability analysis
 - `docs/metabolism.md` — the `--evolve` loop, phases, gating, budget, sharing
+- `docs/vault-ingest.md` — `--pkm`: a markdown vault becomes a typed graph; link dialects, resolution, reporting
 - `docs/rot-probe.md`, `docs/predicate-gaps.md` — surfacers (human-review only)
 - `docs/sensor.md` — `winze-sensor`: raw external-signal probe (arXiv / Semantic Scholar)
 - `docs/skeptical-ingest.md` — sensor input is untrusted; injection defense

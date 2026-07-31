@@ -64,40 +64,40 @@ func looksLikeSkipMarker(c predicateCandidate) bool {
 // tripIsolated mirrors the JSONL row shape written by cmd/metabolism's
 // --trip path when a generated connection has no matching predicate.
 type tripIsolated struct {
-	Timestamp   string `json:"timestamp"`
-	EntityA     string `json:"entity_a"`
-	EntityB     string `json:"entity_b"`
-	ClusterA    int    `json:"cluster_a"`
-	ClusterB    int    `json:"cluster_b"`
-	Connection  string `json:"connection"`
-	Rationale   string `json:"rationale"`
-	Score       int    `json:"score"`
-	PromptType  string `json:"prompt_type"`
+	Timestamp   string  `json:"timestamp"`
+	EntityA     string  `json:"entity_a"`
+	EntityB     string  `json:"entity_b"`
+	ClusterA    int     `json:"cluster_a"`
+	ClusterB    int     `json:"cluster_b"`
+	Connection  string  `json:"connection"`
+	Rationale   string  `json:"rationale"`
+	Score       int     `json:"score"`
+	PromptType  string  `json:"prompt_type"`
 	Temperature float64 `json:"temperature"`
 }
 
 // candidateOutput is the JSON shape written alongside stderr output, so
 // the proposals are durable for review and can be diffed across runs.
 type candidateOutput struct {
-	Timestamp           string             `json:"timestamp"`
-	MinClusterSize      int                `json:"min_cluster_size"`
-	MinScore            int                `json:"min_score"`
-	Model               string             `json:"model"`
-	SourceEntryCount    int                `json:"source_entry_count"`
-	FilteredEntryCount  int                `json:"filtered_entry_count"`
-	ExistingPredicates  []string           `json:"existing_predicates"`
-	Candidates          []predicateCandidate `json:"candidates"`
+	Timestamp          string               `json:"timestamp"`
+	MinClusterSize     int                  `json:"min_cluster_size"`
+	MinScore           int                  `json:"min_score"`
+	Model              string               `json:"model"`
+	SourceEntryCount   int                  `json:"source_entry_count"`
+	FilteredEntryCount int                  `json:"filtered_entry_count"`
+	ExistingPredicates []string             `json:"existing_predicates"`
+	Candidates         []predicateCandidate `json:"candidates"`
 }
 
 func main() {
 	var (
-		dir          = flag.String("dir", ".", "corpus root (directory containing .metabolism-trip-isolated.jsonl)")
-		minCluster   = flag.Int("min-cluster", 3, "minimum entries to constitute a promotable cluster")
-		minScore     = flag.Int("min-score", 3, "minimum trip score to include (skip score=2 noise)")
-		model        = flag.String("model", "sonnet", "anthropic model tier: haiku | sonnet")
-		logName      = flag.String("log", ".metabolism-trip-isolated.jsonl", "trip-isolated JSONL filename (relative to --dir)")
-		out          = flag.String("out", ".metabolism-predicate-candidates.json", "candidates JSON output (relative to --dir)")
-		dryRun       = flag.Bool("dry-run", false, "print the prompt; do not call API or write output")
+		dir        = flag.String("dir", ".", "corpus root (directory containing .metabolism-trip-isolated.jsonl)")
+		minCluster = flag.Int("min-cluster", 3, "minimum entries to constitute a promotable cluster")
+		minScore   = flag.Int("min-score", 3, "minimum trip score to include (skip score=2 noise)")
+		model      = flag.String("model", "sonnet", "anthropic model tier: haiku | sonnet")
+		logName    = flag.String("log", ".metabolism-trip-isolated.jsonl", "trip-isolated JSONL filename (relative to --dir)")
+		out        = flag.String("out", ".metabolism-predicate-candidates.json", "candidates JSON output (relative to --dir)")
+		dryRun     = flag.Bool("dry-run", false, "print the prompt; do not call API or write output")
 	)
 	flag.Parse()
 

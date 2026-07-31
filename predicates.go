@@ -445,6 +445,38 @@ type StructurallyAnalogousTo BinaryRelation[Hypothesis, Hypothesis]
 // lineage rather than about translation.
 type DerivedFrom BinaryRelation[Concept, Concept]
 
+// References: one note explicitly links to another. This is the honest floor
+// for a markdown vault import, and the forcing function was a vault whose
+// entire structure is `[[wikilinks]]` — an author-committed relationship that
+// no existing predicate captures, because the author committed to the link and
+// deliberately not to its kind.
+//
+// Slots are *Entity rather than a role type, which is the point: a link says
+// nothing about what either end IS. A design note may link a system to a
+// creature to a location, and forcing those into Concept/Concept would either
+// reject real links or lie about the roles. Call sites write `Foo.Entity`.
+//
+// A References claim is a floor, not a ceiling. It records the edge the vault
+// actually asserts, and leaves a typed predicate to be proposed later against
+// the section the link appeared under (`## Depends on` is evidence; prose is
+// not). Promoting one to a real predicate is a normal corpus edit; what must
+// never happen is the reverse — inventing DependsOn from a bare link, which
+// would be fabricating a commitment the source never made.
+type References BinaryRelation[*Entity, *Entity]
+
+// FiledUnder: an entity is filed under a category. The forcing function was
+// vault ingest — a directory of notes is a filing fact the source commits to
+// unambiguously (the file is literally in that directory), and no existing
+// predicate could carry it. BelongsTo is the near miss and the wrong one twice
+// over: its slots are Concept/Concept, so a note typed `character` (a Person)
+// does not fit, and its meaning is conceptual taxonomy rather than where
+// something is kept. A creature filed under `entities/` does not thereby
+// *belong to* the concept "Entities".
+//
+// Subject is *Entity because anything can be filed; Object is Concept because a
+// category is one.
+type FiledUnder BinaryRelation[*Entity, Concept]
+
 // EnglishRendering is a value-with-attribution object for claims
 // about how a non-English concept should be rendered in English.
 // Non-entity struct (no *Entity embed), mirroring TemporalMarker and
