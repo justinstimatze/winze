@@ -40,9 +40,11 @@ The output isn't a status report. It's better answers the next time someone asks
 
 **Current sprint:** Growing the graph around contested theories of consciousness and cognition (IIT, Global Workspace Theory, Free Energy Principle). The KB also contains meta-claims about its own limitations — predictions the system can resolve about itself.
 
-**Shipped:** MCP server (`cmd/mcp`) — any agent queries structured epistemic metadata (what's known, how confident, what's contested) via `mcp__winze__{claims,disputes,provenance,search,stats,theories}` without knowing the infrastructure. Laminar metabolism with phase-level self-gating, hard monthly spend cap, and per-call actual-spend telemetry. OKF export (`cmd/okf`) — see below.
+**Shipped:** MCP server (`cmd/mcp`) — any agent queries structured epistemic metadata (what's known, how confident, what's contested) via `mcp__winze__{claims,disputes,provenance,search,stats,theories}` without knowing the infrastructure. Laminar metabolism with phase-level self-gating, hard monthly spend cap, and per-call actual-spend telemetry. OKF export (`cmd/okf`) — see below. Vault ingest (`--pkm`) — point winze at a pile of markdown and its `[[wikilinks]]` become typed, compiled claims; see [docs/vault-ingest.md](docs/vault-ingest.md).
 
-**Next:** Source reputation — per-domain corroborated/challenged/refuted rates computed from the calibration time-series, surfaced as a sensor down-weight (not deny-list). Z3-based lint rules for formal verification of ontological constraints. An OKF `relations:` proposal upstream, and OKF *import* on the untrusted path so other producers' bundles are ingestible as sensor input rather than as fact.
+**Next — the read side moves onto [defn](https://github.com/justinstimatze/defn).** defn moved off Dolt to SQLite, links in 0.859s, and its query API is a superset of `internal/defndb` — including multi-hop `Traverse` and incremental `StaleFiles`, which winze has no equivalent for. The real work is not swapping the backend but changing the question: `--claims X` currently builds a whole-corpus index to answer about one entity, where defn answers it with one indexed lookup (0.14ms at 30k claims, after a defn-side fix this work produced). See [docs/defn-migration.md](docs/defn-migration.md).
+
+**Also next:** Source reputation — per-domain corroborated/challenged/refuted rates computed from the calibration time-series, surfaced as a sensor down-weight (not deny-list). Z3-based lint rules for formal verification of ontological constraints. An OKF `relations:` proposal upstream, and OKF *import* on the untrusted path so other producers' bundles are ingestible as sensor input rather than as fact.
 
 ### Interop: Google's Open Knowledge Format
 
@@ -57,6 +59,7 @@ Two things survive that the format alone would drop. OKF links carry no relation
 - Survivorship bias structural, not prompt-tightness (191:2 irrelevant-to-challenged). Search-based sensors return supports + topic noise, not contradictions. The recalibrated resolver prompt classifies correctly; growing the challenged-count requires a counter-evidence query path the metabolism doesn't have yet.
 - RSS feed curation unsolved — default topic feeds don't match entity-specific topology queries (0/131 signal historically). RSS still available via `--backend rss` for contributors who curate their own feeds.
 - Source reputation not yet tracked — no automated mechanism for down-weighting historically low-quality domains based on calibration outcomes.
+- **Prose claims about external dependencies rot with nothing checking them.** `internal/defndb`'s package doc asserted that defn was Dolt-backed and too heavy to link; that stopped being true and nothing noticed, and an agent later read it as a live measurement and built ~500 lines on top of it. `CodeRef` makes a doc→code reference fail the build when it goes stale, but there is no equivalent for a claim about someone else's architecture. A dated-measurement discipline, or a lint rule flagging measurement-shaped prose carrying no date, would have caught it.
 
 ### DARPA alignment
 

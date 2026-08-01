@@ -32,6 +32,14 @@ corpus — it is the read side of the split-CLAUDE.md docs (see
 
 ## The index cache
 
+> **This is a stopgap, and it is scheduled for deletion.** It was built on a
+> stale claim in `internal/defndb`'s package doc that defn was Dolt-backed and
+> too heavy to link. defn has since moved to SQLite and links in 0.859s, and its
+> `db` API is a superset of what `defndb` hand-rolls. `cache.go` and `codec.go`
+> come out once the defn-side index fix lands — see
+> [docs/defn-migration.md](defn-migration.md). What is worth keeping from this
+> section is the *measurements*, which transfer to whatever backs the index.
+
 Every winze CLI invocation is a fresh process, so nothing survived between
 queries: a `--claims` lookup reparsed the whole corpus, every time. On a small
 corpus that is invisible. On a 250k-line one it was ~360ms per query regardless
