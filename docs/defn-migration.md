@@ -101,15 +101,31 @@ building a whole-corpus index to answer a question about one entity*.
 
 ## The plan
 
-1. Push the defn index fix; land it upstream.
-2. Add opt-in `OrderBy` / `WithDefName` to `LiteralFieldFilter` in defn so bulk
-   callers stop paying for a sort and a join they discard.
-3. Rewrite winze's read paths to ask narrow questions. `--claims X`,
-   `--provenance X`, `--theories X` are all single-entity queries that currently
-   build the entire index first.
-4. `internal/defndb` becomes a thin defn client. **Delete `cache.go` and
-   `codec.go`** — roughly 500 lines of index cache and wire format that exist
-   only because of the stale comment.
+1. ~~Push the defn index fix; land it upstream.~~ **Done 2026-08-01, defn main
+   `7093ab9`** (`store: index literal_fields.field_value + opt-out ORDER BY/DefName
+   for bulk callers`).
+2. ~~Add opt-in `OrderBy` / `WithDefName` to `LiteralFieldFilter`.~~ **Done, but
+   as opt-*out* `SkipOrderBy` / `SkipDefName` (same commit).** An opt-in bool
+   defaults false the moment it ships, silently dropping ordering and DefName for
+   every existing `LiteralFieldFilter` caller — the regression this doc's own
+   constraint was guarding against. Opt-out makes the fast path something a caller
+   must ask for. The bulk call site is
+   `LiteralFields(LiteralFieldFilter{Value: "X%", SkipOrderBy: true, SkipDefName: true})`.
+3. ~~Rewrite winze's read paths to ask narrow questions.~~ **Done 2026-08-01.**
+   `--claims X`, `--provenance X`, `--theories X` now resolve one target and
+   stream only the claims that name it, via `defndb.EachFieldWithValuePrefix` +
+   `EachFieldForDefs` (the seams that map onto the `Value:"X%"` / `def_id IN (...)`
+   SQL filters). Still over the AST backend — the whole-corpus parse is unchanged
+   until step 4 — but the query shape is now narrow and the map funnel is gone.
+   That funnel was also a live bug: `--claims Chalmers` resolved to a *different
+   entity* each run (Go map order), so the read paths returned non-reproducible
+   answers. They are deterministic now, and `--theories` stopped resolving to
+   trip-cycle bookkeeping entities as a side effect.
+4. `internal/defndb` becomes a thin defn client over `7093ab9`. **Delete
+   `cache.go` and `codec.go`** — roughly 500 lines of index cache and wire format
+   that exist only because of the stale comment. This is the remaining winze work;
+   the AST loaders (`loadEntities`/`loadClaims`/`loadProvenance`) and the two
+   `EachField…` seams are the swap points.
 5. Keep `astutil.ParseCorpus` (parallel, no object resolution). The write path's
    build gate parses real files regardless of any database, and that is correct:
    the gate must never trust a cache.

@@ -138,6 +138,21 @@ func main() {
 		return
 	}
 
+	// Single-entity read paths ask a narrow question about one entity, so they
+	// resolve a target and stream just the claims that name it rather than
+	// building the whole-corpus index first. Dispatched before buildIndex.
+	switch {
+	case *theories != "":
+		runTheories(dir, *theories, *jsonOut)
+		return
+	case *claims != "":
+		runClaims(dir, *claims, *jsonOut)
+		return
+	case *provenance != "":
+		runProvenance(dir, *provenance, *jsonOut)
+		return
+	}
+
 	kb, err := buildIndex(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "query: %v\n", err)
@@ -149,12 +164,6 @@ func main() {
 		runStats(kb, *jsonOut)
 	case *disputes:
 		runDisputes(kb, *jsonOut)
-	case *theories != "":
-		runTheories(kb, *theories, *jsonOut)
-	case *claims != "":
-		runClaims(kb, *claims, *jsonOut)
-	case *provenance != "":
-		runProvenance(kb, *provenance, *jsonOut)
 	case *fulltext != "":
 		runFulltext(kb, *fulltext, *jsonOut)
 	case *semantic != "":
@@ -274,24 +283,57 @@ func runFulltext(kb *kbIndex, query string, jsonOut bool) {
 	}
 }
 
-func runTheories(kb *kbIndex, target string, jsonOut bool) {
-	q := strings.ToLower(target)
+// theoryOfClaims streams only TheoryOf claims, in index order, instead of the
+// whole claim table. TypeName-scoped iteration is the narrow form of "walk every
+// claim, skip the ones that aren't TheoryOf".
+func theoryOfClaims(client *defndb.Client) ([]claimRecord, error) {
+	byVar := map[string]*claimRecord{}
+	order := []string{}
+	err := client.EachFieldOfType("TheoryOf", func(f *defndb.LiteralField) bool {
+		accumClaimField(byVar, &order, f)
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]claimRecord, 0, len(order))
+	for _, dn := range order {
+		if byVar[dn].Predicate == "TheoryOf" && byVar[dn].Subject != "" {
+			out = append(out, *byVar[dn])
+		}
+	}
+	return out, nil
+}
 
-	// Find the target concept entity
+func runTheories(dir, target string, jsonOut bool) {
+	client, err := defndb.New(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "query: %v\n", err)
+		os.Exit(1)
+	}
+	defer client.Close()
+	entities, byVar, err := loadEntities(client)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "query: %v\n", err)
+		os.Exit(1)
+	}
+	theoryClaims, err := theoryOfClaims(client)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "query: %v\n", err)
+		os.Exit(1)
+	}
+
+	q := strings.ToLower(target)
 	var targetEntity *entityRecord
-	for i, e := range kb.Entities {
-		if matchEntity(e, q) {
-			targetEntity = &kb.Entities[i]
+	for i := range entities {
+		if matchEntity(entities[i], q) {
+			targetEntity = &entities[i]
 			break
 		}
 	}
 
-	// Find TheoryOf claims where Object matches
 	var theories []claimRecord
-	for _, c := range kb.Claims {
-		if c.Predicate != "TheoryOf" {
-			continue
-		}
+	for _, c := range theoryClaims {
 		if targetEntity != nil && c.Object == targetEntity.VarName {
 			theories = append(theories, c)
 		} else if strings.Contains(strings.ToLower(c.Object), q) {
@@ -320,34 +362,44 @@ func runTheories(kb *kbIndex, target string, jsonOut bool) {
 	fmt.Printf("Competing theories of %s (%d):\n\n", label, len(theories))
 	for i, t := range theories {
 		fmt.Printf("  %d. %s\n", i+1, t.Subject)
-		// Find the hypothesis entity for its Brief
-		for _, e := range kb.Entities {
-			if e.VarName == t.Subject && e.Brief != "" {
-				fmt.Printf("     %s\n", cliutil.Truncate(e.Brief, 200))
-				break
-			}
+		if e, ok := byVar[t.Subject]; ok && e.Brief != "" {
+			fmt.Printf("     %s\n", cliutil.Truncate(e.Brief, 200))
 		}
 		fmt.Printf("     source: %s  (%s)\n\n", t.ProvRef, t.File)
 	}
 }
 
-func runClaims(kb *kbIndex, target string, jsonOut bool) {
-	q := strings.ToLower(target)
+func runClaims(dir, target string, jsonOut bool) {
+	client, err := defndb.New(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "query: %v\n", err)
+		os.Exit(1)
+	}
+	defer client.Close()
+	entities, _, err := loadEntities(client)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "query: %v\n", err)
+		os.Exit(1)
+	}
 
-	// Find matching entity
-	var targetName string
-	for _, e := range kb.Entities {
-		if matchEntity(e, q) {
-			targetName = e.VarName
+	q := strings.ToLower(target)
+	targetName := ""
+	for i := range entities {
+		if matchEntity(entities[i], q) {
+			targetName = entities[i].VarName
 			break
 		}
 	}
 	if targetName == "" {
-		// Fall back to substring match on var names in claims
+		// No entity matched; treat the raw target as a var name.
 		targetName = target
 	}
 
-	related := claimsInvolving(kb, targetName)
+	related, err := claimRecordsInvolving(client, targetName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "query: %v\n", err)
+		os.Exit(1)
+	}
 
 	if jsonOut {
 		printJSON(related)
@@ -374,10 +426,22 @@ func runClaims(kb *kbIndex, target string, jsonOut bool) {
 	}
 }
 
-func runProvenance(kb *kbIndex, target string, jsonOut bool) {
+func runProvenance(dir, target string, jsonOut bool) {
+	client, err := defndb.New(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "query: %v\n", err)
+		os.Exit(1)
+	}
+	defer client.Close()
+	provs, err := loadProvenance(client)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "query: %v\n", err)
+		os.Exit(1)
+	}
+
 	q := strings.ToLower(target)
 	var matches []provRecord
-	for _, p := range kb.Provenance {
+	for _, p := range provs {
 		if strings.Contains(strings.ToLower(p.Origin), q) ||
 			strings.Contains(strings.ToLower(p.VarName), q) {
 			matches = append(matches, p)
@@ -394,6 +458,24 @@ func runProvenance(kb *kbIndex, target string, jsonOut bool) {
 		return
 	}
 
+	// Which claims cite each matched provenance? One pass over Prov fields,
+	// narrower than materialising every claim, and in index order.
+	provSet := make(map[string]bool, len(matches))
+	for _, p := range matches {
+		provSet[p.VarName] = true
+	}
+	usedBy := map[string][]string{}
+	err = client.EachField([]string{"Prov"}, func(f *defndb.LiteralField) bool {
+		if val := strings.Trim(f.FieldValue, "\""); provSet[val] {
+			usedBy[val] = append(usedBy[val], f.DefName)
+		}
+		return true
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "query: %v\n", err)
+		os.Exit(1)
+	}
+
 	fmt.Printf("Provenance matching %q (%d):\n\n", target, len(matches))
 	for _, p := range matches {
 		fmt.Printf("  %s  (%s)\n", p.VarName, p.File)
@@ -401,14 +483,7 @@ func runProvenance(kb *kbIndex, target string, jsonOut bool) {
 		if p.Quote != "" {
 			fmt.Printf("    Quote: %s\n", cliutil.Truncate(p.Quote, 200))
 		}
-		// Find claims using this provenance
-		var refs []string
-		for _, c := range kb.Claims {
-			if c.ProvRef == p.VarName {
-				refs = append(refs, c.VarName)
-			}
-		}
-		if len(refs) > 0 {
+		if refs := usedBy[p.VarName]; len(refs) > 0 {
 			fmt.Printf("    Used by: %s\n", strings.Join(refs, ", "))
 		}
 		fmt.Println()
@@ -531,33 +606,45 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	kb := &kbIndex{RoleTypes: roleTypes}
 
-	// Get var-to-role-type mapping via constructor refs
-	varRoles, err := client.EntityVarsWithRoles()
-	if err != nil {
+	if kb.Entities, _, err = loadEntities(client); err != nil {
 		return nil, err
 	}
-	varRoleMap := map[string]string{}
-	varFileMap := map[string]string{}
-	for _, vr := range varRoles {
-		varRoleMap[vr.VarName] = vr.RoleType
-		varFileMap[vr.VarName] = filepath.Base(vr.SourceFile)
+	if kb.Claims, err = loadClaims(client); err != nil {
+		return nil, err
 	}
+	if kb.Provenance, err = loadProvenance(client); err != nil {
+		return nil, err
+	}
+	return kb, nil
+}
 
-	// Entity fields (Name, Brief, ID). Iterated rather than collected: the
-	// filtered slice would be built only to be walked once.
-	entityMap := make(map[string]*entityRecord, len(varRoleMap))
+// loadEntities reads every entity var with its Name/Brief/ID, keyed by var and
+// returned in corpus index order. Seeding from EntityVarsWithRoles (which is in
+// sorted index order) rather than from the Name/Brief/ID stream means vars with
+// no such literals — predictions.go Events, say — are still present, and the
+// slice order is stable across runs. The map funnel it replaces inherited Go's
+// randomised iteration order, which made every read path resolve a fuzzy target
+// to a different entity from one run to the next.
+func loadEntities(client *defndb.Client) ([]entityRecord, map[string]*entityRecord, error) {
+	varRoles, err := client.EntityVarsWithRoles()
+	if err != nil {
+		return nil, nil, err
+	}
+	byVar := make(map[string]*entityRecord, len(varRoles))
+	order := make([]string, 0, len(varRoles))
+	for _, vr := range varRoles {
+		if _, ok := byVar[vr.VarName]; ok {
+			continue
+		}
+		byVar[vr.VarName] = &entityRecord{VarName: vr.VarName, RoleType: vr.RoleType, File: filepath.Base(vr.SourceFile)}
+		order = append(order, vr.VarName)
+	}
 	err = client.EachField([]string{"Name", "Brief", "ID"}, func(f *defndb.LiteralField) bool {
-		rt, ok := varRoleMap[f.DefName]
+		rec, ok := byVar[f.DefName]
 		if !ok {
 			return true // not an entity var
-		}
-		rec, ok := entityMap[f.DefName]
-		if !ok {
-			rec = &entityRecord{VarName: f.DefName, RoleType: rt, File: varFileMap[f.DefName]}
-			entityMap[f.DefName] = rec
 		}
 		val := strings.Trim(f.FieldValue, "\"")
 		switch f.FieldName {
@@ -571,63 +658,76 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 		return true
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	// Include entity vars that weren't found via EntityFields (e.g., vars
-	// with no Name/Brief/ID literals, like predictions.go Events).
-	for varName, rt := range varRoleMap {
-		if _, ok := entityMap[varName]; !ok {
-			entityMap[varName] = &entityRecord{VarName: varName, RoleType: rt, File: varFileMap[varName]}
-		}
+	entities := make([]entityRecord, 0, len(order))
+	for _, vn := range order {
+		entities = append(entities, *byVar[vn])
 	}
-	for _, rec := range entityMap {
-		kb.Entities = append(kb.Entities, *rec)
-	}
+	return entities, byVar, nil
+}
 
-	// Claim fields (Subject, Object, Prov)
-	claimMap := map[string]*claimRecord{}
-	err = client.EachField([]string{"Subject", "Object", "Prov"}, func(f *defndb.LiteralField) bool {
-		rec, ok := claimMap[f.DefName]
-		if !ok {
-			typeParts := strings.Split(f.TypeName, ".")
-			rec = &claimRecord{
-				VarName:   f.DefName,
-				Predicate: typeParts[len(typeParts)-1],
-				File:      filepath.Base(f.SourceFile),
-			}
-			claimMap[f.DefName] = rec
-		}
-		val := strings.Trim(f.FieldValue, "\"")
-		switch f.FieldName {
-		case "Subject":
-			rec.Subject = baseVar(val)
-		case "Object":
-			rec.Object = baseVar(val)
-		case "Prov":
-			rec.ProvRef = val
-		}
+// loadClaims reads every claim (Subject/Object/Prov) in index order. Binary
+// claims carry Subject+Object; unary claims (IsCognitiveBias, AbsorbedAlternate,
+// the user-preference predicates) carry Subject only. Both involve their Subject
+// and belong in the index — requiring an Object silently dropped every unary
+// claim. First-seen order is preserved so output is stable across runs.
+func loadClaims(client *defndb.Client) ([]claimRecord, error) {
+	byVar := map[string]*claimRecord{}
+	order := []string{}
+	err := client.EachField([]string{"Subject", "Object", "Prov"}, func(f *defndb.LiteralField) bool {
+		accumClaimField(byVar, &order, f)
 		return true
 	})
 	if err != nil {
 		return nil, err
 	}
-	for _, rec := range claimMap {
-		// Binary claims carry Subject+Object; unary claims (IsCognitiveBias,
-		// AbsorbedAlternate, the user-preference predicates) carry Subject
-		// only. Both are claims involving their Subject and belong in the
-		// index — requiring an Object silently dropped every unary claim.
-		if rec.Subject != "" {
-			kb.Claims = append(kb.Claims, *rec)
+	out := make([]claimRecord, 0, len(order))
+	for _, dn := range order {
+		if byVar[dn].Subject != "" {
+			out = append(out, *byVar[dn])
 		}
 	}
+	return out, nil
+}
 
-	// Provenance fields (Origin, Quote)
-	provMap := map[string]*provRecord{}
-	err = client.EachFieldOfType("Provenance", func(f *defndb.LiteralField) bool {
-		rec, ok := provMap[f.DefName]
+// accumClaimField folds one Subject/Object/Prov field into the claim record for
+// its enclosing var, creating the record (and recording its first-seen
+// position) on first sight. Shared by the whole-corpus loadClaims and the
+// single-entity claimRecordsInvolving so both group claims identically.
+func accumClaimField(byVar map[string]*claimRecord, order *[]string, f *defndb.LiteralField) {
+	rec, ok := byVar[f.DefName]
+	if !ok {
+		typeParts := strings.Split(f.TypeName, ".")
+		rec = &claimRecord{
+			VarName:   f.DefName,
+			Predicate: typeParts[len(typeParts)-1],
+			File:      filepath.Base(f.SourceFile),
+		}
+		byVar[f.DefName] = rec
+		*order = append(*order, f.DefName)
+	}
+	val := strings.Trim(f.FieldValue, "\"")
+	switch f.FieldName {
+	case "Subject":
+		rec.Subject = baseVar(val)
+	case "Object":
+		rec.Object = baseVar(val)
+	case "Prov":
+		rec.ProvRef = val
+	}
+}
+
+// loadProvenance reads every Provenance literal (Origin/Quote) in index order.
+func loadProvenance(client *defndb.Client) ([]provRecord, error) {
+	byVar := map[string]*provRecord{}
+	order := []string{}
+	err := client.EachFieldOfType("Provenance", func(f *defndb.LiteralField) bool {
+		rec, ok := byVar[f.DefName]
 		if !ok {
 			rec = &provRecord{VarName: f.DefName, File: filepath.Base(f.SourceFile)}
-			provMap[f.DefName] = rec
+			byVar[f.DefName] = rec
+			order = append(order, f.DefName)
 		}
 		val := strings.Trim(f.FieldValue, "\"")
 		switch f.FieldName {
@@ -641,11 +741,52 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, rec := range provMap {
-		kb.Provenance = append(kb.Provenance, *rec)
+	out := make([]provRecord, 0, len(order))
+	for _, vn := range order {
+		out = append(out, *byVar[vn])
 	}
+	return out, nil
+}
 
-	return kb, nil
+// claimRecordsInvolving returns the claims that reference varName as Subject or
+// Object, in index order, without materialising the whole claim table. Pass one
+// finds the referencing claim vars via an anchored value lookup; pass two
+// assembles just those claims. It is the narrow-query equivalent of
+// claimsInvolving(buildIndex(dir), varName) and the read-path shape the defn SQL
+// backend makes cheap (docs/defn-migration.md).
+func claimRecordsInvolving(client *defndb.Client, varName string) ([]claimRecord, error) {
+	matched := map[string]bool{}
+	err := client.EachFieldWithValuePrefix(varName, []string{"Subject", "Object"}, func(f *defndb.LiteralField) bool {
+		// A prefix match also catches "FooBar" for var "Foo"; the base-var
+		// re-check keeps only claims that actually name varName. baseVar also
+		// strips the selector form "Foo.Entity" back to "Foo".
+		if baseVar(strings.Trim(f.FieldValue, "\"")) == varName {
+			matched[f.DefName] = true
+		}
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(matched) == 0 {
+		return nil, nil
+	}
+	byVar := map[string]*claimRecord{}
+	order := []string{}
+	err = client.EachFieldForDefs(matched, []string{"Subject", "Object", "Prov"}, func(f *defndb.LiteralField) bool {
+		accumClaimField(byVar, &order, f)
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]claimRecord, 0, len(order))
+	for _, dn := range order {
+		if byVar[dn].Subject != "" {
+			out = append(out, *byVar[dn])
+		}
+	}
+	return out, nil
 }
 
 // --- search helpers ---

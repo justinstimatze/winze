@@ -269,6 +269,73 @@ func (c *Client) EachFieldOfType(typePattern string, fn func(*LiteralField) bool
 	return nil
 }
 
+// EachFieldWithValuePrefix calls fn for every literal field among the named
+// fields whose FieldValue begins with valuePrefix, in index order, stopping
+// early if fn returns false.
+//
+// This is the narrow, single-entity form of EachField. The single-entity read
+// paths (--claims/--theories/--provenance) want the handful of fields that
+// reference one var, not the ~90k claim fields the whole corpus carries;
+// EachField streams all of them and leaves the caller to filter, which builds a
+// whole-corpus index to answer a question about one entity.
+//
+// A claim references a var as either "Foo" or the selector form "Foo.Entity",
+// so callers pass the bare var as the prefix and re-check the base var exactly
+// (a prefix also matches "FooBar"). Over the current AST index the prefix is a
+// linear pass — it saves the caller's grouping copy but not the corpus parse.
+// When internal/defndb is cut back over to defn's SQL db (see
+// docs/defn-migration.md) this maps to
+// db.LiteralFields(LiteralFieldFilter{Value: valuePrefix+"%", FieldNames: names,
+// SkipOrderBy: true, SkipDefName: true}) — an indexed range scan via
+// likePrefixRange — and the whole-corpus parse disappears with it.
+func (c *Client) EachFieldWithValuePrefix(valuePrefix string, names []string, fn func(*LiteralField) bool) error {
+	idx, err := c.load()
+	if err != nil {
+		return err
+	}
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+	idx.eachLiteral(func(f *LiteralField) bool {
+		if !want[f.FieldName] {
+			return true
+		}
+		if !strings.HasPrefix(f.FieldValue, valuePrefix) {
+			return true
+		}
+		return fn(f)
+	})
+	return nil
+}
+
+// EachFieldForDefs calls fn for every literal field among the named fields whose
+// enclosing top-level var is in defNames, in index order. It is the assembly
+// half of a single-entity lookup: EachFieldWithValuePrefix finds the claim vars
+// that reference an entity, then this fetches those claims' full field sets to
+// render them, without streaming the whole corpus a second time.
+//
+// Over the AST index this is a membership check in a linear pass. When
+// internal/defndb moves onto defn's SQL db (docs/defn-migration.md) it maps to a
+// def_id IN (...) filter, so pass two stays indexed rather than scanning.
+func (c *Client) EachFieldForDefs(defNames map[string]bool, names []string, fn func(*LiteralField) bool) error {
+	idx, err := c.load()
+	if err != nil {
+		return err
+	}
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+	idx.eachLiteral(func(f *LiteralField) bool {
+		if !defNames[f.DefName] || !want[f.FieldName] {
+			return true
+		}
+		return fn(f)
+	})
+	return nil
+}
+
 // Pragmas returns all pragma comments whose key starts with prefix.
 func (c *Client) Pragmas(prefix string) ([]Pragma, error) {
 	idx, err := c.load()
