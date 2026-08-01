@@ -546,16 +546,13 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 		varFileMap[vr.VarName] = filepath.Base(vr.SourceFile)
 	}
 
-	// Entity fields (Name, Brief, ID)
-	eFields, err := client.EntityFields()
-	if err != nil {
-		return nil, err
-	}
-	entityMap := map[string]*entityRecord{}
-	for _, f := range eFields {
+	// Entity fields (Name, Brief, ID). Iterated rather than collected: the
+	// filtered slice would be built only to be walked once.
+	entityMap := make(map[string]*entityRecord, len(varRoleMap))
+	err = client.EachField([]string{"Name", "Brief", "ID"}, func(f *defndb.LiteralField) bool {
 		rt, ok := varRoleMap[f.DefName]
 		if !ok {
-			continue // not an entity var
+			return true // not an entity var
 		}
 		rec, ok := entityMap[f.DefName]
 		if !ok {
@@ -571,6 +568,10 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 		case "ID":
 			rec.ID = val
 		}
+		return true
+	})
+	if err != nil {
+		return nil, err
 	}
 	// Include entity vars that weren't found via EntityFields (e.g., vars
 	// with no Name/Brief/ID literals, like predictions.go Events).
@@ -584,18 +585,16 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 	}
 
 	// Claim fields (Subject, Object, Prov)
-	cFields, err := client.ClaimFields()
-	if err != nil {
-		return nil, err
-	}
 	claimMap := map[string]*claimRecord{}
-	for _, f := range cFields {
-		base := filepath.Base(f.SourceFile)
-		typeParts := strings.Split(f.TypeName, ".")
-		typeName := typeParts[len(typeParts)-1]
+	err = client.EachField([]string{"Subject", "Object", "Prov"}, func(f *defndb.LiteralField) bool {
 		rec, ok := claimMap[f.DefName]
 		if !ok {
-			rec = &claimRecord{VarName: f.DefName, Predicate: typeName, File: base}
+			typeParts := strings.Split(f.TypeName, ".")
+			rec = &claimRecord{
+				VarName:   f.DefName,
+				Predicate: typeParts[len(typeParts)-1],
+				File:      filepath.Base(f.SourceFile),
+			}
 			claimMap[f.DefName] = rec
 		}
 		val := strings.Trim(f.FieldValue, "\"")
@@ -607,6 +606,10 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 		case "Prov":
 			rec.ProvRef = val
 		}
+		return true
+	})
+	if err != nil {
+		return nil, err
 	}
 	for _, rec := range claimMap {
 		// Binary claims carry Subject+Object; unary claims (IsCognitiveBias,
@@ -619,16 +622,11 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 	}
 
 	// Provenance fields (Origin, Quote)
-	provFields, err := client.LiteralFieldsForType("Provenance")
-	if err != nil {
-		return nil, err
-	}
 	provMap := map[string]*provRecord{}
-	for _, f := range provFields {
-		base := filepath.Base(f.SourceFile)
+	err = client.EachFieldOfType("Provenance", func(f *defndb.LiteralField) bool {
 		rec, ok := provMap[f.DefName]
 		if !ok {
-			rec = &provRecord{VarName: f.DefName, File: base}
+			rec = &provRecord{VarName: f.DefName, File: filepath.Base(f.SourceFile)}
 			provMap[f.DefName] = rec
 		}
 		val := strings.Trim(f.FieldValue, "\"")
@@ -638,6 +636,10 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 		case "Quote":
 			rec.Quote = val
 		}
+		return true
+	})
+	if err != nil {
+		return nil, err
 	}
 	for _, rec := range provMap {
 		kb.Provenance = append(kb.Provenance, *rec)

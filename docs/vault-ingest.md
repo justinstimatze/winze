@@ -126,14 +126,13 @@ On a synthetic 5000-note vault (20 MB, 24832 links, six directories):
 | parse + resolve 5000 notes | 90–112 ms |
 | full ingest, dry run | 274 ms |
 | ingest + gofmt + `go build` + `go vet` on 29832 claims | 15.3 s |
-| `winze-query` on the resulting 5328-entity / 30287-claim corpus | ~360 ms |
+| `winze-query` on the resulting 5328-entity / 30287-claim corpus | ~102 ms warm |
 
 The parse side is fast and scales linearly — notes are parsed in parallel and
 resolution is a map lookup per link, not a scan. The 15 s is Go compiling 35k
 declarations, paid once per ingest.
 
-The ~360 ms query is the honest weak spot: `winze-query` re-parses the corpus
-AST on every invocation, so at this scale every query pays a fixed ~350 ms
-regardless of what it asks for. Fine for a batch phase, too slow to feel
-interactive during content generation. A persistent index is the fix, and it is
-not built yet.
+Query was the honest weak spot in the first cut of this — it reparsed the corpus
+AST on every invocation, costing a fixed ~360 ms regardless of what was asked.
+It now keeps a persistent, per-file-invalidated index: ~102 ms warm at this
+scale, ~6 ms on the real corpus. See [docs/query.md](query.md#the-index-cache).
