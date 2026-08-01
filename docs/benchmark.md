@@ -8,7 +8,7 @@ The modes:
 
 - **grep** — keyword match over var-block text (the naive baseline)
 - **bm25** — BM25 ranking over var-block text (a proper unstructured baseline)
-- **defn** — SQL queries against defn's Dolt database (structured, realistic)
+- **defn** — SQL queries against defn's SQLite database (structured, realistic)
 - **ast** — hand-written `go/ast` queries (structured, the ceiling)
 
 ```bash

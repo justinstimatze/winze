@@ -260,7 +260,7 @@ func parsePhases(s string) (phaseSet, error) {
 // isFlagSet returns true if the named flag was explicitly set on the command line.
 
 func main() {
-	// Cap memory to avoid OOM during evolve cycles (Dolt caches default to ~544 MB).
+	// Cap memory to avoid OOM during evolve cycles.
 	if os.Getenv("GOMEMLIMIT") == "" {
 		debug.SetMemoryLimit(512 << 20) // 512 MiB
 	}

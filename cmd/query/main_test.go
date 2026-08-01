@@ -12,7 +12,7 @@ import (
 )
 
 // skipIfNoDefnDB skips the test when defn isn't reachable. CI doesn't run a
-// Dolt server and has no .defn/, so these integration tests can't index the
+// defn database and has no .defn/, so these integration tests can't index the
 // corpus there. Skip rather than fail — they're real coverage locally.
 func skipIfNoDefnDB(t *testing.T, err error) {
 	t.Helper()

@@ -1,16 +1,30 @@
 // Package defndb provides typed queries over the corpus: role types, entity
 // vars, composite-literal fields, and pragma comments.
 //
-// It was originally backed by defn's SQL database (github.com/justinstimatze/defn/db),
-// which linked the full Dolt engine — go-mysql-server, vitess, four cloud SDKs,
-// OpenTelemetry, gRPC — into every winze binary: ~190 indirect modules for a
-// 282-line query wrapper. That made `go build`, the load-bearing consistency
-// gate this project is built around, cost minutes and peak 1-2 GB RSS at link.
+// # This package is a stopgap, and the reason it exists has expired
 //
-// The corpus is a few dozen files of declarative Go. go/ast reads all of it in
-// milliseconds, so the database was buying nothing the parser doesn't give.
-// The public API is unchanged from the defn-backed version; only the engine
-// underneath is different.
+// It was originally backed by defn's SQL database (github.com/justinstimatze/defn/db)
+// and was cut over to an in-process go/ast index because defn then linked the
+// full Dolt engine — go-mysql-server, vitess, four cloud SDKs, OpenTelemetry,
+// gRPC — into every winze binary: ~190 indirect modules for a 282-line query
+// wrapper, which made `go build`, the load-bearing consistency gate this
+// project is built around, cost minutes and peak 1-2 GB RSS at link.
+//
+// **That is no longer true and has not been for some time.** Measured
+// 2026-08-01 against defn at 4d9d0a0: Dolt is gone, defn is backed by
+// modernc.org/sqlite (pure Go, no cgo), its whole module graph is 102 modules,
+// and a binary linking defn/db builds in 0.859s warm. Every premise of the
+// paragraph above is dead.
+//
+// Leaving that paragraph standing as if it were current cost real work: it was
+// read as a live measurement rather than a dated decision, and this package
+// grew a persistent index cache (cache.go, codec.go) reimplementing a subset of
+// what defn already does better. Those two files are a stopgap to DELETE, not a
+// foundation to build on — see docs/defn-migration.md for the measurements, the
+// two defn defects found while profiling it, and the migration plan.
+//
+// The rule this violated is winze's own: a claim with no live check on it rots,
+// and prose that reads like a measurement should carry the date it was taken.
 package defndb
 
 import (

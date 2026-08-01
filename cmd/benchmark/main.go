@@ -3,7 +3,7 @@
 // Four retrieval modes compete on the same 24-question corpus:
 //   - grep: keyword match over var-block text
 //   - bm25: BM25 ranking over var-block text (proper unstructured baseline)
-//   - defn: SQL queries against defn's Dolt database (structured, realistic)
+//   - defn: SQL queries against defn's SQLite database (structured, realistic)
 //   - ast:  hand-written go/ast queries (structured, ceiling)
 //
 // Usage:

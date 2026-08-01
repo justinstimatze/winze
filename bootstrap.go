@@ -60,7 +60,7 @@ var (
 		ID:    "defn",
 		Name:  "defn",
 		Kind:  "tool",
-		Brief: "Parses Go via go/types. Stores reference graph in Dolt. Exposes MCP ops: read, search, impact, explain, rename, simulate, query, branch, merge.",
+		Brief: "Parses Go via go/types. Stores the reference graph in SQLite (modernc.org/sqlite, pure Go — migrated off Dolt; verified 2026-08-01 at defn 4d9d0a0). Exposes MCP ops: read, search, impact, explain, rename, simulate, query, branch, merge.",
 	}
 
 	Adit = &Entity{
@@ -74,7 +74,7 @@ var (
 		ID:    "dolt",
 		Name:  "Dolt",
 		Kind:  "tool",
-		Brief: "SQL database with git semantics (branch, merge, diff, blame on structured data). Used by defn for the reference graph.",
+		Brief: "SQL database with git semantics (branch, merge, diff, blame on structured data). Formerly used by defn for the reference graph; defn has since migrated to SQLite, so this entity records an influence rather than a current dependency.",
 	}
 )
 
