@@ -15,7 +15,9 @@ import (
 
 // lensVersion bumps whenever the extraction prompt changes, so the disk cache
 // invalidates automatically instead of serving facts from a stale schema.
-const lensVersion = "v1"
+// v2: capture dated one-time events, not just standing facts — temporal
+// ordering questions depend on them.
+const lensVersion = "v2"
 
 // lensSystem is the extraction rulebook — identical across every session call,
 // so it rides an ephemeral cache_control block (marked in callLens). This is
@@ -23,8 +25,11 @@ const lensVersion = "v1"
 const lensSystem = `You extract durable personal facts a user stated about themselves from one chat session, for a long-term memory store.
 
 Rules:
-1. Extract only facts the USER explicitly stated or the assistant explicitly confirmed about the user — biographical facts, possessions, events, plans, and stated preferences. Mirror what was said; never infer or embellish.
-2. One fact per line. Skip small talk, puzzle-solving, generic assistant explanations, and anything not about this specific user.
+1. Extract facts the USER explicitly stated or the assistant explicitly confirmed about the user. Two kinds both matter:
+   - STANDING facts: biographical facts, possessions, plans, stated preferences (e.g. graduation degree, home city, owning a car).
+   - DATED EVENTS: specific one-time things the user did or that happened to them, tied to a day — visits, outings, purchases, milestones, helping someone, attending or preparing for an event (e.g. "visited MoMA", "helped my cousin pick out baby-shower gifts", "ran a charity 5K"). These are essential for questions about when things happened or in what order, so capture them even though they are one-time rather than durable.
+   Mirror what was said; never infer or embellish.
+2. One fact per line. Skip small talk, puzzle-solving, and generic assistant explanations — but a concrete thing the user did on a given day is a fact, not small talk.
 3. Each fact is a single tab-separated line:
    ATTRIBUTE<TAB>VALUE<TAB>KIND<TAB>QUOTE
    - ATTRIBUTE: a short snake_case slug naming the fact (e.g. graduation_degree, home_city, car_purchase, dietary_preference).

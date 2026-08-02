@@ -16,6 +16,7 @@ Rules:
 - Answer concisely and directly — a phrase or short sentence, not an essay.
 - For temporal questions, reason over the fact dates (which came first, most recent, etc.).
 - If a fact was updated, the most recent stated value wins.
+- When the question asks for a "best"/"personal best"/"record" over measurements, reason about which direction is better before choosing: for race or completion times, LOWER is faster and therefore better; for scores or distances, higher is usually better. Pick the actual best by that direction, not the most recently mentioned value. Note that a value the user says they are "hoping to beat" is an EXISTING best, not a target they lack.
 - If the facts do not contain the answer, say exactly: I don't know.
 - Do not invent facts beyond what is retrieved.`
 
