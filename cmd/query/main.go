@@ -151,6 +151,9 @@ func main() {
 	case *provenance != "":
 		runProvenance(dir, *provenance, *jsonOut)
 		return
+	case *disputes:
+		runDisputes(dir, *jsonOut)
+		return
 	}
 
 	kb, err := buildIndex(dir)
@@ -162,8 +165,6 @@ func main() {
 	switch {
 	case *stats:
 		runStats(kb, *jsonOut)
-	case *disputes:
-		runDisputes(kb, *jsonOut)
 	case *fulltext != "":
 		runFulltext(kb, *fulltext, *jsonOut)
 	case *semantic != "":
@@ -490,12 +491,41 @@ func runProvenance(dir, target string, jsonOut bool) {
 	}
 }
 
-func runDisputes(kb *kbIndex, jsonOut bool) {
-	var disputes []claimRecord
-	for _, c := range kb.Claims {
-		if c.Predicate == "Disputes" || c.Predicate == "DisputesOrg" {
-			disputes = append(disputes, c)
+// disputeClaims streams only Disputes / DisputesOrg claims, in index order,
+// instead of materialising the whole claim table (plus the entity and
+// provenance tables) via buildIndex. TypeName-scoped iteration is the narrow
+// form of "walk every claim, skip the ones that aren't disputes".
+func disputeClaims(client *defndb.Client) ([]claimRecord, error) {
+	byVar := map[string]*claimRecord{}
+	order := []string{}
+	for _, t := range []string{"Disputes", "DisputesOrg"} {
+		if err := client.EachFieldOfType(t, func(f *defndb.LiteralField) bool {
+			accumClaimField(byVar, &order, f)
+			return true
+		}); err != nil {
+			return nil, err
 		}
+	}
+	out := make([]claimRecord, 0, len(order))
+	for _, dn := range order {
+		if byVar[dn].Subject != "" {
+			out = append(out, *byVar[dn])
+		}
+	}
+	return out, nil
+}
+
+func runDisputes(dir string, jsonOut bool) {
+	client, err := defndb.New(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "query: %v\n", err)
+		os.Exit(1)
+	}
+	defer client.Close()
+	disputes, err := disputeClaims(client)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "query: %v\n", err)
+		os.Exit(1)
 	}
 
 	if jsonOut {
