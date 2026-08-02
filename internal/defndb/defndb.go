@@ -27,7 +27,6 @@ package defndb
 import (
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -422,19 +421,11 @@ func (c *Client) Pragmas(prefix string) ([]Pragma, error) {
 	}
 	out := make([]Pragma, 0, len(pragmas))
 	for _, p := range pragmas {
-		name := p.DefName
-		if name == "" {
-			// defn currently records a pragma doc-comment as file-level
-			// (def_id NULL) instead of linking it to the definition it sits
-			// directly above, so DefName is empty for every def-attached winze
-			// pragma. Reconstruct the binding the way a doc comment binds: to
-			// the definition in the same file whose declaration is the nearest
-			// one after the pragma's line. Remove once defn's ingest links
-			// pragma comments to their definition (reported to defn 2026-08-02).
-			name = c.defAfter(p.SourceFile, p.Line)
-		}
+		// defn links each pragma doc-comment to the definition it sits directly
+		// above, so DefName is populated at the DB layer (verified 2026-08-02
+		// against defn 2ec0eaaa). No reconstruction needed here.
 		out = append(out, Pragma{
-			DefName:    name,
+			DefName:    p.DefName,
 			SourceFile: p.SourceFile,
 			Line:       p.Line,
 			Key:        p.Key,
@@ -442,29 +433,6 @@ func (c *Client) Pragmas(prefix string) ([]Pragma, error) {
 		})
 	}
 	return out, nil
-}
-
-// defAfter returns the name of the definition in file whose declaration starts
-// on the nearest line after line — the definition a doc-comment on that line
-// documents — or "" if none follows. It reconstructs a pragma's owning
-// definition while defn records pragma comments as file-level (def_id NULL).
-func (c *Client) defAfter(file string, line int) string {
-	defs, err := c.defs()
-	if err != nil {
-		return ""
-	}
-	bestLine := math.MaxInt
-	best := ""
-	for _, d := range defs {
-		if d.SourceFile != file {
-			continue
-		}
-		if d.StartLine > line && d.StartLine < bestLine {
-			bestLine = d.StartLine
-			best = d.Name
-		}
-	}
-	return best
 }
 
 // Search returns definitions whose name contains pattern (case-insensitive).

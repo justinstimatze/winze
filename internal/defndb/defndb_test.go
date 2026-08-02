@@ -108,11 +108,10 @@ func TestConcordance_Pragmas(t *testing.T) {
 			functional++
 		}
 		// Every winze pragma documents a specific type or var; DefName must
-		// resolve to it. defn's ingest records these as file-level (def_id
-		// NULL), so this asserts the client's defAfter fallback (or, once
-		// defn links them, the DB itself) recovers the binding. Without this
-		// check, a pragma with an empty DefName silently degrades every
-		// DefName-keyed consumer — e.g. functionalPredicates.
+		// resolve to it. defn's ingest links each pragma comment to its owning
+		// definition, so the DB itself supplies DefName. Without this check, a
+		// pragma with an empty DefName silently degrades every DefName-keyed
+		// consumer — e.g. functionalPredicates.
 		if p.DefName == "" {
 			missingDefName++
 			t.Errorf("pragma %s at %s:%d has empty DefName", p.Key, p.SourceFile, p.Line)
