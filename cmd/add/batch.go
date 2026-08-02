@@ -166,6 +166,9 @@ func runBatch(batchPath, repoRoot string, dryRun bool) int {
 	// Format only the files this batch touched. gofmt -w on the repo root
 	// would recurse and sweep unrelated drift into the change.
 	gofmtArgs := append([]string{"-w"}, touched...)
+	// go vet runs here (the amortized burst path) but NOT on the single-write
+	// path in commitDecl: build alone catches dangling references, and one vet
+	// per K claims is cheap where one per claim was not. See commitDecl's note.
 	steps := [][]string{
 		append([]string{"gofmt"}, gofmtArgs...),
 		{"go", "build", "."},

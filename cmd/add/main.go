@@ -131,9 +131,17 @@ func main() {
 }
 
 // commitDecl is the shared write path for `add` and `--propose --commit`: it
-// takes the corpus-wide lock, appends decl to target, runs the
-// gofmt+build+vet gate, and reverts the touched file on any failure. The build
-// gate is the load-bearing semantic check — do not bypass it.
+// takes the corpus-wide lock, appends decl to target, runs the gofmt+build
+// gate, and reverts the touched file on any failure. The build gate is the
+// load-bearing semantic check — do not bypass it.
+//
+// The gate's job is to reject a dangling reference (a claim naming a
+// non-existent entity var), and `go build .` already enforces exactly that: an
+// undefined identifier is a compile error. `go vet .` is deliberately NOT on
+// this single-write hot path — its printf/shadow/struct-tag checks are
+// irrelevant to a declarative corpus of composite literals, and running it per
+// write doubled the gate cost for no anti-drift benefit. vet still runs on the
+// amortized `--batch` path (see batch.go) and in CI.
 func commitDecl(repoRoot, target, decl string) error {
 	// Serialize with any concurrent winze writer: the read-append-gate-commit
 	// section is not safe against a parallel mutator sharing this corpus.
@@ -161,10 +169,6 @@ func commitDecl(repoRoot, target, decl string) error {
 	if out, err := runCmd(repoRoot, "go", "build", "."); err != nil {
 		revert()
 		return fmt.Errorf("go build failed (reverted %s):\n%s", targetPath, out)
-	}
-	if out, err := runCmd(repoRoot, "go", "vet", "."); err != nil {
-		revert()
-		return fmt.Errorf("go vet failed (reverted %s):\n%s", targetPath, out)
 	}
 	return nil
 }
