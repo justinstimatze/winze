@@ -24,9 +24,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/justinstimatze/winze/internal/cliutil"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -169,17 +166,26 @@ type provenanceInfo struct {
 // --- analysis ---
 
 func analyze(dir string, entityCap int) (*Report, error) {
-	entities, err := collectEntities(dir)
+	// One defn client for the whole analysis: entities, claims, provenance and
+	// entity metas all read from the same ingested snapshot instead of each
+	// collector opening (and freshness-checking) its own.
+	client, err := defndb.New(dir)
+	if err != nil {
+		return nil, fmt.Errorf("defndb: %w", err)
+	}
+	defer client.Close()
+
+	entities, err := collectEntitiesDefn(client)
 	if err != nil {
 		return nil, fmt.Errorf("collect entities: %w", err)
 	}
 
-	claims, err := collectClaims(dir)
+	claims, err := collectClaimsDefn(client)
 	if err != nil {
 		return nil, fmt.Errorf("collect claims: %w", err)
 	}
 
-	provenance, err := collectProvenance(dir)
+	provenance, _, err := collectProvenanceDefn(client)
 	if err != nil {
 		return nil, fmt.Errorf("collect provenance: %w", err)
 	}
@@ -202,7 +208,10 @@ func analyze(dir string, entityCap int) (*Report, error) {
 	})
 
 	// Collect entity metadata for sensor target generation
-	metas := collectEntityMetas(dir)
+	metas, err := collectEntityMetasDefn(client)
+	if err != nil {
+		metas = map[string]entityMeta{}
+	}
 
 	targets := generateSensorTargets(vulns, metas, claims, dir, len(entities), entityCap)
 
@@ -1013,21 +1022,8 @@ func splitCamelCase(s string) []string {
 	return words
 }
 
-// collectEntityMetas walks .go files and extracts Name+Brief from entity
-// composite literals that embed *Entity.
-func collectEntityMetas(dir string) map[string]entityMeta {
-	client, err := defndb.New(dir)
-	if err != nil {
-		return map[string]entityMeta{}
-	}
-	defer client.Close()
-	metas, err := collectEntityMetasDefn(client)
-	if err != nil {
-		return map[string]entityMeta{}
-	}
-	return metas
-}
-
+// collectEntityMetasDefn extracts Name+Brief from entity composite literals via
+// defn.
 func collectEntityMetasDefn(client *defndb.Client) (map[string]entityMeta, error) {
 	// EntityFields returns Name/Brief fields from Entity literals.
 	// We need to know which vars are entities (have constructor ref to a role type).
@@ -1071,42 +1067,6 @@ type entityMeta struct {
 	explains string // Name of concept this hypothesis explains (from HypothesisExplains)
 }
 
-func basicLitString(e ast.Expr) string {
-	switch v := e.(type) {
-	case *ast.BasicLit:
-		if v.Kind != token.STRING {
-			return ""
-		}
-		// Simple unquoting: strip surrounding quotes
-		s := v.Value
-		if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
-			s = s[1 : len(s)-1]
-		}
-		return s
-	case *ast.BinaryExpr:
-		// Multi-line Quotes are written as "..." + "..." + ... — an
-		// *ast.BinaryExpr chain, not a single BasicLit. Concatenate the
-		// operands so a rich concatenated Quote is not misread as empty
-		// (which false-flagged well-sourced files like blindsight.go as
-		// thin_provenance).
-		if v.Op == token.ADD {
-			return basicLitString(v.X) + basicLitString(v.Y)
-		}
-	case *ast.ParenExpr:
-		return basicLitString(v.X)
-	}
-	return ""
-}
-
-func collectEntities(dir string) ([]entityInfo, error) {
-	client, err := defndb.New(dir)
-	if err != nil {
-		return nil, fmt.Errorf("defndb: %w", err)
-	}
-	defer client.Close()
-	return collectEntitiesDefn(client)
-}
-
 func collectEntitiesDefn(client *defndb.Client) ([]entityInfo, error) {
 	varRoles, err := client.EntityVarsWithRoles()
 	if err != nil {
@@ -1121,15 +1081,6 @@ func collectEntitiesDefn(client *defndb.Client) ([]entityInfo, error) {
 		})
 	}
 	return out, nil
-}
-
-func collectClaims(dir string) ([]claimInfo, error) {
-	client, err := defndb.New(dir)
-	if err != nil {
-		return nil, fmt.Errorf("defndb: %w", err)
-	}
-	defer client.Close()
-	return collectClaimsDefn(client)
 }
 
 func collectClaimsDefn(client *defndb.Client) ([]claimInfo, error) {
@@ -1179,105 +1130,85 @@ func collectClaimsDefn(client *defndb.Client) ([]claimInfo, error) {
 	return out, nil
 }
 
-// collectProvenance walks .go files looking for Provenance composite
-// literals assigned to package-level vars. Records whether the Quote
-// field is non-empty. Returns map keyed by FILE name (for backward compat
-// with thin-provenance detector).
-func collectProvenance(dir string) (map[string]provenanceInfo, error) {
-	byFile, _, err := collectProvenanceFull(dir)
-	return byFile, err
-}
-
-// collectProvenanceFull returns provenance keyed both by file and by var name.
-func collectProvenanceFull(dir string) (byFile map[string]provenanceInfo, byVar map[string]provenanceInfo, err error) {
-	fset := token.NewFileSet()
-	byFile = map[string]provenanceInfo{}
+// collectProvenanceDefn reads Provenance Quote/Origin via defn instead of a
+// second AST walk over the corpus. defn captures concatenated multi-line Quotes
+// in full (verified against blindsight.go's 6-segment Quote), so the
+// thin-provenance detector's hasQuote stays correct. Returns provenance keyed
+// both by file (thin-provenance detector) and by var (runWhy support chain).
+func collectProvenanceDefn(client *defndb.Client) (byFile, byVar map[string]provenanceInfo, err error) {
 	byVar = map[string]provenanceInfo{}
-
-	entries, err := os.ReadDir(dir)
+	lineOf := map[string]int{} // provenance var → its declaration line (min field line)
+	err = client.EachFieldOfType("Provenance", func(f *defndb.LiteralField) bool {
+		info := byVar[f.DefName]
+		info.file = filepath.Base(f.SourceFile)
+		info.varName = f.DefName
+		val := strings.Trim(f.FieldValue, "\"")
+		switch f.FieldName {
+		case "Quote":
+			if val != "" {
+				info.hasQuote = true
+				info.quote = val
+			}
+		case "Origin":
+			info.origin = val
+		}
+		byVar[f.DefName] = info
+		if l, ok := lineOf[f.DefName]; !ok || f.Line < l {
+			lineOf[f.DefName] = f.Line
+		}
+		return true
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
+	// Build the file-level view deterministically: for each file the last
+	// Provenance var in source order wins its Origin, matching the previous AST
+	// walk (which iterated files then decls in order). Iterating byVar directly
+	// would be Go-map order — nondeterministic across runs.
+	vars := make([]string, 0, len(byVar))
+	for v := range byVar {
+		vars = append(vars, v)
+	}
+	sort.Slice(vars, func(i, j int) bool {
+		a, b := byVar[vars[i]], byVar[vars[j]]
+		if a.file != b.file {
+			return a.file < b.file
 		}
-		path := filepath.Join(dir, e.Name())
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			continue
+		return lineOf[vars[i]] < lineOf[vars[j]]
+	})
+	byFile = map[string]provenanceInfo{}
+	for _, v := range vars {
+		info := byVar[v]
+		existing := byFile[info.file]
+		existing.file = info.file
+		existing.hasQuote = existing.hasQuote || info.hasQuote
+		if info.origin != "" {
+			existing.origin = info.origin
 		}
-		for _, decl := range f.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok != token.VAR {
-				continue
-			}
-			for _, spec := range gen.Specs {
-				vs, ok := spec.(*ast.ValueSpec)
-				if !ok {
-					continue
-				}
-				for i := range vs.Names {
-					if i >= len(vs.Values) {
-						continue
-					}
-					cl, ok := vs.Values[i].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeIdent, ok := cl.Type.(*ast.Ident)
-					if !ok {
-						continue
-					}
-					if typeIdent.Name != "Provenance" {
-						continue
-					}
-					hasQuote := false
-					origin := ""
-					quote := ""
-					for _, elt := range cl.Elts {
-						kv, ok := elt.(*ast.KeyValueExpr)
-						if !ok {
-							continue
-						}
-						key, ok := kv.Key.(*ast.Ident)
-						if !ok {
-							continue
-						}
-						switch key.Name {
-						case "Quote":
-							q := basicLitString(kv.Value)
-							if q != "" {
-								hasQuote = true
-								quote = q
-							}
-						case "Origin":
-							origin = basicLitString(kv.Value)
-						}
-					}
-					varName := vs.Names[i].Name
-					info := provenanceInfo{
-						file:     e.Name(),
-						hasQuote: hasQuote,
-						origin:   origin,
-						quote:    quote,
-						varName:  varName,
-					}
-					byVar[varName] = info
-
-					// Update file-level: if any provenance in this file has a quote, mark it
-					existing := byFile[e.Name()]
-					existing.file = e.Name()
-					existing.hasQuote = existing.hasQuote || hasQuote
-					if origin != "" {
-						existing.origin = origin
-					}
-					byFile[e.Name()] = existing
-				}
-			}
-		}
+		byFile[info.file] = existing
 	}
 	return byFile, byVar, nil
+}
+
+// collectPredicatePragmasDefn reads winze:contested / winze:functional pragmas
+// via defn's Pragmas index rather than an AST comment walk. DefName is the type
+// the pragma documents.
+func collectPredicatePragmasDefn(client *defndb.Client) (contested, functional map[string]bool, err error) {
+	contested = map[string]bool{}
+	functional = map[string]bool{}
+	pragmas, err := client.Pragmas("winze:")
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, p := range pragmas {
+		switch p.Key {
+		case "winze:contested":
+			contested[p.DefName] = true
+		case "winze:functional":
+			functional[p.DefName] = true
+		}
+	}
+	return contested, functional, nil
 }
 
 // --- slimemold KB export ---
@@ -1310,7 +1241,13 @@ type KBExportPayload struct {
 //
 // Usage: go run ./cmd/topology --why ChalmersHardProblemThesis .
 func runWhy(dir, entityName string, jsonOut bool) error {
-	entities, err := collectEntities(dir)
+	client, err := defndb.New(dir)
+	if err != nil {
+		return fmt.Errorf("defndb: %w", err)
+	}
+	defer client.Close()
+
+	entities, err := collectEntitiesDefn(client)
 	if err != nil {
 		return fmt.Errorf("collect entities: %w", err)
 	}
@@ -1345,12 +1282,12 @@ func runWhy(dir, entityName string, jsonOut bool) error {
 		}
 	}
 
-	claims, err := collectClaims(dir)
+	claims, err := collectClaimsDefn(client)
 	if err != nil {
 		return fmt.Errorf("collect claims: %w", err)
 	}
 
-	_, provByVar, err := collectProvenanceFull(dir)
+	_, provByVar, err := collectProvenanceDefn(client)
 	if err != nil {
 		return fmt.Errorf("collect provenance: %w", err)
 	}
@@ -1447,7 +1384,7 @@ func runWhy(dir, entityName string, jsonOut bool) error {
 			Support []interface{} `json:"support_chain"`
 		}
 		// Collect brief
-		metas := collectEntityMetas(dir)
+		metas, _ := collectEntityMetasDefn(client)
 		brief := ""
 		if m, ok := metas[entityName]; ok {
 			brief = m.brief
@@ -1480,7 +1417,7 @@ func runWhy(dir, entityName string, jsonOut bool) error {
 	}
 
 	// Text output
-	metas := collectEntityMetas(dir)
+	metas, _ := collectEntityMetasDefn(client)
 	brief := ""
 	if m, ok := metas[entityName]; ok {
 		brief = m.brief
@@ -1605,12 +1542,18 @@ func challengeEdges(edges []supportEdge) []supportEdge {
 //
 // Usage: go run ./cmd/topology --dot . | dot -Tsvg > dag.svg
 func runDotExport(dir string) error {
-	entities, err := collectEntities(dir)
+	client, err := defndb.New(dir)
+	if err != nil {
+		return fmt.Errorf("defndb: %w", err)
+	}
+	defer client.Close()
+
+	entities, err := collectEntitiesDefn(client)
 	if err != nil {
 		return fmt.Errorf("collect entities: %w", err)
 	}
 
-	claims, err := collectClaims(dir)
+	claims, err := collectClaimsDefn(client)
 	if err != nil {
 		return fmt.Errorf("collect claims: %w", err)
 	}
@@ -1802,76 +1745,24 @@ func dotLabel(e entityInfo) string {
 	return name + "\n(" + e.roleType + ")"
 }
 
-// collectPredicatePragmas walks AST type declarations to find which predicate
-// types carry //winze:contested or //winze:functional pragma annotations.
-// Returns maps from predicate type name → true.
-func collectPredicatePragmas(dir string) (contested, functional map[string]bool, err error) {
-	contested = map[string]bool{}
-	functional = map[string]bool{}
-	fset := token.NewFileSet()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		f, parseErr := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.ParseComments)
-		if parseErr != nil {
-			continue
-		}
-		for _, decl := range f.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok != token.TYPE {
-				continue
-			}
-			isContested := hasPragmaComment(gen.Doc, "winze:contested")
-			isFunctional := hasPragmaComment(gen.Doc, "winze:functional")
-			if !isContested && !isFunctional {
-				continue
-			}
-			for _, spec := range gen.Specs {
-				if ts, ok := spec.(*ast.TypeSpec); ok {
-					if isContested {
-						contested[ts.Name.Name] = true
-					}
-					if isFunctional {
-						functional[ts.Name.Name] = true
-					}
-				}
-			}
-		}
-	}
-	return contested, functional, nil
-}
-
-// hasPragmaComment returns true if any line in doc ends with the named pragma.
-func hasPragmaComment(doc *ast.CommentGroup, pragma string) bool {
-	if doc == nil {
-		return false
-	}
-	want := "//" + pragma
-	for _, c := range doc.List {
-		if strings.TrimSpace(c.Text) == want {
-			return true
-		}
-	}
-	return false
-}
-
 func runExportKB(dir string) error {
-	claims, err := collectClaims(dir)
+	client, err := defndb.New(dir)
+	if err != nil {
+		return fmt.Errorf("defndb: %w", err)
+	}
+	defer client.Close()
+
+	claims, err := collectClaimsDefn(client)
 	if err != nil {
 		return fmt.Errorf("collect claims: %w", err)
 	}
 
-	provenance, err := collectProvenance(dir)
+	provenance, _, err := collectProvenanceDefn(client)
 	if err != nil {
 		return fmt.Errorf("collect provenance: %w", err)
 	}
 
-	contested, functional, err := collectPredicatePragmas(dir)
+	contested, functional, err := collectPredicatePragmasDefn(client)
 	if err != nil {
 		return fmt.Errorf("collect pragmas: %w", err)
 	}
