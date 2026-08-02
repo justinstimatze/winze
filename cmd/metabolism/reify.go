@@ -285,6 +285,11 @@ func runReify(dir string) {
 		varBase := strings.TrimSuffix(hypName, "Thesis")
 		varBase = strings.TrimSuffix(varBase, "Argument")
 		varBase = strings.TrimSuffix(varBase, "Framing")
+		// sanitizeIdent strips any punctuation (e.g. the colon in a
+		// "goal:Foo" LearningGoal hypName) so it can't leak into a Go
+		// identifier. No-op for the CamelCase thesis names that predate
+		// learning goals; the KB-internal loop below already does this.
+		varBase = sanitizeIdent(varBase)
 		entityID := camelToKebab(hypName)
 
 		// Backends used (sorted for deterministic emit — map range order
