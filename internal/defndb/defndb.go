@@ -1,85 +1,161 @@
 // Package defndb provides typed queries over the corpus: role types, entity
-// vars, composite-literal fields, and pragma comments.
+// vars, composite-literal fields, and pragma comments. It is a thin client over
+// defn's SQL database (github.com/justinstimatze/defn/db) — the corpus is
+// ingested into a local .defn/ SQLite store and queried in-process, no CLI
+// binary and no server.
 //
-// # This package is a stopgap, and the reason it exists has expired
+// # Why it went back to defn
 //
-// It was originally backed by defn's SQL database (github.com/justinstimatze/defn/db)
-// and was cut over to an in-process go/ast index because defn then linked the
-// full Dolt engine — go-mysql-server, vitess, four cloud SDKs, OpenTelemetry,
-// gRPC — into every winze binary: ~190 indirect modules for a 282-line query
-// wrapper, which made `go build`, the load-bearing consistency gate this
-// project is built around, cost minutes and peak 1-2 GB RSS at link.
+// This package was a defn client, was cut over to an in-process go/ast index
+// when defn linked the full Dolt engine (~190 indirect modules, minutes to
+// link), and grew a persistent index cache (cache.go, codec.go) to make that
+// parse cheap. Every premise of that detour expired: defn is modernc.org/sqlite
+// now, pure Go, ~100 modules, sub-second to link. So the cache is gone and this
+// is a defn client again — see docs/defn-migration.md for the measurements and
+// the plan this closes.
 //
-// **That is no longer true and has not been for some time.** Measured
-// 2026-08-01 against defn at 4d9d0a0: Dolt is gone, defn is backed by
-// modernc.org/sqlite (pure Go, no cgo), its whole module graph is 102 modules,
-// and a binary linking defn/db builds in 0.859s warm. Every premise of the
-// paragraph above is dead.
+// # Freshness
 //
-// Leaving that paragraph standing as if it were current cost real work: it was
-// read as a live measurement rather than a dated decision, and this package
-// grew a persistent index cache (cache.go, codec.go) reimplementing a subset of
-// what defn already does better. Those two files are a stopgap to DELETE, not a
-// foundation to build on — see docs/defn-migration.md for the measurements, the
-// two defn defects found while profiling it, and the migration plan.
-//
-// The rule this violated is winze's own: a claim with no live check on it rots,
-// and prose that reads like a measurement should carry the date it was taken.
+// The .go corpus is the source of truth and the write path never trusts the db
+// (the build gate parses real files via astutil). This read side keeps the db
+// current: New ingests on first use and re-ingests when any .go file has changed
+// since the last ingest (db.StaleFiles), so a query always sees the corpus as it
+// is on disk, and an unedited corpus pays only the freshness check, not a
+// re-ingest.
 package defndb
 
 import (
 	"errors"
-	"go/ast"
-	"go/parser"
-	"go/token"
+	"fmt"
+	"math"
 	"os"
-	"runtime"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"syscall"
 
-	"github.com/justinstimatze/winze/internal/astutil"
+	defnapi "github.com/justinstimatze/defn/db"
 )
 
-// ErrNotAvailable indicates the corpus directory could not be read.
+// ErrNotAvailable indicates the corpus directory could not be opened as a defn
+// store. Callers may fall back to direct AST walking.
 var ErrNotAvailable = errors.New("defndb: corpus not available")
 
-// Client answers typed queries about a corpus directory. The corpus is parsed
-// once, lazily, on first query and cached for the Client's lifetime.
+// Client answers typed queries about a corpus directory over a defn SQLite
+// store. New keeps the store in sync with the .go files; the definition index
+// used to resolve a literal's source file and var-kind is loaded once, lazily,
+// on the first query and cached for the Client's lifetime.
 type Client struct {
-	dir  string
-	once sync.Once
-	idx  *index
-	err  error
+	db *defnapi.DB
+
+	defOnce sync.Once
+	defByID map[int64]defnapi.Definition
+	defErr  error
 }
 
-type index struct {
-	roleTypes  []RoleType
-	entityVars []VarRoleInfo
-	literals   [][]LiteralField // per source file, in sorted path order
-	pragmas    []Pragma
-	defs       []SearchResult
-	roleSet    map[string]bool
-}
-
-// New creates a Client for the given corpus directory. Returns ErrNotAvailable
-// if the directory does not exist or is not a directory.
+// New opens (creating if absent) the .defn store under dir and brings it up to
+// date with the corpus, then returns a Client. Returns ErrNotAvailable when dir
+// is not a directory or the store cannot be opened; a sync failure (e.g. a
+// corpus that does not compile) is returned as a distinct wrapped error, since
+// it is a real problem to surface, not a missing dependency to fall back from.
 func New(dir string) (*Client, error) {
 	fi, err := os.Stat(dir)
 	if err != nil || !fi.IsDir() {
 		return nil, ErrNotAvailable
 	}
-	return &Client{dir: dir}, nil
+	db, err := defnapi.Open(filepath.Join(dir, ".defn"))
+	if err != nil {
+		return nil, ErrNotAvailable
+	}
+	c := &Client{db: db}
+	if err := c.ensureFresh(dir); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return c, nil
 }
 
-// Close releases resources. Retained for API compatibility; the AST-backed
-// implementation holds nothing that needs releasing.
-func (c *Client) Close() error { return nil }
+// ensureFresh ingests the corpus when the store has never been ingested, or
+// re-ingests when any .go file has changed since the last ingest. An unedited
+// corpus does no work beyond the stat walk StaleFiles performs.
+func (c *Client) ensureFresh(dir string) error {
+	// A full re-ingest is a single-writer operation: two overlapping Syncs
+	// insert the same definitions and collide on the (module, name, kind,
+	// receiver, test) unique index. Serialize the whole check-and-sync with an
+	// OS advisory lock so concurrent winze processes — and parallel `go test`
+	// binaries sharing one repo-root .defn — take turns. Whoever waits then
+	// sees last_ingest set and StaleFiles empty, and skips the redundant Sync.
+	unlock, err := lockSync(filepath.Join(dir, ".defn"))
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
-func (c *Client) load() (*index, error) {
-	c.once.Do(func() {
-		c.idx, c.err = buildIndex(c.dir)
+	last, err := c.db.GetMeta("last_ingest")
+	if err != nil {
+		return fmt.Errorf("defndb: read ingest state: %w", err)
+	}
+	need := last == "" // never ingested: StaleFiles reports nothing on an empty db
+	if !need {
+		stale, err := c.db.StaleFiles(dir)
+		if err != nil {
+			return fmt.Errorf("defndb: stale check: %w", err)
+		}
+		need = len(stale) > 0
+	}
+	if need {
+		if err := c.db.Sync(dir); err != nil {
+			return fmt.Errorf("defndb: sync %s: %w", dir, err)
+		}
+	}
+	return nil
+}
+
+// lockSync takes an exclusive advisory lock on defnDir/sync.lock, blocking
+// until it is available, and returns a release function. It guards the
+// check-and-reingest in ensureFresh so only one process re-ingests at a time;
+// defnDir already exists (defnapi.Open created it) by the time this runs.
+func lockSync(defnDir string) (func(), error) {
+	f, err := os.OpenFile(filepath.Join(defnDir, "sync.lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("defndb: open sync lock: %w", err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("defndb: acquire sync lock: %w", err)
+	}
+	return func() {
+		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		f.Close()
+	}, nil
+}
+
+// Close releases the underlying database.
+func (c *Client) Close() error {
+	if c.db != nil {
+		return c.db.Close()
+	}
+	return nil
+}
+
+// defs returns the DefID→Definition index, loaded once. It resolves every
+// literal field's source file and enclosing-definition kind from a single
+// Definitions query rather than a lookup per row.
+func (c *Client) defs() (map[int64]defnapi.Definition, error) {
+	c.defOnce.Do(func() {
+		all, err := c.db.Definitions(defnapi.DefinitionFilter{})
+		if err != nil {
+			c.defErr = err
+			return
+		}
+		m := make(map[int64]defnapi.Definition, len(all))
+		for _, d := range all {
+			m[d.ID] = d
+		}
+		c.defByID = m
 	})
-	return c.idx, c.err
+	return c.defByID, c.defErr
 }
 
 // RoleType is a type that embeds *Entity.
@@ -88,10 +164,10 @@ type RoleType struct {
 	SourceFile string
 }
 
-// LiteralField is a field from a composite literal initializer. TypeName is
-// the type of the immediately-enclosing literal, so a Provenance literal
-// inlined inside a claim reports TypeName "Provenance", not the claim's
-// predicate type. DefName is always the enclosing top-level var.
+// LiteralField is a field from a composite literal initializer. TypeName is the
+// type of the immediately-enclosing literal, so a Provenance literal inlined
+// inside a claim reports a Provenance TypeName, not the claim's predicate type.
+// DefName is the enclosing top-level var.
 type LiteralField struct {
 	DefName    string
 	TypeName   string
@@ -125,541 +201,281 @@ type VarRoleInfo struct {
 	SourceFile string
 }
 
-// RoleTypes returns all types embedding *Entity.
+// RoleTypes returns all types embedding *Entity, via the embed ref to Entity.
 func (c *Client) RoleTypes() ([]RoleType, error) {
-	idx, err := c.load()
+	refs, err := c.db.Refs(defnapi.RefFilter{ToName: "Entity", Kind: "embed"})
 	if err != nil {
 		return nil, err
 	}
-	return idx.roleTypes, nil
+	defs, err := c.defs()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RoleType, 0, len(refs))
+	for _, r := range refs {
+		d, ok := defs[r.FromDef]
+		if !ok || d.Kind != "type" {
+			continue
+		}
+		out = append(out, RoleType{Name: d.Name, SourceFile: d.SourceFile})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
 }
 
 // RoleTypeSet returns role type names as a set for quick lookup.
 func (c *Client) RoleTypeSet() (map[string]bool, error) {
-	idx, err := c.load()
+	roles, err := c.RoleTypes()
 	if err != nil {
 		return nil, err
 	}
-	return idx.roleSet, nil
+	m := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		m[r.Name] = true
+	}
+	return m, nil
 }
 
-// EntityVarsWithRoles returns entity vars with their role types resolved.
+// EntityVarsWithRoles returns entity vars with their role types resolved via
+// constructor refs (a var whose initializer constructs a role type), in var-name
+// order so the index the read paths build from it is stable across runs.
 func (c *Client) EntityVarsWithRoles() ([]VarRoleInfo, error) {
-	idx, err := c.load()
+	roles, err := c.RoleTypeSet()
 	if err != nil {
 		return nil, err
 	}
-	return idx.entityVars, nil
+	if len(roles) == 0 {
+		return nil, nil
+	}
+	refs, err := c.db.Refs(defnapi.RefFilter{Kind: "constructor"})
+	if err != nil {
+		return nil, err
+	}
+	defs, err := c.defs()
+	if err != nil {
+		return nil, err
+	}
+	var out []VarRoleInfo
+	seen := make(map[int64]bool)
+	for _, r := range refs {
+		if seen[r.FromDef] {
+			continue
+		}
+		to, ok := defs[r.ToDef]
+		if !ok || !roles[to.Name] {
+			continue
+		}
+		from, ok := defs[r.FromDef]
+		if !ok || from.Kind != "var" {
+			continue
+		}
+		seen[r.FromDef] = true
+		out = append(out, VarRoleInfo{VarName: from.Name, RoleType: to.Name, SourceFile: from.SourceFile})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].VarName < out[j].VarName })
+	return out, nil
+}
+
+// literalFields runs a LiteralFields query, keeps only fields whose enclosing
+// definition is a top-level var (corpus entities/claims/provenance all are),
+// and returns them in a deterministic source order. It sets both opt-out perf
+// flags: DefName and source file are reconstructed from the definition index,
+// and ordering is imposed here, so defn's join and sort are pure waste for this
+// client.
+func (c *Client) literalFields(filter defnapi.LiteralFieldFilter) ([]LiteralField, error) {
+	filter.SkipOrderBy = true
+	filter.SkipDefName = true
+	fields, err := c.db.LiteralFields(filter)
+	if err != nil {
+		return nil, err
+	}
+	defs, err := c.defs()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]LiteralField, 0, len(fields))
+	for _, f := range fields {
+		d, ok := defs[f.DefID]
+		if !ok || d.Kind != "var" {
+			continue
+		}
+		out = append(out, LiteralField{
+			DefName:    d.Name,
+			TypeName:   f.TypeName,
+			FieldName:  f.FieldName,
+			FieldValue: f.FieldValue,
+			SourceFile: d.SourceFile,
+			Line:       f.Line,
+		})
+	}
+	sortLiteralFields(out)
+	return out, nil
+}
+
+// sortLiteralFields imposes the stable (source file, line, field name) order
+// that the read paths treat as "index order". defn's rows come back in
+// whatever order the store yields once SkipOrderBy drops the ORDER BY; sorting
+// here is what makes query output reproducible.
+func sortLiteralFields(fs []LiteralField) {
+	sort.SliceStable(fs, func(i, j int) bool {
+		a, b := fs[i], fs[j]
+		if a.SourceFile != b.SourceFile {
+			return a.SourceFile < b.SourceFile
+		}
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+		return a.FieldName < b.FieldName
+	})
 }
 
 // ClaimFields returns Subject/Object/Prov fields from claim composite literals.
 func (c *Client) ClaimFields() ([]LiteralField, error) {
-	return c.fieldsByName("Subject", "Object", "Prov")
+	return c.literalFields(defnapi.LiteralFieldFilter{FieldNames: []string{"Subject", "Object", "Prov"}})
 }
 
 // EntityFields returns Name/Brief/ID/Origin/Quote fields from entity literals.
 func (c *Client) EntityFields() ([]LiteralField, error) {
-	return c.fieldsByName("Name", "Brief", "ID", "Origin", "Quote")
+	return c.literalFields(defnapi.LiteralFieldFilter{FieldNames: []string{"Name", "Brief", "ID", "Origin", "Quote"}})
 }
 
 // LiteralFieldsForType returns all literal fields whose enclosing literal type
-// contains typePattern as a substring.
+// contains typePattern.
 func (c *Client) LiteralFieldsForType(typePattern string) ([]LiteralField, error) {
-	idx, err := c.load()
-	if err != nil {
-		return nil, err
-	}
-	n := 0
-	idx.eachLiteral(func(f *LiteralField) bool {
-		if strings.Contains(f.TypeName, typePattern) {
-			n++
-		}
-		return true
-	})
-	out := make([]LiteralField, 0, n)
-	idx.eachLiteral(func(f *LiteralField) bool {
-		if strings.Contains(f.TypeName, typePattern) {
-			out = append(out, *f)
-		}
-		return true
-	})
-	return out, nil
-}
-
-func (c *Client) fieldsByName(names ...string) ([]LiteralField, error) {
-	idx, err := c.load()
-	if err != nil {
-		return nil, err
-	}
-	want := make(map[string]bool, len(names))
-	for _, n := range names {
-		want[n] = true
-	}
-	// Count before allocating: ClaimFields selects ~90k of ~130k records on a
-	// large corpus, and growing into that from nil copies the result set a
-	// dozen times over.
-	n := 0
-	idx.eachLiteral(func(f *LiteralField) bool {
-		if want[f.FieldName] {
-			n++
-		}
-		return true
-	})
-	out := make([]LiteralField, 0, n)
-	idx.eachLiteral(func(f *LiteralField) bool {
-		if want[f.FieldName] {
-			out = append(out, *f)
-		}
-		return true
-	})
-	return out, nil
-}
-
-// eachLiteral walks every literal field in index order across all files.
-func (idx *index) eachLiteral(fn func(*LiteralField) bool) {
-	for _, group := range idx.literals {
-		for i := range group {
-			if !fn(&group[i]) {
-				return
-			}
-		}
-	}
+	return c.literalFields(defnapi.LiteralFieldFilter{TypeName: "%" + typePattern + "%"})
 }
 
 // EachField calls fn for every literal field whose name is in names, in index
 // order, stopping early if fn returns false.
-//
-// This is the allocation-free form of ClaimFields/EntityFields. Those build a
-// filtered copy — ~90k records, around 9 MB, on a large corpus — which the
-// caller then walks exactly once to group into its own structures. The copy is
-// pure waste in that pattern, and it was the single largest remaining cost on
-// the warm query path. The slice-returning methods stay for callers that need
-// to hold or re-scan the result.
 func (c *Client) EachField(names []string, fn func(*LiteralField) bool) error {
-	idx, err := c.load()
+	fields, err := c.literalFields(defnapi.LiteralFieldFilter{FieldNames: names})
 	if err != nil {
 		return err
 	}
-	want := make(map[string]bool, len(names))
-	for _, n := range names {
-		want[n] = true
-	}
-	idx.eachLiteral(func(f *LiteralField) bool {
-		if !want[f.FieldName] {
-			return true
+	for i := range fields {
+		if !fn(&fields[i]) {
+			return nil
 		}
-		return fn(f)
-	})
+	}
 	return nil
 }
 
 // EachFieldOfType calls fn for every literal field whose enclosing literal type
-// contains typePattern. The iterator counterpart to LiteralFieldsForType.
+// contains typePattern, in index order.
 func (c *Client) EachFieldOfType(typePattern string, fn func(*LiteralField) bool) error {
-	idx, err := c.load()
+	fields, err := c.literalFields(defnapi.LiteralFieldFilter{TypeName: "%" + typePattern + "%"})
 	if err != nil {
 		return err
 	}
-	idx.eachLiteral(func(f *LiteralField) bool {
-		if !strings.Contains(f.TypeName, typePattern) {
-			return true
+	for i := range fields {
+		if !fn(&fields[i]) {
+			return nil
 		}
-		return fn(f)
-	})
+	}
 	return nil
 }
 
 // EachFieldWithValuePrefix calls fn for every literal field among the named
-// fields whose FieldValue begins with valuePrefix, in index order, stopping
-// early if fn returns false.
-//
-// This is the narrow, single-entity form of EachField. The single-entity read
-// paths (--claims/--theories/--provenance) want the handful of fields that
-// reference one var, not the ~90k claim fields the whole corpus carries;
-// EachField streams all of them and leaves the caller to filter, which builds a
-// whole-corpus index to answer a question about one entity.
-//
-// A claim references a var as either "Foo" or the selector form "Foo.Entity",
-// so callers pass the bare var as the prefix and re-check the base var exactly
-// (a prefix also matches "FooBar"). Over the current AST index the prefix is a
-// linear pass — it saves the caller's grouping copy but not the corpus parse.
-// When internal/defndb is cut back over to defn's SQL db (see
-// docs/defn-migration.md) this maps to
-// db.LiteralFields(LiteralFieldFilter{Value: valuePrefix+"%", FieldNames: names,
-// SkipOrderBy: true, SkipDefName: true}) — an indexed range scan via
-// likePrefixRange — and the whole-corpus parse disappears with it.
+// fields whose FieldValue begins with valuePrefix — an anchored value lookup
+// pushed to SQL (field_value LIKE 'prefix%', an indexed range scan via defn's
+// likePrefixRange). The single-entity read paths use it to find the claims that
+// reference one var without scanning the whole claim table.
 func (c *Client) EachFieldWithValuePrefix(valuePrefix string, names []string, fn func(*LiteralField) bool) error {
-	idx, err := c.load()
+	fields, err := c.literalFields(defnapi.LiteralFieldFilter{FieldNames: names, Value: valuePrefix + "%"})
 	if err != nil {
 		return err
 	}
-	want := make(map[string]bool, len(names))
-	for _, n := range names {
-		want[n] = true
+	for i := range fields {
+		if !fn(&fields[i]) {
+			return nil
+		}
 	}
-	idx.eachLiteral(func(f *LiteralField) bool {
-		if !want[f.FieldName] {
-			return true
-		}
-		if !strings.HasPrefix(f.FieldValue, valuePrefix) {
-			return true
-		}
-		return fn(f)
-	})
 	return nil
 }
 
 // EachFieldForDefs calls fn for every literal field among the named fields whose
-// enclosing top-level var is in defNames, in index order. It is the assembly
-// half of a single-entity lookup: EachFieldWithValuePrefix finds the claim vars
-// that reference an entity, then this fetches those claims' full field sets to
-// render them, without streaming the whole corpus a second time.
-//
-// Over the AST index this is a membership check in a linear pass. When
-// internal/defndb moves onto defn's SQL db (docs/defn-migration.md) it maps to a
-// def_id IN (...) filter, so pass two stays indexed rather than scanning.
+// enclosing var is in defNames, in index order. The assembly half of a
+// single-entity lookup: pass one finds the referencing vars, this fetches their
+// full field sets. defn's LiteralFieldFilter has no def-set predicate, so the
+// membership test is applied here; at corpus scale the fetched set is small.
 func (c *Client) EachFieldForDefs(defNames map[string]bool, names []string, fn func(*LiteralField) bool) error {
-	idx, err := c.load()
+	fields, err := c.literalFields(defnapi.LiteralFieldFilter{FieldNames: names})
 	if err != nil {
 		return err
 	}
-	want := make(map[string]bool, len(names))
-	for _, n := range names {
-		want[n] = true
-	}
-	idx.eachLiteral(func(f *LiteralField) bool {
-		if !defNames[f.DefName] || !want[f.FieldName] {
-			return true
+	for i := range fields {
+		if !defNames[fields[i].DefName] {
+			continue
 		}
-		return fn(f)
-	})
+		if !fn(&fields[i]) {
+			return nil
+		}
+	}
 	return nil
 }
 
 // Pragmas returns all pragma comments whose key starts with prefix.
 func (c *Client) Pragmas(prefix string) ([]Pragma, error) {
-	idx, err := c.load()
+	pragmas, err := c.db.Pragmas(prefix + "%")
 	if err != nil {
 		return nil, err
 	}
-	var out []Pragma
-	for _, p := range idx.pragmas {
-		if strings.HasPrefix(p.Key, prefix) {
-			out = append(out, p)
+	out := make([]Pragma, 0, len(pragmas))
+	for _, p := range pragmas {
+		name := p.DefName
+		if name == "" {
+			// defn currently records a pragma doc-comment as file-level
+			// (def_id NULL) instead of linking it to the definition it sits
+			// directly above, so DefName is empty for every def-attached winze
+			// pragma. Reconstruct the binding the way a doc comment binds: to
+			// the definition in the same file whose declaration is the nearest
+			// one after the pragma's line. Remove once defn's ingest links
+			// pragma comments to their definition (reported to defn 2026-08-02).
+			name = c.defAfter(p.SourceFile, p.Line)
 		}
+		out = append(out, Pragma{
+			DefName:    name,
+			SourceFile: p.SourceFile,
+			Line:       p.Line,
+			Key:        p.Key,
+			Value:      p.Value,
+		})
 	}
 	return out, nil
+}
+
+// defAfter returns the name of the definition in file whose declaration starts
+// on the nearest line after line — the definition a doc-comment on that line
+// documents — or "" if none follows. It reconstructs a pragma's owning
+// definition while defn records pragma comments as file-level (def_id NULL).
+func (c *Client) defAfter(file string, line int) string {
+	defs, err := c.defs()
+	if err != nil {
+		return ""
+	}
+	bestLine := math.MaxInt
+	best := ""
+	for _, d := range defs {
+		if d.SourceFile != file {
+			continue
+		}
+		if d.StartLine > line && d.StartLine < bestLine {
+			bestLine = d.StartLine
+			best = d.Name
+		}
+	}
+	return best
 }
 
 // Search returns definitions whose name contains pattern (case-insensitive).
 func (c *Client) Search(pattern string) ([]SearchResult, error) {
-	idx, err := c.load()
+	defs, err := c.db.Definitions(defnapi.DefinitionFilter{Name: "%" + strings.Trim(pattern, "%") + "%"})
 	if err != nil {
 		return nil, err
 	}
-	needle := strings.ToLower(strings.Trim(pattern, "%"))
-	var out []SearchResult
-	for _, d := range idx.defs {
-		if strings.Contains(strings.ToLower(d.Name), needle) {
-			out = append(out, d)
-		}
+	out := make([]SearchResult, 0, len(defs))
+	for _, d := range defs {
+		out = append(out, SearchResult{Name: d.Name, Kind: d.Kind, SourceFile: d.SourceFile, Line: d.StartLine})
 	}
 	return out, nil
-}
-
-// buildIndex assembles the corpus index, reusing cached per-file fragments for
-// files whose size and mtime are unchanged and parsing only the rest. Fragments
-// are merged in sorted path order, so the index's slice order — which becomes
-// query output order — is stable across runs. The previous implementation
-// iterated the package and file maps directly and inherited Go's randomised map
-// order.
-func buildIndex(dir string) (*index, error) {
-	paths, keys, err := scanFiles(dir)
-	if err != nil {
-		return nil, ErrNotAvailable
-	}
-
-	cached := loadCache(dir)
-	frags := make(map[string]fragment, len(paths))
-	var stale []string
-	for _, p := range paths {
-		if f, ok := cached[p]; ok && f.Key == keys[p] {
-			frags[p] = f
-			continue
-		}
-		stale = append(stale, p)
-	}
-
-	if len(stale) > 0 {
-		parsed, err := parseFragments(stale, keys)
-		if err != nil {
-			return nil, err
-		}
-		for p, f := range parsed {
-			frags[p] = f
-		}
-		storeCache(dir, paths, frags)
-	} else if len(cached) != len(frags) {
-		// Files were deleted since the cache was written; prune them.
-		storeCache(dir, paths, frags)
-	}
-
-	return mergeFragments(paths, frags), nil
-}
-
-// mergeFragments assembles the queryable index. Entity-var classification lives
-// here rather than in the fragments because it needs the corpus-wide role set:
-// a role type declared in roles.go decides how a var in another file is read,
-// so caching that decision per file would go stale invisibly when roles change.
-func mergeFragments(paths []string, frags map[string]fragment) *index {
-	idx := &index{roleSet: map[string]bool{}}
-
-	// Size every destination exactly before filling it. A corpus of this shape
-	// carries ~130k literal fields; letting append grow that slice from nothing
-	// costs more than decoding the whole cache did, because each regrow copies
-	// every record written so far.
-	var nRole, nDef, nLit, nPrag, nCand int
-	for _, p := range paths {
-		f := frags[p]
-		nRole += len(f.RoleTypes)
-		nDef += len(f.Defs)
-		nLit += len(f.Literals)
-		nPrag += len(f.Pragmas)
-		nCand += len(f.Candidates)
-	}
-	idx.roleTypes = make([]RoleType, 0, nRole)
-	idx.defs = make([]SearchResult, 0, nDef)
-	idx.pragmas = make([]Pragma, 0, nPrag)
-	idx.entityVars = make([]VarRoleInfo, 0, nCand)
-	// Literals are kept per file rather than concatenated. Every consumer
-	// iterates them; flattening ~130k records into one slice allocated 13 MB
-	// and cost more than decoding the cache, to produce a layout nothing needs.
-	idx.literals = make([][]LiteralField, 0, len(paths))
-	_ = nLit
-
-	for _, p := range paths {
-		for _, rt := range frags[p].RoleTypes {
-			idx.roleTypes = append(idx.roleTypes, rt)
-			idx.roleSet[rt.Name] = true
-		}
-	}
-	for _, p := range paths {
-		f := frags[p]
-		idx.defs = append(idx.defs, f.Defs...)
-		if len(f.Literals) > 0 {
-			idx.literals = append(idx.literals, f.Literals)
-		}
-		idx.pragmas = append(idx.pragmas, f.Pragmas...)
-		for _, c := range f.Candidates {
-			if idx.roleSet[c.RoleType] {
-				idx.entityVars = append(idx.entityVars, c)
-			}
-		}
-	}
-	return idx
-}
-
-// parseFragments parses the given files in parallel and extracts each one's
-// fragment.
-func parseFragments(paths []string, keys map[string]fileKey) (map[string]fragment, error) {
-	fset := token.NewFileSet()
-	out := make([]fragment, len(paths))
-	errs := make([]error, len(paths))
-
-	workers := runtime.GOMAXPROCS(0)
-	if workers > len(paths) {
-		workers = len(paths)
-	}
-	var wg sync.WaitGroup
-	ch := make(chan int)
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range ch {
-				f, err := parser.ParseFile(fset, paths[i], nil, parser.ParseComments|parser.SkipObjectResolution)
-				if err != nil {
-					errs[i] = err
-					continue
-				}
-				out[i] = fragmentFor(f, paths[i], fset)
-				out[i].Key = keys[paths[i]]
-			}
-		}()
-	}
-	for i := range paths {
-		ch <- i
-	}
-	close(ch)
-	wg.Wait()
-
-	res := make(map[string]fragment, len(paths))
-	for i, p := range paths {
-		if errs[i] != nil {
-			// A corpus mid-edit does not parse. Serving the rest is right for a
-			// read-side tool, and the file is left out of the cache so the next
-			// run retries it.
-			continue
-		}
-		res[p] = out[i]
-	}
-	return res, nil
-}
-
-// fragmentFor extracts one file's contribution: the role types it declares, its
-// top-level composite-literal vars, every keyed field inside them, and its
-// pragmas.
-func fragmentFor(f *ast.File, fname string, fset *token.FileSet) fragment {
-	var fr fragment
-	for _, decl := range f.Decls {
-		gd, ok := decl.(*ast.GenDecl)
-		if !ok {
-			continue
-		}
-		switch gd.Tok {
-		case token.TYPE:
-			for _, spec := range gd.Specs {
-				ts, ok := spec.(*ast.TypeSpec)
-				if !ok {
-					continue
-				}
-				if embedsEntity(ts) {
-					fr.RoleTypes = append(fr.RoleTypes, RoleType{Name: ts.Name.Name, SourceFile: fname})
-				}
-				// Pragmas on type declarations (e.g. //winze:functional on a
-				// predicate type) attribute to the type name.
-				fr.Pragmas = append(fr.Pragmas, collectPragmas(gd.Doc, ts.Name.Name, fname, fset)...)
-				fr.Pragmas = append(fr.Pragmas, collectPragmas(ts.Doc, ts.Name.Name, fname, fset)...)
-			}
-		case token.VAR:
-			for _, spec := range gd.Specs {
-				vs, ok := spec.(*ast.ValueSpec)
-				if !ok || len(vs.Values) == 0 || len(vs.Names) == 0 {
-					continue
-				}
-				cl, ok := vs.Values[0].(*ast.CompositeLit)
-				if !ok {
-					continue
-				}
-				name := vs.Names[0].Name
-				fr.Defs = append(fr.Defs, SearchResult{
-					Name:       name,
-					Kind:       "var",
-					SourceFile: fname,
-					Line:       fset.Position(vs.Pos()).Line,
-				})
-				if typeName := astutil.CompositeTypeName(cl); typeName != "" {
-					fr.Candidates = append(fr.Candidates, VarRoleInfo{
-						VarName:    name,
-						RoleType:   typeName,
-						SourceFile: fname,
-					})
-				}
-				fr.Literals = flattenLiteral(cl, name, fname, fset, fr.Literals, 100)
-				fr.Pragmas = append(fr.Pragmas, collectPragmas(gd.Doc, name, fname, fset)...)
-				fr.Pragmas = append(fr.Pragmas, collectPragmas(vs.Doc, name, fname, fset)...)
-				fr.Pragmas = append(fr.Pragmas, collectPragmas(vs.Comment, name, fname, fset)...)
-			}
-		}
-	}
-	return fr
-}
-
-func embedsEntity(ts *ast.TypeSpec) bool {
-	st, ok := ts.Type.(*ast.StructType)
-	if !ok {
-		return false
-	}
-	return astutil.EmbedsEntityPointer(st)
-}
-
-// flattenLiteral records every keyed field in a composite literal tree,
-// attributing each to the enclosing top-level var but tagging it with the
-// type of its immediately-enclosing literal.
-func flattenLiteral(cl *ast.CompositeLit, defName, file string, fset *token.FileSet, out []LiteralField, depth int) []LiteralField {
-	if depth <= 0 {
-		return out
-	}
-	typeName := astutil.CompositeTypeName(cl)
-	for _, elt := range cl.Elts {
-		if kv, ok := elt.(*ast.KeyValueExpr); ok {
-			key, ok := kv.Key.(*ast.Ident)
-			if !ok {
-				continue
-			}
-			out = append(out, LiteralField{
-				DefName:    defName,
-				TypeName:   typeName,
-				FieldName:  key.Name,
-				FieldValue: fieldValue(kv.Value),
-				SourceFile: file,
-				Line:       fset.Position(kv.Pos()).Line,
-			})
-			if nested := asCompositeLit(kv.Value); nested != nil {
-				out = flattenLiteral(nested, defName, file, fset, out, depth-1)
-			}
-			continue
-		}
-		// Embedded (unkeyed) element, e.g. RoleType{&Entity{...}}.
-		if nested := asCompositeLit(elt); nested != nil {
-			out = flattenLiteral(nested, defName, file, fset, out, depth-1)
-		}
-	}
-	return out
-}
-
-func asCompositeLit(e ast.Expr) *ast.CompositeLit {
-	switch v := e.(type) {
-	case *ast.CompositeLit:
-		return v
-	case *ast.UnaryExpr:
-		if cl, ok := v.X.(*ast.CompositeLit); ok {
-			return cl
-		}
-	}
-	return nil
-}
-
-// fieldValue renders a field's value. String literals (including concatenated
-// ones) resolve to their unquoted text; everything else resolves to an
-// identifier name, so Subject/Object read as the var they reference and an
-// inline &Provenance{...} reads as "Provenance".
-func fieldValue(e ast.Expr) string {
-	if s := astutil.ResolveStringExpr(e); s != "" {
-		return s
-	}
-	return astutil.ExprIdent(e)
-}
-
-// collectPragmas extracts //key:value or //key comments from a comment group.
-// Only comments whose text has no spaces before the first colon are treated as
-// pragmas, so ordinary prose comments are ignored.
-func collectPragmas(cg *ast.CommentGroup, defName, file string, fset *token.FileSet) []Pragma {
-	if cg == nil {
-		return nil
-	}
-	var out []Pragma
-	for _, c := range cg.List {
-		text := strings.TrimSpace(strings.TrimPrefix(c.Text, "//"))
-		if text == "" || strings.ContainsAny(text, " \t") {
-			continue
-		}
-		if !strings.Contains(text, ":") {
-			continue
-		}
-		key, value := text, ""
-		// A pragma is namespace:name[=value]; keep the namespaced key intact
-		// because consumers match on the full "winze:functional" form.
-		if eq := strings.Index(text, "="); eq >= 0 {
-			key, value = text[:eq], text[eq+1:]
-		}
-		out = append(out, Pragma{
-			DefName:    defName,
-			SourceFile: file,
-			Line:       fset.Position(c.Pos()).Line,
-			Key:        key,
-			Value:      value,
-		})
-	}
-	return out
 }

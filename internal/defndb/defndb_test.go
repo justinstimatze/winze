@@ -99,12 +99,23 @@ func TestConcordance_Pragmas(t *testing.T) {
 
 	contested := 0
 	functional := 0
+	missingDefName := 0
 	for _, p := range pragmas {
 		switch p.Key {
 		case "winze:contested":
 			contested++
 		case "winze:functional":
 			functional++
+		}
+		// Every winze pragma documents a specific type or var; DefName must
+		// resolve to it. defn's ingest records these as file-level (def_id
+		// NULL), so this asserts the client's defAfter fallback (or, once
+		// defn links them, the DB itself) recovers the binding. Without this
+		// check, a pragma with an empty DefName silently degrades every
+		// DefName-keyed consumer — e.g. functionalPredicates.
+		if p.DefName == "" {
+			missingDefName++
+			t.Errorf("pragma %s at %s:%d has empty DefName", p.Key, p.SourceFile, p.Line)
 		}
 	}
 
@@ -114,6 +125,7 @@ func TestConcordance_Pragmas(t *testing.T) {
 	if functional == 0 {
 		t.Error("expected at least one winze:functional pragma")
 	}
+	t.Logf("pragmas: %d contested, %d functional, %d with empty DefName", contested, functional, missingDefName)
 }
 
 func TestConcordance_EntityFields(t *testing.T) {

@@ -121,14 +121,46 @@ building a whole-corpus index to answer a question about one entity*.
    entity* each run (Go map order), so the read paths returned non-reproducible
    answers. They are deterministic now, and `--theories` stopped resolving to
    trip-cycle bookkeeping entities as a side effect.
-4. `internal/defndb` becomes a thin defn client over `7093ab9`. **Delete
-   `cache.go` and `codec.go`** — roughly 500 lines of index cache and wire format
-   that exist only because of the stale comment. This is the remaining winze work;
-   the AST loaders (`loadEntities`/`loadClaims`/`loadProvenance`) and the two
-   `EachField…` seams are the swap points.
-5. Keep `astutil.ParseCorpus` (parallel, no object resolution). The write path's
-   build gate parses real files regardless of any database, and that is correct:
-   the gate must never trust a cache.
+4. ~~`internal/defndb` becomes a thin defn client. **Delete `cache.go` and
+   `codec.go`**.~~ **Done 2026-08-02, against defn main `2ec0eaa`** (which adds
+   `db.Sync` — a full `packages.Load` re-ingest that sets `last_ingest`).
+   `cache.go`, `codec.go`, and `cache_test.go` (~950 lines) are gone. `defndb`
+   now opens `.defn`, and `New` ingests on first use / re-ingests when
+   `db.StaleFiles` reports a changed `.go` file, so an unedited corpus pays only
+   the stat walk. The whole consumer API (`RoleTypes`, `EntityVarsWithRoles`,
+   `ClaimFields`, `EachField…`, `Pragmas`, `Search`) is preserved over SQL, with
+   `SkipOrderBy`/`SkipDefName` set on every bulk `LiteralFields` call.
+
+   Three things surfaced only once the client drove real ingest over the whole
+   winze module, none of them in the plan:
+
+   - **`db.Sync` assumes a single writer.** Two overlapping full ingests collide
+     on the `definitions` unique index inside `UpsertDefinitionsBulk`. Serialized
+     it is clean (a re-Sync even prunes stale rows). `defndb` now takes an OS
+     advisory lock on `.defn/sync.lock` around the check-and-sync, which also
+     protects concurrent winze processes; reported to defn as a `db.Sync`
+     property.
+   - **defn records pragma doc-comments as file-level** (`def_id` NULL) instead
+     of binding them to the definition they sit directly above, so `db.Pragmas`
+     returns an empty `DefName` for every `//winze:functional` / `//winze:contested`
+     pragma. `Pragmas` reconstructs the binding client-side (`defAfter`: the
+     nearest definition starting after the pragma line) until defn's ingest links
+     them; `TestConcordance_Pragmas` now asserts `DefName` is populated so the gap
+     can't hide again. Reported to defn.
+   - **A defn client needs a real module, not loose files.** `packages.Load`
+     requires `go.mod`; the AST loaders parsed any directory. The mcp
+     auto-refresh test grew a bare `go.mod` in its fixture. In production the
+     corpus is always the winze module, so this is a test-only adjustment.
+
+   Separately, regenerating `predictions.go` for this work exposed a **metabolism
+   codegen bug**: the external-sensor reify loop never ran `sanitizeIdent`, so a
+   `goal:Foo` LearningGoal hypothesis name leaked its colon into a Go identifier
+   (`var EvidenceSearchgoal:Goal…`) and broke the build. Fixed in
+   `cmd/metabolism/reify.go` — the KB-internal loop already sanitized; the
+   external loop now does too.
+5. ~~Keep `astutil.ParseCorpus`.~~ **Kept.** The write path's build gate parses
+   real files regardless of any database, and that is correct: the gate must
+   never trust a cache.
 
 ## What to keep from the stopgap
 

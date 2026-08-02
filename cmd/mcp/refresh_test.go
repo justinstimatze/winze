@@ -17,6 +17,14 @@ func TestHandler_IndexAutoRefresh(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "corpus.go")
 
+	// buildIndex ingests via defn (packages.Load), which requires the corpus
+	// dir to be a real Go module. The synthetic corpus imports nothing, so a
+	// bare go.mod is enough. (The AST-era buildIndex parsed loose files; the
+	// defn client needs a module.)
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module winzetestcorpus\n\ngo 1.26\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	writeCorpus := func(names ...string) {
 		var b strings.Builder
 		b.WriteString("package winze\n")
