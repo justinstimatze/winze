@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"go/format"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -455,7 +456,16 @@ func runReify(dir string) {
 		}
 	}
 
-	if err := os.WriteFile(outPath, []byte(b.String()), 0644); err != nil {
+	// gofmt the generated source before writing so it matches the build gate's
+	// gofmt -w step and never lands unformatted. If formatting fails the source
+	// is not valid Go — surface that rather than writing a broken file, since
+	// the whole point of reify is to emit a corpus slice that compiles.
+	formatted, err := format.Source([]byte(b.String()))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "metabolism: gofmt %s: %v\n", outPath, err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(outPath, formatted, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "metabolism: write %s: %v\n", outPath, err)
 		os.Exit(1)
 	}
