@@ -96,6 +96,23 @@ queue.
    third-party chat logs — but it still needs its own confidence bar, not an
    assumption borrowed from the read-side numbers.
 
+   **Measured 2026-08-03 (`longmemeval --probe`, all 500 questions, oracle set,
+   no API):** one candidate cause of extraction misses — the lens never seeing
+   the evidence because `renderSession` truncates it — is *mostly ruled out*. Of
+   896 gold-answer turns, truncation drops only **8 (in 8/500 questions, 1.6%)**;
+   the per-session cap fires on 253 answer-bearing sessions but the answer
+   survives in 245 of them (the head-keeping bet holds 97% of the time). So
+   extraction recall is predominantly a **lens** matter, not a truncation one —
+   the confidence bar is about lens scoping, not evidence delivery. The 8 are a
+   bounded, separable substrate bug: `renderSession` does a blind positional
+   `s[:16000]` cut while its comment claims to keep user turns and shed long
+   assistant monologues, so a role-aware render would recover most of them (they
+   skew to late-in-session facts: 3 single-session-preference, 3 multi-session,
+   2 temporal-reasoning). Re-run: `cmd/longmemeval/fetch-data.sh` then
+   `longmemeval --probe --dataset data/longmemeval_oracle.json --work /tmp/x
+   -temporal 1000 -knowledge 1000 -single 1000 -multi 1000 -assistant 1000
+   -preference 1000`.
+
 2. **The ingest-scoping perf work.** This is the hard gate, and the honest
    shape of it is a *cold-store write-path* cost, not a read cost.
    - **Reads are already solved.** A single-entity lookup — exactly the agent-wake
