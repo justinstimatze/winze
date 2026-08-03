@@ -108,16 +108,32 @@ lived at the module root, `./...` matched the whole module: the ~47-file corpus
 per write = type-check 593 ms + DB insert/resolve 1398 ms, ~half of it indexing
 tooling the queries never read.
 
-The fix, available winze-side today (the defn scoped-sync ask, msg-438f91df, is
-still pending): the corpus was moved into a `corpus/` subdirectory of the same
-module, and every ingest/gate points at `corpus/`. `packages.Load("./...",
-Dir=corpus/)` matches only the corpus package — sibling `cmd/`/`internal/` trees
-are excluded from both the type-check target and the DB insert (`IngestPackages`
-iterates only matched packages). The corpus stays **one Go package**, so the free
-cross-file referential integrity (the reason for the single-package shape) is
-untouched; `source_file` stays a bare basename because the corpus sits flat in
-the projectDir (`filepath.Rel` reduces to the basename). Expected per-write
-ingest: ~1991 ms → ~850 ms.
+The fix, applied winze-side: the corpus was moved into a `corpus/` subdirectory
+of the same module, and every ingest/gate points at `corpus/`.
+`packages.Load("./...", Dir=corpus/)` matches only the corpus package — sibling
+`cmd/`/`internal/` trees are excluded from both the type-check target and the DB
+insert (`IngestPackages` iterates only matched packages). The corpus stays **one
+Go package**, so the free cross-file referential integrity (the reason for the
+single-package shape) is untouched; `source_file` stays a bare basename because
+the corpus sits flat in the projectDir (`filepath.Rel` reduces to the basename).
+
+**Measured 2026-08-03** (min-of-6, fresh `.defn` each iteration, full `db.Sync`):
+
+| | min | vs whole-module |
+|---|---|---|
+| whole-module `Sync(repo)` | 2580 ms | — |
+| corpus-scoped `Sync(corpus)` | 925 ms | **2.79× faster, 36% of the work** |
+
+Indexing `cmd/`+`internal/` was ~64% of every write's ingest — the move saves
+*more* than the conservatively-projected half. The host was not quiet (load
+~6–7), so the **absolutes are contention-inflated**; the 925 ms-under-load is
+consistent with the ~850 ms quiet-box projection. The **ratio is the robust
+figure** — both halves pay the same contention tax, so it cancels.
+
+Note: defn v0.26.0 *did* ship the scoped-sync ask (`db.SyncPattern(projectDir,
+pattern)`), but it is moot for winze now — `SyncPattern(repo, ".")` errors with
+`no Go files in .../winze` because the module root no longer holds a package to
+scope to. The subdirectory move stands on its own.
 
 ## The plan
 

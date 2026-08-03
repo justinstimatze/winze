@@ -118,13 +118,19 @@ queue.
      the DB insert (`IngestPackages` iterates only the matched packages). The
      corpus stays **one Go package** (`docs/multi-session-write-shape.md`), so the
      free cross-file referential integrity is preserved; the subdirectory simply
-     stops `./...` from reaching the sibling tooling. Expected per-write ingest
-     drops ~1991 ms → ~850 ms.
-   - **The defn ask still helps at scale.** The scope-able-ingest ask filed with
-     defn (scoped sync + a DefIDs IN-predicate, dispatch msg-438f91df, still
-     pending) would further scope the DB-insert half *within* the corpus for very
-     large stores. It is no longer the gating item — the subdirectory move
-     delivers the corpus-proportional ingest that this precondition required.
+     stops `./...` from reaching the sibling tooling. **Measured 2026-08-03**
+     (min-of-6, full `db.Sync`): whole-module 2580 ms vs corpus-scoped 925 ms —
+     **2.79× faster, 36% of the work**, better than the conservatively-projected
+     half. (Host load ~6–7, so absolutes are contention-inflated; the ratio
+     cancels the shared tax and is the robust figure — see
+     `docs/defn-migration.md`.)
+   - **The defn scoped-sync feature shipped but is moot here.** defn v0.26.0 added
+     `db.SyncPattern(projectDir, pattern)`, but post-move `SyncPattern(repo, ".")`
+     errors — the module root no longer holds a package to scope to. The
+     subdirectory move already delivers the corpus-proportional ingest this
+     precondition required; a DefIDs IN-predicate would further scope the
+     DB-insert half *within* the corpus only for very large stores, which is
+     optimization, not a gate.
 
    With ingest now corpus-scoped, a cold woken agent's first read is bounded by
    corpus-only ingest, not whole-module. This precondition is substantially
