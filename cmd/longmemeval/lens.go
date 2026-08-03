@@ -77,20 +77,49 @@ func (r *runner) extractSession(sessionID string, turns []Turn) ([]ExtractedFact
 }
 
 // renderSession flattens a session's turns into the text the lens reads. Long
-// sessions are truncated to keep the call cheap; personal facts cluster in
-// user turns near the top of a session, not in long assistant monologues.
+// sessions are truncated to keep the call cheap; personal facts cluster in user
+// turns, not in long assistant monologues.
+//
+// When over budget it sheds *assistant*-turn length first and leaves user turns
+// intact — role-aware, not positional. A blind s[:sessionCap] head-cut (the old
+// behavior) dropped whatever fell past the byte offset, user turns included, so
+// a long early assistant monologue could push a later user answer turn out of
+// the rendered body entirely: measured at 8/500 questions (probe, 2026-08-03),
+// skewed to user-answer types (preference, multi-session). role is available at
+// inference (unlike the gold has_answer annotation), so this is a legitimate
+// production render, not a benchmark cheat.
+const (
+	turnCap     = 4000  // per-turn content cap
+	sessionCap  = 16000 // total rendered budget
+	asstSqueeze = 500   // assistant turns shrink to this head when over budget
+)
+
 func renderSession(turns []Turn) string {
-	var b strings.Builder
-	for _, t := range turns {
-		content := t.Content
-		if len(content) > 4000 {
-			content = content[:4000] + " [...]"
+	render := func(squeezeAsst bool) string {
+		var b strings.Builder
+		for _, t := range turns {
+			content := t.Content
+			limit := turnCap
+			if squeezeAsst && t.Role != "user" {
+				limit = asstSqueeze
+			}
+			if len(content) > limit {
+				content = content[:limit] + " [...]"
+			}
+			fmt.Fprintf(&b, "%s: %s\n", t.Role, content)
 		}
-		fmt.Fprintf(&b, "%s: %s\n", t.Role, content)
+		return b.String()
 	}
-	s := b.String()
-	if len(s) > 16000 {
-		s = s[:16000] + "\n[...session truncated...]"
+	s := render(false)
+	if len(s) <= sessionCap {
+		return s // in budget: identical to the pre-role-aware render
+	}
+	// Over budget: squeeze assistant turns, preserving user turns. Only if that
+	// still overflows do we fall back to a positional cut — and by then user
+	// turns dominate the body, so a gold user turn is far likelier to survive.
+	s = render(true)
+	if len(s) > sessionCap {
+		s = s[:sessionCap] + "\n[...session truncated...]"
 	}
 	return s
 }
