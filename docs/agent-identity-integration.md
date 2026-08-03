@@ -103,33 +103,42 @@ queue.
      (`docs/defn-migration.md`), and the scoped read seams (`EachFieldWithValuePrefix`
      / `EachFieldForDefs`) already stream only one target's claims. A woken agent
      reading its own nick's slice off a warm store is free.
-   - **The cost is the full re-ingest on any write.** `defndb.ensureFresh` calls
-     `db.Sync` — a full `packages.Load("./...")` re-type-check of the whole module
-     — whenever *any* `.go` file has changed, and discards the stale-file set it
-     already computed. Cost is roughly linear in total corpus size: ~2 s at the
-     current ~12k lines, ~45 s at a 250k-line / 30k-claim store. A woken agent on
-     a **cold** store (never ingested, or invalidated by another session's write)
-     pays that before its first read.
-   - **The lever is only half winze's to pull.** The scope-able-ingest ask filed
-     with defn (scoped sync + a DefIDs IN-predicate, dispatch msg-438f91df, still
-     pending) scopes the *DB insert* half. But the corpus is **one Go package by
-     design** (`docs/multi-session-write-shape.md` — that is what makes
-     cross-file references type-check for free), and Go's compilation unit is the
-     package, so the *type-check* half cannot be scoped below the whole package
-     without partitioning the corpus into multiple packages — which would forfeit
-     the free cross-reference integrity the whole shape rests on. Which half
-     dominates the re-ingest is unmeasured (blocked on an idle box); that
-     measurement is the first concrete perf task, because it decides whether the
-     defn ask alone is sufficient or whether the single-package design itself is
-     the scaling ceiling.
+   - **The cost was the full-*module* re-ingest on any write.** `defndb.ensureFresh`
+     calls `db.Sync` — `packages.Load("./...")` — whenever *any* `.go` file has
+     changed. When the corpus lived at the module root, `./...` matched the whole
+     module: the ~47-file corpus *plus* all of `cmd/` and `internal/`. Measured
+     split (warm, min-of-6): ~1991 ms = type-check 593 ms + DB insert/resolve
+     1398 ms, of which ~46% of DB rows and most of the type-check were tooling,
+     not corpus — roughly half of every write's ingest spent indexing code the
+     queries never read.
+   - **This is now scoped, winze-side.** The corpus was moved into a `corpus/`
+     subdirectory of the same module (2026-08). Ingest points at `corpus/`, so
+     `packages.Load("./...", Dir=corpus/)` matches only the corpus package —
+     `cmd/` and `internal/` are excluded from *both* the type-check target and
+     the DB insert (`IngestPackages` iterates only the matched packages). The
+     corpus stays **one Go package** (`docs/multi-session-write-shape.md`), so the
+     free cross-file referential integrity is preserved; the subdirectory simply
+     stops `./...` from reaching the sibling tooling. Expected per-write ingest
+     drops ~1991 ms → ~850 ms.
+   - **The defn ask still helps at scale.** The scope-able-ingest ask filed with
+     defn (scoped sync + a DefIDs IN-predicate, dispatch msg-438f91df, still
+     pending) would further scope the DB-insert half *within* the corpus for very
+     large stores. It is no longer the gating item — the subdirectory move
+     delivers the corpus-proportional ingest that this precondition required.
 
-   Until the re-ingest cost is characterized and reduced, a cold woken agent's
-   first read is bounded by full-corpus ingest, and the integration waits on it.
+   With ingest now corpus-scoped, a cold woken agent's first read is bounded by
+   corpus-only ingest, not whole-module. This precondition is substantially
+   cleared; remaining perf headroom (the defn ask, incremental sync) is
+   optimization, not a blocker.
 
-**Do not build until both clear.** The design is fixed enough that the pointer
-question is answered and won't churn; the implementation waits on perf and
-memory-confidence, in that dependency order — perf first, because without scoped
-ingest the wake-time read is not viable at all.
+**Status: precondition 2 (perf) substantially cleared; precondition 1
+(memory-confidence) remains.** The design is fixed enough that the pointer
+question is answered and won't churn. With ingest now corpus-scoped, the
+wake-time read is viable; what still gates the build is confidence in
+winze-as-memory — the extraction-recall edge the LongMemEval-S spike exposed, on
+a write path (an agent writing its own context) that is different from and likely
+easier than the third-party-log extraction the spike measured, but which still
+needs its own confidence bar before a cold agent relies on it to know who it is.
 
 ## See also
 

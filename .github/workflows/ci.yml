@@ -33,13 +33,13 @@ jobs:
         run: go install github.com/justinstimatze/defn/cmd/defn@v0.11.3
 
       - name: Ingest corpus into embedded defn
-        run: defn ingest .
+        run: defn ingest corpus
 
       - name: Test
         run: go test ./...
 
       - name: Lint (deterministic rules)
-        run: go run ./cmd/lint .
+        run: go run ./cmd/lint corpus
 
       - name: Topology
-        run: go run ./cmd/topology .
+        run: go run ./cmd/topology corpus

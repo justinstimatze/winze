@@ -83,7 +83,7 @@ func main() {
 	secret := flag.String("secret", "", "Bearer token for A2A auth. If empty, no auth required (dev mode). Also reads WINZE_A2A_SECRET env var.")
 	flag.Parse()
 
-	dir := "."
+	dir := "corpus"
 	if flag.NArg() > 0 {
 		dir = flag.Arg(0)
 	}

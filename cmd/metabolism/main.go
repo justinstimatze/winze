@@ -44,7 +44,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	zim "github.com/justinstimatze/gozim"
-	winze "github.com/justinstimatze/winze"
+	winze "github.com/justinstimatze/winze/corpus"
 )
 
 // --- topology output types (subset) ---
@@ -321,7 +321,7 @@ func main() {
 		}
 	}
 
-	dir := "."
+	dir := "corpus"
 	if flag.NArg() > 0 {
 		dir = flag.Arg(0)
 	}
@@ -770,7 +770,7 @@ func runTopology(dir string) ([]SensorTarget, TopologyReport, error) {
 
 	// Build topology binary once to avoid go-run compilation overhead (~3 GB).
 	binPath := filepath.Join(os.TempDir(), "winze-topology")
-	buildCmd := exec.Command("go", "build", "-o", binPath, "./cmd/topology")
+	buildCmd := exec.Command("go", "build", "-o", binPath, topologyPkg)
 	buildCmd.Dir = dir
 	buildCmd.Stderr = os.Stderr
 	if err := buildCmd.Run(); err != nil {

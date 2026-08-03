@@ -398,7 +398,7 @@ var Foo = 1
 
 	t.Run("matches live corpus audit blocks", func(t *testing.T) {
 		// Test runs from cmd/metabolism; the corpus is two levels up.
-		got := sampleAntiExemplars("../..", 10)
+		got := sampleAntiExemplars("../../corpus", 10)
 		// Four audit blocks were added 2026-04-27 (see apophenia.go,
 		// theory_seeds.go, tunguska.go, predictive_processing.go). At
 		// least four anti-exemplars should be mineable.
@@ -417,7 +417,7 @@ var Foo = 1
 
 	t.Run("respects sample size cap", func(t *testing.T) {
 		// Live corpus has 4 audit blocks; n=2 should return exactly 2.
-		got := sampleAntiExemplars("../..", 2)
+		got := sampleAntiExemplars("../../corpus", 2)
 		if len(got) != 2 {
 			t.Errorf("expected exactly 2 anti-exemplars (n=2), got %d", len(got))
 		}
@@ -696,7 +696,7 @@ func TestDrugProfile(t *testing.T) {
 // corpus retypes or renames a predicate and the trip map silently disagrees —
 // a disagreement that surfaces only as wrong role-validation, never an error.
 func TestPredicateSlotsMatchCorpus(t *testing.T) {
-	corpus := collectPredicateSlots(repoRoot(t))
+	corpus := collectPredicateSlots(corpusDir(t))
 	for name, slots := range predicateSlots {
 		got, ok := corpus[name]
 		if !ok {
@@ -718,7 +718,7 @@ func TestPredicateSlotsMatchCorpus(t *testing.T) {
 // [Hypothesis,Hypothesis] predicate in the corpus is inherently a structural
 // relation between ideas — trip's home turf — and must reach the emit menu.
 func TestAnalogyPredicatesReachTrip(t *testing.T) {
-	corpus := collectPredicateSlots(repoRoot(t))
+	corpus := collectPredicateSlots(corpusDir(t))
 	offered := map[string]bool{}
 	for _, p := range tripCompatiblePredicates("Hypothesis", "Hypothesis") {
 		offered[p] = true

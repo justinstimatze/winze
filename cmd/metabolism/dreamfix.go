@@ -148,7 +148,7 @@ func runDreamFix(dir string, tightenOverlong bool, dryRun bool, jsonOut bool) {
 				}
 				os.Exit(2)
 			}
-			if !runDreamGate(dir, "go", "run", "./cmd/lint", dir) {
+			if !runDreamGate(dir, "go", "run", lintPkg, ".") {
 				fmt.Println("[dream-fix] FAIL: lint — reverting all changes")
 				for file, original := range backups {
 					_ = os.WriteFile(file, original, 0644)

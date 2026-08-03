@@ -26,7 +26,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/justinstimatze/winze"
+	winze "github.com/justinstimatze/winze/corpus"
 	"github.com/justinstimatze/winze/internal/astutil"
 	"github.com/justinstimatze/winze/internal/dedup"
 )
@@ -983,7 +983,7 @@ func main() {
 	noDefn = *noDefnFlag
 	briefStrict = *briefStrictFlag
 
-	dir := "."
+	dir := "corpus"
 	if fs.NArg() > 0 {
 		dir = fs.Arg(0)
 	}

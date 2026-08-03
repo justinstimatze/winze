@@ -101,7 +101,7 @@ func main() {
 	docsCoverage := flag.Bool("docs-coverage", false, "gate: fail (exit 1) if any cmd/ binary is named in no doc")
 	flag.Parse()
 
-	dir := "."
+	dir := "corpus"
 	// Find dir argument (non-flag arg that looks like a path)
 	args := flag.Args()
 	query := ""

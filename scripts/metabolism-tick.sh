@@ -37,15 +37,16 @@ if [ "$needs_build" -eq 1 ]; then
   go build -o "$BIN" ./cmd/metabolism
 fi
 
-"$BIN" --evolve .
-"$BIN" --calibrate-trend . | tail -3
+"$BIN" --evolve corpus
+"$BIN" --calibrate-trend corpus | tail -3
 
-# Stage only the evolving corpus. Runtime state (.metabolism-log.json,
-# .metabolism-budget.json, .metabolism-calibration.jsonl) is gitignored.
+# Stage only the evolving corpus (now under corpus/). Runtime state
+# (.metabolism-log.json, .metabolism-budget.json, .metabolism-calibration.jsonl)
+# is gitignored.
 shopt -s nullglob
-staged=(metabolism_cycle*.go)
+staged=(corpus/metabolism_cycle*.go)
 shopt -u nullglob
-[ -f predictions.go ] && staged+=(predictions.go)
+[ -f corpus/predictions.go ] && staged+=(corpus/predictions.go)
 if [ ${#staged[@]} -gt 0 ]; then
   git add -- "${staged[@]}"
 fi

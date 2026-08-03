@@ -28,7 +28,7 @@ func cmdSetBrief(args []string) int {
 	varName := fs.String("var", "", "entity var name to revise (e.g. RecallHookRelevanceGate)")
 	brief := fs.String("brief", "", "new Brief prose")
 	name := fs.String("name", "", "optional: also replace the display Name")
-	root := fs.String("root", ".", "winze repo root")
+	root := fs.String("root", "corpus", "winze corpus dir")
 	dryRun := fs.Bool("dry-run", false, "report the target and new value, write nothing")
 	_ = fs.Parse(args)
 

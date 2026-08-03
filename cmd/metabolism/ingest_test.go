@@ -56,6 +56,15 @@ func repoRoot(t *testing.T) string {
 	return filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
 }
 
+// corpusDir returns the corpus directory — the module root's corpus/ subdir,
+// where the knowledge-base .go files live. Tests that read the real corpus
+// (predicates.go, roles.go, predictions.go, entity/claim decls) must use this,
+// not repoRoot, which is the module root holding cmd//internal/ tooling.
+func corpusDir(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(repoRoot(t), "corpus")
+}
+
 func TestParseIngestResponse_WellFormed(t *testing.T) {
 	response := claimDelimiter + `
 ENTITY_NAME: Daniel Dennett
@@ -313,7 +322,7 @@ func TestIsRelevantArticle(t *testing.T) {
 }
 
 func TestCollectPredicateSlots(t *testing.T) {
-	root := repoRoot(t)
+	root := corpusDir(t)
 	slots := collectPredicateSlots(root)
 
 	expected := map[string][2]string{
@@ -343,7 +352,7 @@ func TestCollectPredicateSlots(t *testing.T) {
 }
 
 func TestCollectKBMetadata(t *testing.T) {
-	root := repoRoot(t)
+	root := corpusDir(t)
 	meta := collectKBMetadata(root)
 
 	// Should find known entities

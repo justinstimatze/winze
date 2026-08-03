@@ -6,13 +6,15 @@ editing and knowledge manipulation are the same operation.
 
 ### What you're working on
 
-Every `.go` file in the root is a knowledge corpus slice. Each declares:
+Every `.go` file in `corpus/` is a knowledge corpus slice. Each declares:
 - **Entities** (typed: Person, Concept, Hypothesis, Place, Event, etc.)
 - **Claims** (typed predicates: Proposes, TheoryOf, BelongsTo, InfluencedBy, etc.)
 - **Provenance** (Origin, Quote, IngestedAt, IngestedBy)
 
-The type system is in `schema.go`, roles in `roles.go`, predicates in
-`predicates.go`. `winze-query --schema .` prints the current type model.
+The type system is in `corpus/schema.go`, roles in `corpus/roles.go`, predicates
+in `corpus/predicates.go`. `winze-query --schema corpus` prints the current type
+model. (The corpus lives in `corpus/` so defn ingest scopes to it, excluding the
+`cmd/` and `internal/` tooling — see `docs/defn-migration.md`.)
 
 ### Quality gates
 

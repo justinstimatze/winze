@@ -317,7 +317,7 @@ func recheckLint(dir string, claimVars []string, latest, digests map[verdictKey]
 		return stableCarryForward(claimVars, latest, digests, "trip_lint_durability", commit, curCorpus)
 	}
 
-	cmd := exec.Command("go", "run", "./cmd/lint", ".")
+	cmd := exec.Command("go", "run", lintPkg, ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	lintText := string(out)

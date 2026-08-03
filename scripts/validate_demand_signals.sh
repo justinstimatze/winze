@@ -22,8 +22,8 @@ mkdir -p "$OUT"
 TRIALS=${TRIALS:-2}
 echo "battery dir: $OUT  trials: $TRIALS"
 
-BIAS_FILE=".metabolism-bias-state.json"
-CAL_FILE=".metabolism-calibration-state.json"
+BIAS_FILE="corpus/.metabolism-bias-state.json"
+CAL_FILE="corpus/.metabolism-calibration-state.json"
 STASH_DIR="/tmp/demand-signals-stash-$$"
 mkdir -p "$STASH_DIR"
 
@@ -57,14 +57,14 @@ run_condition() {
         echo "CLASS: $class"
         echo "SIGNALS: $condition"
         echo "---"
-        go run ./cmd/query --ask "$q" . 2>&1
+        go run ./cmd/query --ask "$q" ./corpus 2>&1
       } > "$f" || echo "  (errored)"
     done
   done
 
   if [ "$condition" = "without" ]; then
-    [ -f "$STASH_DIR/$BIAS_FILE" ] && cp "$STASH_DIR/$BIAS_FILE" .
-    [ -f "$STASH_DIR/$(basename $CAL_FILE)" ] && cp "$STASH_DIR/$(basename $CAL_FILE)" .
+    [ -f "$STASH_DIR/$(basename "$BIAS_FILE")" ] && cp "$STASH_DIR/$(basename "$BIAS_FILE")" corpus/
+    [ -f "$STASH_DIR/$(basename "$CAL_FILE")" ] && cp "$STASH_DIR/$(basename "$CAL_FILE")" corpus/
   fi
 }
 

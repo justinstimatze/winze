@@ -35,7 +35,7 @@ func TestReifyEntityCount_AbsentFileFailsOpen(t *testing.T) {
 // are the reason the entity count sits over cap, and this is the number the
 // cap fix subtracts. A change here means reify's output shape shifted.
 func TestReifyEntityCountRepo(t *testing.T) {
-	n := reifyEntityCount(repoRoot(t))
+	n := reifyEntityCount(corpusDir(t))
 	if n < 50 {
 		t.Errorf("reifyEntityCount(repo) = %d, expected the ~97 reify Events — did predictions.go move or shrink?", n)
 	}

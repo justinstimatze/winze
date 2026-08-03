@@ -29,7 +29,7 @@ func logTripLintDurability(dir string, claimVars []string) error {
 		return nil
 	}
 
-	cmd := exec.Command("go", "run", "./cmd/lint", ".")
+	cmd := exec.Command("go", "run", lintPkg, ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	lintText := string(out)

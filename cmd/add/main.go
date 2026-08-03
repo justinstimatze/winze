@@ -1,7 +1,7 @@
 // Command add appends a typed claim declaration to a winze corpus file
 // and verifies the result against the build gate. The tool does no
 // slot-type checking of its own — that is delegated to `go build .`
-// (the root corpus package), which is the load-bearing consistency
+// (the corpus package, in corpus/), which is the load-bearing consistency
 // check for typed claim authoring. On build failure the target file is
 // restored to its prior contents and the tool exits non-zero with the
 // build output for diagnosis.
@@ -58,7 +58,7 @@ func main() {
 		genBy      = flag.String("generated-by", "winze-add", "with --conjecture: the winze process asserting the claim")
 		target     = flag.String("to", "", "target corpus file (relative to --root, e.g. apophenia.go)")
 		claimName  = flag.String("name", "", "Go var name for the new claim")
-		repoRoot   = flag.String("root", ".", "winze repo root (the directory containing predicates.go)")
+		repoRoot   = flag.String("root", "corpus", "winze corpus dir (the directory containing predicates.go)")
 		unary      = flag.Bool("unary", false, "set for UnaryClaim predicates (omit --object)")
 		dryRun     = flag.Bool("dry-run", false, "print what would be written; do not modify files or build")
 		batch      = flag.String("batch", "", "append many claims from a JSONL file (or '-' for stdin) under one build gate; ignores the single-claim flags")

@@ -179,7 +179,7 @@ func TestContainsWord(t *testing.T) {
 // test: it doesn't check specific values (which change as the KB evolves)
 // but verifies each auditor returns coherent results.
 func TestAuditorsAgainstRealCorpus(t *testing.T) {
-	root := repoRoot(t)
+	root := corpusDir(t)
 
 	// Run all auditors (except DunningKruger which needs topology subprocess)
 	auditors := []struct {
@@ -241,7 +241,7 @@ func TestAuditDunningKruger_WithNilReport(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping topology subprocess test in short mode")
 	}
-	root := repoRoot(t)
+	root := corpusDir(t)
 	result := auditDunningKruger(root, nil)
 	if result.Bias != "DunningKrugerEffect" {
 		t.Errorf("Bias = %q, want %q", result.Bias, "DunningKrugerEffect")
@@ -256,7 +256,7 @@ func TestCollectBiasResults_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping full bias suite in short mode")
 	}
-	root := repoRoot(t)
+	root := corpusDir(t)
 	report := collectBiasResults(root, nil, false, false)
 	if len(report.Auditors) != 9 {
 		t.Errorf("expected 9 auditors, got %d", len(report.Auditors))

@@ -11,7 +11,7 @@ import (
 // goal must produce sensor targets (one per seed) marked learning_goal, so the
 // exploration drive actually feeds the sense phase.
 func TestGoalSensorTargetsRepo(t *testing.T) {
-	ts := goalSensorTargets(repoRoot(t))
+	ts := goalSensorTargets(corpusDir(t))
 	if len(ts) == 0 {
 		t.Fatal("no goal sensor targets — the active LearningGoal isn't reaching sense")
 	}

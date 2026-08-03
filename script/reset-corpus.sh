@@ -10,7 +10,7 @@ set -euo pipefail
 #   2. go build ./...
 #   3. go run ./cmd/lint .
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../corpus"
 
 FRAMEWORK_FILES=(
   schema.go
@@ -63,7 +63,7 @@ package winze
 //   2. Declare entities (Person, Concept, Hypothesis, Place, Event, ...)
 //   3. Declare claims (BinaryRelation or UnaryClaim linking entities)
 //   4. Run: go build ./...
-//   5. Run: go run ./cmd/lint .
+//   5. Run: go run ./cmd/lint corpus
 
 var starterSource = Provenance{
 	Origin:     "your source here (URL, book citation, paper DOI, etc.)",

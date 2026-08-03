@@ -76,7 +76,7 @@ func cmdRename(args []string) int {
 	fs := flag.NewFlagSet("rename", flag.ExitOnError)
 	from := fs.String("from", "", "existing var name (e.g. KlausConrad)")
 	to := fs.String("to", "", "new var name")
-	root := fs.String("root", ".", "winze repo root (the directory containing predicates.go)")
+	root := fs.String("root", "corpus", "winze corpus dir (the directory containing predicates.go)")
 	dryRun := fs.Bool("dry-run", false, "report what would change; do not modify files")
 	fs.Parse(args)
 

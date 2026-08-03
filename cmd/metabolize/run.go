@@ -119,13 +119,13 @@ func runInstance(dir string) error {
 	return nil
 }
 
-// commitCycleState stages and commits the root-level *.go corpus files an
-// autonomous cycle changed. Root-level only: the reify and trip phases write
-// predictions.go and metabolism_cycle*.go at the corpus root, never under cmd/
-// or internal/ — a changed tooling file is never swept. Stages each file by
-// explicit path (never `git add -A`), re-runs the corpus build gate as a guard
-// so a broken cycle is left dirty for the next run rather than committed, and
-// on a quiet cycle stages nothing and returns without a commit.
+// commitCycleState stages and commits the corpus *.go files an autonomous cycle
+// changed. Corpus-only: the reify and trip phases write predictions.go and
+// metabolism_cycle*.go directly in the corpus dir, never under cmd/ or internal/
+// — a changed tooling file is never swept. Stages each file by explicit path
+// (never `git add -A`), re-runs the corpus build gate as a guard so a broken
+// cycle is left dirty for the next run rather than committed, and on a quiet
+// cycle stages nothing and returns without a commit.
 //
 // Found empirically 2026-07-23: a clean tier-2 --evolve left predictions.go
 // modified and uncommitted after the reify phase.
@@ -166,12 +166,24 @@ func commitCycleState(dir string, tier int) error {
 	return nil
 }
 
-// changedRootGoFiles returns root-level (no path separator) *.go files with
-// uncommitted changes — modified or newly added. Git's `*.go` pathspec matches
-// at any depth, so the no-slash filter is what restricts the sweep to the
-// corpus root.
+// changedRootGoFiles returns the corpus-dir *.go files with uncommitted changes
+// — modified or newly added — as paths relative to dir, ready for `git -C dir
+// add`. The corpus lives in a subdirectory of the repo, and `git status
+// --porcelain` reports paths relative to the repo root regardless of -C, so this
+// scopes the `*.go` pathspec to dir (excluding cmd//internal/ tooling), then
+// converts each hit back to dir-relative and drops anything nested below dir.
 func changedRootGoFiles(dir string) ([]string, error) {
-	out, err := exec.Command("git", "-C", dir, "status", "--porcelain", "--", "*.go").Output()
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	rootOut, err := exec.Command("git", "-C", absDir, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return nil, fmt.Errorf("git rev-parse: %w", err)
+	}
+	repoRoot := strings.TrimSpace(string(rootOut))
+
+	out, err := exec.Command("git", "-C", absDir, "status", "--porcelain", "--", "*.go").Output()
 	if err != nil {
 		return nil, fmt.Errorf("git status: %w", err)
 	}
@@ -180,12 +192,16 @@ func changedRootGoFiles(dir string) ([]string, error) {
 		if len(line) < 4 {
 			continue
 		}
-		// Porcelain v1: two status columns, a space, then the path.
+		// Porcelain v1: two status columns, a space, then the repo-root-relative path.
 		path := strings.TrimSpace(line[3:])
-		if path == "" || strings.Contains(path, "/") || !strings.HasSuffix(path, ".go") {
+		if !strings.HasSuffix(path, ".go") {
 			continue
 		}
-		files = append(files, path)
+		rel, err := filepath.Rel(absDir, filepath.Join(repoRoot, path))
+		if err != nil || rel == "" || strings.Contains(rel, "/") {
+			continue // outside the corpus dir, or nested below it
+		}
+		files = append(files, rel)
 	}
 	return files, nil
 }

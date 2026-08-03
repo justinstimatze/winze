@@ -16,7 +16,7 @@ import (
 // where cache_control silently no-ops. A shrinking vocab is the way this
 // regresses, so the guard lives next to the vocab, not in a doc.
 func TestSharedPrefixClearsSonnetMin(t *testing.T) {
-	root := "../.."
+	root := "../../corpus"
 	block := sharedMetabolismPrefix(root)
 	if block == "" {
 		t.Fatalf("sharedMetabolismPrefix returned empty — vocab extraction failed from %s", root)
@@ -37,7 +37,7 @@ func TestSharedPrefixClearsSonnetMin(t *testing.T) {
 // keys on: two builds from the same vocab must be byte-identical, or the cache
 // never hits across calls/runs.
 func TestSharedPrefixDeterministic(t *testing.T) {
-	root := "../.."
+	root := "../../corpus"
 	a := sharedMetabolismPrefix(root)
 	b := sharedMetabolismPrefix(root)
 	if a != b {
@@ -50,7 +50,7 @@ func TestSharedPrefixDeterministic(t *testing.T) {
 // gloss block, and vice versa. If someone adds a role, this fails until the
 // gloss is written.
 func TestSharedPrefixRolesInSync(t *testing.T) {
-	root := "../.."
+	root := "../../corpus"
 	src, err := os.ReadFile(filepath.Join(root, "roles.go"))
 	if err != nil {
 		t.Fatalf("read roles.go: %v", err)
@@ -81,7 +81,7 @@ func TestResolveSharedPrefixDrift(t *testing.T) {
 	if apiKey == "" {
 		t.Skip("ANTHROPIC_API_KEY not set — skipping live resolve drift check")
 	}
-	root := "../.."
+	root := "../../corpus"
 	block := sharedMetabolismPrefix(root)
 	if block == "" {
 		t.Fatalf("empty shared prefix")

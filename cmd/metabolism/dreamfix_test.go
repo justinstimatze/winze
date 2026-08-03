@@ -29,7 +29,7 @@ func TestEscapeGoString(t *testing.T) {
 }
 
 func TestCollectBriefTargets(t *testing.T) {
-	root := repoRoot(t)
+	root := corpusDir(t)
 
 	// Test with overlong=true: may find 0 if all Briefs are within threshold.
 	// Verify structure of any returned targets.

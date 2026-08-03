@@ -12,7 +12,9 @@ import (
 func rootDir(t *testing.T) string {
 	t.Helper()
 	_, file, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(file), "..", "..")
+	// The corpus lives in the corpus/ subdirectory of the module root, two
+	// levels up from internal/defndb/.
+	return filepath.Join(filepath.Dir(file), "..", "..", "corpus")
 }
 
 // newClient opens a Client over the corpus root. The backing store is the

@@ -26,7 +26,10 @@ set -euo pipefail
 
 DEFN="${1:-defn}"
 command -v "$DEFN" >/dev/null 2>&1 || { echo "defn binary not found: $DEFN" >&2; exit 2; }
-SRC="$(pwd)"
+# The corpus lives in corpus/; defn emit reads the .defn in the cwd, so operate
+# from there and compare against the corpus source tree.
+SRC="$(pwd)/corpus"
+cd "$SRC"
 
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT

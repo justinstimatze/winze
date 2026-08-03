@@ -31,7 +31,7 @@ import (
 	"strconv"
 	"strings"
 
-	winze "github.com/justinstimatze/winze"
+	winze "github.com/justinstimatze/winze/corpus"
 	"github.com/justinstimatze/winze/internal/defndb"
 )
 
@@ -54,7 +54,7 @@ func main() {
 		}
 	}
 
-	dir := "."
+	dir := "corpus"
 	if flag.NArg() > 0 {
 		dir = flag.Arg(0)
 	}

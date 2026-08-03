@@ -34,7 +34,7 @@ for entry in "${QUESTIONS[@]}"; do
       echo "CLASS: $class"
       echo "JSONL_PRESENT: $HAS_JSONL"
       echo "---"
-      go run ./cmd/query --ask "$q" . 2>&1
+      go run ./cmd/query --ask "$q" ./corpus 2>&1
     } > "$f" || echo "  (errored, see file)"
   done
 done

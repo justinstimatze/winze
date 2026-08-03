@@ -202,10 +202,12 @@ func gitRevParse(dir, ref string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// copyStoreGoFiles streams `git archive <sha>` and writes each top-level
-// non-test .go file into dir as `<ns>__<name>`. Returns the count written.
+// copyStoreGoFiles streams `git archive <sha> corpus` and writes each
+// corpus/-level non-test .go file into dir as `<ns>__<name>`. The corpus lives
+// in the corpus/ subdirectory, so the archive is scoped to it. Returns the
+// count written.
 func copyStoreGoFiles(e storeEntry, dir string) (int, error) {
-	cmd := exec.Command("git", "-C", e.Path, "archive", "--format=tar", e.SHA)
+	cmd := exec.Command("git", "-C", e.Path, "archive", "--format=tar", e.SHA, "corpus")
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()
@@ -227,14 +229,14 @@ func copyStoreGoFiles(e storeEntry, dir string) (int, error) {
 			cmd.Wait()
 			return count, err
 		}
-		name := hdr.Name
-		if strings.Contains(name, "/") { // top-level only
+		base, ok := strings.CutPrefix(hdr.Name, "corpus/")
+		if !ok || base == "" || strings.Contains(base, "/") { // corpus/-level only
 			continue
 		}
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+		if !strings.HasSuffix(base, ".go") || strings.HasSuffix(base, "_test.go") {
 			continue
 		}
-		dst := filepath.Join(dir, e.Namespace+"__"+name)
+		dst := filepath.Join(dir, e.Namespace+"__"+base)
 		if err := writeFileFrom(tr, dst); err != nil {
 			cmd.Wait()
 			return count, err
@@ -247,10 +249,10 @@ func copyStoreGoFiles(e storeEntry, dir string) (int, error) {
 	return count, nil
 }
 
-// copyCanonicalPredicates copies the primary store's predicates.go into dir
-// un-prefixed, so LoadPredicates(dir) resolves. Absent predicates.go is fine.
+// copyCanonicalPredicates copies the primary store's corpus/predicates.go into
+// dir un-prefixed, so LoadPredicates(dir) resolves. Absent predicates.go is fine.
 func copyCanonicalPredicates(e storeEntry, dir string) error {
-	cmd := exec.Command("git", "-C", e.Path, "show", e.SHA+":predicates.go")
+	cmd := exec.Command("git", "-C", e.Path, "show", e.SHA+":corpus/predicates.go")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil // no predicates.go at that commit — not fatal

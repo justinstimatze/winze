@@ -22,7 +22,7 @@ LABEL=$(echo "$1" | sed 's/^--//' | sed 's/[^a-z0-9]/-/g')
 LOG=/tmp/metabolism-${LABEL}-$(date +%s).log
 echo "metabolism log: $LOG"
 
-go run ./cmd/metabolism "$@" . 2>&1 | tee "$LOG" \
+go run ./cmd/metabolism "$@" corpus 2>&1 | tee "$LOG" \
   | grep -E '^\[|^===|^  [!*]|error:|^build |exit status|fixed|tightened|triggered|ALLOW|SKIP|corroborated|challenged|no_signal' \
   | head -120
 

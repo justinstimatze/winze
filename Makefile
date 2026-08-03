@@ -28,9 +28,9 @@ install:
 	done
 	@echo "installed winze-* to $${GOBIN:-$$HOME/go/bin}"
 
-## gate: the per-claim consistency gate (what cmd/add runs)
+## gate: the per-claim consistency gate (what cmd/add runs, over the corpus)
 gate:
-	go build . && go vet .
+	go build ./corpus && go vet ./corpus
 
 ## test: full test suite
 test:

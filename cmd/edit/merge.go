@@ -72,7 +72,7 @@ func cmdMerge(args []string) int {
 	fs := flag.NewFlagSet("merge", flag.ExitOnError)
 	from := fs.String("from", "", "entity var to fold away (consumed)")
 	into := fs.String("into", "", "canonical entity var that survives")
-	root := fs.String("root", ".", "winze repo root (the directory containing predicates.go)")
+	root := fs.String("root", "corpus", "winze corpus dir (the directory containing predicates.go)")
 	dryRun := fs.Bool("dry-run", false, "report what would change; do not modify files")
 	noRecord := fs.Bool("no-record", false, "skip appending the AbsorbedAlternate audit claim")
 	fs.Parse(args)

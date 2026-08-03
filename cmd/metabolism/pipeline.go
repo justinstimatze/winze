@@ -10,13 +10,23 @@ import (
 	"time"
 )
 
+// Tool packages invoked as gates. Module-qualified (not "./cmd/lint") so they
+// resolve from any working directory inside the module. The corpus lives in a
+// subdirectory, and the gates run with cmd.Dir set to that corpus dir, so a
+// relative "./cmd/..." path would resolve against the corpus (where the tool
+// does not live) rather than the module root.
+const (
+	lintPkg     = "github.com/justinstimatze/winze/cmd/lint"
+	topologyPkg = "github.com/justinstimatze/winze/cmd/topology"
+)
+
 // runPipeline executes the full automated quality pipeline:
 //
 //  1. LLM-assisted ingest (generates metabolism_cycleN.go)
 //  2. go build ./... (type system validation)
 //  3. go vet ./... (static analysis)
-//  4. go run ./cmd/lint . (deterministic lint rules)
-//  5. go run ./cmd/lint . --llm --llm-max-calls=N (semantic contradiction check)
+//  4. go run <lintPkg> . (deterministic lint rules)
+//  5. go run <lintPkg> . --llm --llm-max-calls=N (semantic contradiction check)
 //  6. If all pass → git commit. If llm-contradiction finds issues → reject.
 //
 // Exit codes: 0 = committed, 1 = fatal error, 2 = quality gate rejection.
@@ -60,7 +70,7 @@ func runPipeline(dir, zimPath, zimIndex string, llmBudget int) {
 
 	// Step 4: Deterministic lint
 	fmt.Println("\n[4/5] deterministic lint rules...")
-	lintOut, lintOk := runGateCapture(dir, "go", "run", "./cmd/lint", dir)
+	lintOut, lintOk := runGateCapture(dir, "go", "run", lintPkg, ".")
 	if !lintOk {
 		rejectPipeline(outcome.OutPath, "deterministic lint failed")
 		return
@@ -76,7 +86,7 @@ func runPipeline(dir, zimPath, zimIndex string, llmBudget int) {
 	// Step 5: LLM contradiction check
 	llmRan := false
 	fmt.Printf("\n[5/5] LLM contradiction check (budget: %d calls)...\n", llmBudget)
-	llmOut, llmOk := runGateCapture(dir, "go", "run", "./cmd/lint", dir,
+	llmOut, llmOk := runGateCapture(dir, "go", "run", lintPkg, ".",
 		"--llm", fmt.Sprintf("--llm-max-calls=%d", llmBudget))
 	if !llmOk {
 		// LLM lint failure is non-fatal (API might be unavailable)

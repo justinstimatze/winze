@@ -108,7 +108,7 @@ func TestFunctionalDurabilityCollisionLogic(t *testing.T) {
 // pragma off a predicate or renames one, the resolver silently degrades;
 // this test catches that.
 func TestFunctionalPredicates_RealCorpus(t *testing.T) {
-	root := repoRoot(t)
+	root := corpusDir(t)
 	client, err := defndb.New(root)
 	if err != nil {
 		t.Skipf("defn not available: %v", err)
@@ -136,7 +136,7 @@ func TestFunctionalPredicates_RealCorpus(t *testing.T) {
 // row to a temp log directory (we use t.TempDir to avoid polluting the
 // real .metabolism-log.json).
 func TestLogTripFunctionalDurability_RealCorpusCollision(t *testing.T) {
-	root := repoRoot(t)
+	root := corpusDir(t)
 	if _, err := defndb.New(root); err != nil {
 		t.Skipf("defn not available: %v", err)
 	}

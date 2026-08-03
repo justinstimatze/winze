@@ -127,16 +127,20 @@ func TestNormalizeInstanceDir(t *testing.T) {
 	}
 }
 
-// TestChangedRootGoFiles pins the sweep's discriminating logic: it must pick up
-// root-level *.go the cycle changed (predictions.go, metabolism_cycle*.go) and
-// never a tooling file under a subdir. Git's `*.go` pathspec matches at any
-// depth, so the no-slash filter is the load-bearing part — a regression would
-// let commitCycleState sweep cmd/ or internal/ edits into an autonomous commit.
+// TestChangedRootGoFiles pins the sweep's discriminating logic under the real
+// topology: the corpus lives in a corpus/ subdirectory, and the sweep must pick
+// up the corpus *.go the cycle changed (predictions.go, metabolism_cycle*.go),
+// returning them relative to the corpus dir, while never sweeping a tooling file
+// outside the corpus or a file nested below it. `git status --porcelain` reports
+// repo-root-relative paths regardless of -C, so the dir-relative conversion is
+// the load-bearing part — a regression would either miss every corpus file or
+// leak cmd//internal/ edits into an autonomous commit.
 func TestChangedRootGoFiles(t *testing.T) {
-	dir := t.TempDir()
+	repo := t.TempDir()
+	corpus := filepath.Join(repo, "corpus")
 	git := func(args ...string) {
 		t.Helper()
-		c := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		c := exec.Command("git", append([]string{"-C", repo}, args...)...)
 		if out, err := c.CombinedOutput(); err != nil {
 			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 		}
@@ -146,7 +150,7 @@ func TestChangedRootGoFiles(t *testing.T) {
 	git("config", "user.name", "t")
 	write := func(rel, body string) {
 		t.Helper()
-		p := filepath.Join(dir, rel)
+		p := filepath.Join(repo, rel)
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -155,28 +159,30 @@ func TestChangedRootGoFiles(t *testing.T) {
 		}
 	}
 	// A committed clean baseline.
-	write("schema.go", "package winze\n")
+	write("corpus/schema.go", "package winze\n")
 	git("add", "-A")
 	git("commit", "-qm", "base")
 
-	// The cycle's writes: a modified root file, a new root cycle file, and a
-	// tooling edit under cmd/ that must NOT be swept.
-	write("schema.go", "package winze\n\n// touched\n")
-	write("metabolism_cycle9.go", "package winze\n")
-	write("predictions.go", "package winze\n")
+	// The cycle's writes: a modified corpus file, a new corpus cycle file, a
+	// tooling edit outside the corpus, and a file nested below the corpus —
+	// only the first two direct-corpus files must be swept.
+	write("corpus/schema.go", "package winze\n\n// touched\n")
+	write("corpus/metabolism_cycle9.go", "package winze\n")
+	write("corpus/predictions.go", "package winze\n")
 	write("cmd/metabolize/run.go", "package main\n")
+	write("corpus/nested/deep.go", "package nested\n")
 
-	got, err := changedRootGoFiles(dir)
+	got, err := changedRootGoFiles(corpus)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]bool{"schema.go": true, "metabolism_cycle9.go": true, "predictions.go": true}
 	if len(got) != len(want) {
-		t.Fatalf("got %v, want the 3 root files %v", got, want)
+		t.Fatalf("got %v, want the 3 corpus files %v", got, want)
 	}
 	for _, f := range got {
 		if !want[f] {
-			t.Errorf("swept %q — not an expected root corpus file (a subdir/tooling file leaked in)", f)
+			t.Errorf("swept %q — not an expected corpus file (a nested/tooling file leaked in)", f)
 		}
 	}
 }

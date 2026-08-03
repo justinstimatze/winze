@@ -41,7 +41,7 @@ type rotProbeRun struct {
 
 func main() {
 	var (
-		dir     = flag.String("dir", ".", "corpus root (directory containing predicates.go)")
+		dir     = flag.String("dir", "corpus", "corpus dir (directory containing predicates.go)")
 		n       = flag.Int("n", 10, "number of entities to sample")
 		model   = flag.String("model", "haiku", "anthropic model tier: haiku | sonnet")
 		out     = flag.String("out", ".metabolism-rot-probe.jsonl", "JSONL output path (relative to --dir)")

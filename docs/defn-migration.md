@@ -99,6 +99,26 @@ entity and provenance to answer `--claims Tunguska`. Against defn that is one
 indexed lookup. The migration is not "point defndb at defn" — it is *stop
 building a whole-corpus index to answer a question about one entity*.
 
+## Ingest is corpus-scoped (2026-08)
+
+A second whole-corpus waste was in the *write* path. `defndb.ensureFresh` fires
+`db.Sync` — `packages.Load("./...")` — on any `.go` change. While the corpus
+lived at the module root, `./...` matched the whole module: the ~47-file corpus
+*plus* all of `cmd/` and `internal/`. Measured split (warm, min-of-6): ~1991 ms
+per write = type-check 593 ms + DB insert/resolve 1398 ms, ~half of it indexing
+tooling the queries never read.
+
+The fix, available winze-side today (the defn scoped-sync ask, msg-438f91df, is
+still pending): the corpus was moved into a `corpus/` subdirectory of the same
+module, and every ingest/gate points at `corpus/`. `packages.Load("./...",
+Dir=corpus/)` matches only the corpus package — sibling `cmd/`/`internal/` trees
+are excluded from both the type-check target and the DB insert (`IngestPackages`
+iterates only matched packages). The corpus stays **one Go package**, so the free
+cross-file referential integrity (the reason for the single-package shape) is
+untouched; `source_file` stays a bare basename because the corpus sits flat in
+the projectDir (`filepath.Rel` reduces to the basename). Expected per-write
+ingest: ~1991 ms → ~850 ms.
+
 ## The plan
 
 1. ~~Push the defn index fix; land it upstream.~~ **Done 2026-08-01, defn main
