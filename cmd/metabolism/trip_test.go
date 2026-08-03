@@ -16,7 +16,7 @@ func TestPickCrossClusterPairs(t *testing.T) {
 			{name: "B1", cluster: 1, brief: "entity b1"},
 			{name: "B2", cluster: 1, brief: "entity b2"},
 		}
-		pairs := pickCrossClusterPairs(entities, 2)
+		pairs := pickCrossClusterPairs(entities, 2, nil)
 		if len(pairs) == 0 {
 			t.Fatal("expected at least 1 cross-cluster pair")
 		}
@@ -35,7 +35,7 @@ func TestPickCrossClusterPairs(t *testing.T) {
 			{name: "A1", cluster: 0, brief: "a1"},
 			{name: "A2", cluster: 0, brief: "a2"},
 		}
-		pairs := pickCrossClusterPairs(entities, 5)
+		pairs := pickCrossClusterPairs(entities, 5, nil)
 		if pairs != nil {
 			t.Errorf("expected nil for single cluster, got %d pairs", len(pairs))
 		}
@@ -48,7 +48,7 @@ func TestPickCrossClusterPairs(t *testing.T) {
 			{name: "Blank2", cluster: 1},
 			{name: "Rich2", cluster: 1, brief: "also has a brief"},
 		}
-		pairs := pickCrossClusterPairs(entities, 1)
+		pairs := pickCrossClusterPairs(entities, 1, nil)
 		if len(pairs) == 0 {
 			t.Fatal("expected at least 1 pair")
 		}
@@ -65,7 +65,7 @@ func TestPickCrossClusterPairs(t *testing.T) {
 			{name: "Orphan", cluster: -1, brief: "no cluster"},
 			{name: "B1", cluster: 1, brief: "b1"},
 		}
-		pairs := pickCrossClusterPairs(entities, 5)
+		pairs := pickCrossClusterPairs(entities, 5, nil)
 		for _, p := range pairs {
 			if p.A.name == "Orphan" || p.B.name == "Orphan" {
 				t.Error("orphan entity (cluster -1) should not appear in pairs")
@@ -121,7 +121,7 @@ func TestPickCrossClusterPairs_BridgeBias(t *testing.T) {
 		{name: "BridgeB", cluster: 1, brief: "anchor", bridge: true},
 		{name: "PlainB", cluster: 1, brief: "plain"},
 	}
-	pairs := pickCrossClusterPairs(entities, 1)
+	pairs := pickCrossClusterPairs(entities, 1, nil)
 	if len(pairs) == 0 {
 		t.Fatal("expected at least 1 pair")
 	}
@@ -328,7 +328,7 @@ func TestPickCrossClusterPairs_AffinityTieBreaker(t *testing.T) {
 	// affinity tie-breaker. With the tie-breaker the aligned pair wins
 	// every time.
 	for i := 0; i < 20; i++ {
-		pairs := pickCrossClusterPairs(entities, 1)
+		pairs := pickCrossClusterPairs(entities, 1, nil)
 		if len(pairs) == 0 {
 			t.Fatal("expected at least 1 pair")
 		}

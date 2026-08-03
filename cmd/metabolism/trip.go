@@ -131,10 +131,15 @@ func runTrip(dir string, temperature float64, promptType string, nPairs int, dry
 		return runGroupTrip(dir, entities, temperature, promptType, nPairs, dryRun, jsonOut, profile)
 	}
 
-	// 2. Pick cross-cluster pairs
-	pairs := pickCrossClusterPairs(entities, nPairs)
+	// 2. Pick cross-cluster pairs, excluding any the critic already refuted so
+	// the cycle explores new territory instead of re-proposing rejected pairs.
+	refuted := refutedPairKeys(dir)
+	if len(refuted) > 0 {
+		fmt.Printf("[trip] excluding %d previously-refuted pair(s) from selection\n", len(refuted))
+	}
+	pairs := pickCrossClusterPairs(entities, nPairs, refuted)
 	if len(pairs) == 0 {
-		fmt.Println("[trip] no cross-cluster pairs possible (all entities in one cluster?)")
+		fmt.Println("[trip] no cross-cluster pairs possible (all entities in one cluster, or all refuted?)")
 		return TripReport{}
 	}
 
@@ -1330,7 +1335,59 @@ func pairStructuralAffinity(a, b tripEntity) int {
 	return s
 }
 
-func pickCrossClusterPairs(entities []tripEntity, n int) []tripPair {
+// pairKey is an order-independent key for an entity pair, so a refuted A↔B and
+// a proposed B↔A collapse to the same entry.
+func pairKey(a, b string) string {
+	if a > b {
+		a, b = b, a
+	}
+	return a + "\x1f" + b
+}
+
+// refutedPairKeys reads the durability log and returns the set of entity-pair
+// keys whose trip connection the critic already refuted. The sampler consults
+// this so a refuted pair is not re-proposed cycle after cycle — the failure
+// that made the trip cycle a no-op treadmill (the same shallow analogy to the
+// same high-affinity bridge, refuted, then re-proposed against an unchanged
+// corpus). Rechecks count too: a pair that flips to refuted on re-verification
+// carries the trip_ prefix and is excluded the same way.
+func refutedPairKeys(dir string) map[string]bool {
+	mlog := loadLog(filepath.Join(dir, ".metabolism-log.json"))
+	out := map[string]bool{}
+	for _, c := range mlog.Cycles {
+		if c.Resolution != "refuted" {
+			continue
+		}
+		if c.VulnType != "trip_promotion" && !strings.HasPrefix(c.PredictionType, "trip_") {
+			continue
+		}
+		a, b := pairFromCycle(c)
+		if a == "" || b == "" || a == b {
+			continue
+		}
+		out[pairKey(a, b)] = true
+	}
+	return out
+}
+
+// pairFromCycle recovers the (A, B) entity pair from a logged cycle. Evidence
+// ("A Pred B: reason") is the primary source — entity names are Go identifiers,
+// so whitespace never appears inside one and the first/last fields are the pair.
+// Hypothesis ("A_Pred_B") is the fallback. Group trips (>2 entities) don't map
+// to a pair and are skipped by the len checks.
+func pairFromCycle(c Cycle) (string, string) {
+	if before, _, ok := strings.Cut(c.Evidence, ":"); ok {
+		if f := strings.Fields(before); len(f) >= 2 {
+			return f[0], f[len(f)-1]
+		}
+	}
+	if parts := strings.Split(c.Hypothesis, "_"); len(parts) >= 3 {
+		return parts[0], parts[len(parts)-1]
+	}
+	return "", ""
+}
+
+func pickCrossClusterPairs(entities []tripEntity, n int, refuted map[string]bool) []tripPair {
 	// Group by cluster
 	byCluster := map[int][]tripEntity{}
 	for _, e := range entities {
@@ -1349,7 +1406,11 @@ func pickCrossClusterPairs(entities []tripEntity, n int) []tripPair {
 		return nil
 	}
 
-	// Generate candidate pairs from different clusters
+	// Generate candidate pairs from different clusters, skipping any pair the
+	// critic already refuted. Without this the deterministic (score, affinity)
+	// ranking re-selects the same high-affinity bridge pairs every cycle, the
+	// generator re-proposes the same shallow analogy, and the critic correctly
+	// rejects it again — a rejection treadmill with zero forward progress.
 	type candidate struct {
 		pair     tripPair
 		score    int
@@ -1361,6 +1422,9 @@ func pickCrossClusterPairs(entities []tripEntity, n int) []tripPair {
 		for _, cidB := range clusterIDs[i+1:] {
 			for _, a := range byCluster[cidA] {
 				for _, b := range byCluster[cidB] {
+					if refuted[pairKey(a.name, b.name)] {
+						continue
+					}
 					candidates = append(candidates, candidate{
 						pair:     tripPair{A: a, B: b},
 						score:    pairCandidateScore(a, b),
