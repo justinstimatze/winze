@@ -41,6 +41,9 @@ func main() {
 		nTemporal  = flag.Int("temporal", 2, "number of temporal-reasoning questions")
 		nKnowledge = flag.Int("knowledge", 2, "number of knowledge-update questions")
 		nSingle    = flag.Int("single", 1, "number of single-session-user questions")
+		nMulti     = flag.Int("multi", 0, "number of multi-session questions")
+		nAsst      = flag.Int("assistant", 0, "number of single-session-assistant questions")
+		nPref      = flag.Int("preference", 0, "number of single-session-preference questions")
 		topK       = flag.Int("k", 15, "retrieval top-k facts fed to the answerer")
 		dryRun     = flag.Bool("dry-run", false, "select subset and report shape only; no API calls")
 	)
@@ -64,9 +67,12 @@ func main() {
 	}
 
 	quota := map[string]int{
-		"temporal-reasoning":  *nTemporal,
-		"knowledge-update":    *nKnowledge,
-		"single-session-user": *nSingle,
+		"temporal-reasoning":        *nTemporal,
+		"knowledge-update":          *nKnowledge,
+		"single-session-user":       *nSingle,
+		"multi-session":             *nMulti,
+		"single-session-assistant":  *nAsst,
+		"single-session-preference": *nPref,
 	}
 	questions, err := selectSubset(*dataset, quota)
 	if err != nil {
