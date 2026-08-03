@@ -46,6 +46,7 @@ func main() {
 		nPref      = flag.Int("preference", 0, "number of single-session-preference questions")
 		topK       = flag.Int("k", 15, "retrieval top-k facts fed to the answerer")
 		dryRun     = flag.Bool("dry-run", false, "select subset and report shape only; no API calls")
+		probe      = flag.Bool("probe", false, "report whether gold answer turns survive renderSession truncation; no API calls")
 	)
 	flag.Parse()
 
@@ -85,6 +86,11 @@ func main() {
 		for _, q := range questions {
 			fmt.Printf("  %s [%s] %d sessions — %q\n", q.QuestionID, q.QuestionType, len(q.HaystackSessions), q.Question)
 		}
+		return
+	}
+
+	if *probe {
+		probeTruncation(questions)
 		return
 	}
 
