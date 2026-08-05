@@ -9,7 +9,7 @@
 CMDS := query lint topology metabolism add edit sensor rot-probe predicates-suggest benchmark mcp mem meld metabolize observatory okf
 BIN  := bin
 
-.PHONY: all build install clean test gate jscheck docs-coverage
+.PHONY: all build install clean test gate jscheck docs-coverage defn-latest
 
 all: build
 
@@ -44,6 +44,21 @@ jscheck:
 ## docs-coverage: fail if any cmd/ binary is named in no doc
 docs-coverage:
 	go run ./cmd/query --docs-coverage .
+
+## defn-latest: move module + CLI to the newest defn release, then verify.
+## winze is defn's dogfooding consumer, so sitting on an old release hides
+## regressions rather than avoiding them — the policy is track latest.
+## Both halves move together on purpose: the CLI writes the store the library
+## reads, so a CLI/library version skew is a schema disagreement waiting to
+## surface as a confusing ingest error. CI derives its CLI pin from go.mod for
+## the same reason (.github/workflows/ci.yml), which is why this is one command
+## and not a CI-side `@latest`.
+defn-latest:
+	go get github.com/justinstimatze/defn@latest
+	go mod tidy
+	go install "github.com/justinstimatze/defn/cmd/defn@$$(go list -m -f '{{.Version}}' github.com/justinstimatze/defn)"
+	go build ./... && go vet ./... && go test ./...
+	@echo "defn at $$(go list -m -f '{{.Version}}' github.com/justinstimatze/defn) — module + CLI in $${GOBIN:-$$HOME/go/bin}"
 
 ## clean: remove built binaries
 clean:
