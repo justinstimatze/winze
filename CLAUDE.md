@@ -97,26 +97,30 @@ gates first (tests, `go build ./...`, `go vet ./...`, lint) if code changed.
 That's it: no ticketing system, no separate data plane.
 
 <!-- defn:begin -->
-## Code Navigation and Editing
+## Go code: use defn, not Read/Bash/Grep/Edit
 
-This project is indexed in defn. Use the `code` MCP tool for **Go code**:
+This project is indexed in defn (`.defn/`). For any `.go` file, use the `code` MCP tool — **not** Read, Bash, Grep, or Edit. Those built-ins are reserved for non-Go files (yaml, json, md, sh, `go.mod`, Dockerfile).
 
-```
-code(op: "read", name: "handleEdit")           -- full source by name
-code(op: "read", name: "server.go:272")        -- or by file:line
-code(op: "impact", name: "Render")             -- blast radius + test coverage
-code(op: "edit", name: "Foo", new_body: "...") -- edit, auto-emit + build
-code(op: "search", pattern: "%Auth%")          -- name pattern (% wildcard)
-code(op: "search", pattern: "authentication")  -- body text search
-code(op: "test", name: "Render")               -- run affected tests only
-code(op: "sync")                               -- re-ingest after file edits
-```
+**Do not `ls` and `Read` files by hand.** Start any Go task with `code(op:"overview")` to see the project shape, then drill in with `search` / `outline` / `impact`.
 
-All ops: read, search, impact, explain, untested, edit, create, delete, rename, move, test, apply, diff, history, find, sync, query, overview, patch.
+**Reach for `outline` before `read`.** `outline` returns the signature, doc, refs, and control-flow of a def — 5-10× smaller than the full body. It's enough to answer almost every "what does X do / how does Y work / where does Z fit" question. Only escalate to `read` (full body) when you're about to edit the def, or when outline was genuinely insufficient. A follow-up `read` costs nothing you haven't already committed to.
 
-**Both editing paths work.** `code(op:"edit")` updates the database, emits files, and rebuilds references automatically. File tools (Read, Edit) work too — call `code(op:"sync")` after editing Go files.
+### By intent
 
-Prefer defn for Go code (fewer steps, auto-build verification). Use Read/Edit/Grep for non-Go files.
+- **Discover ("how does X work in this codebase")**: `code(op:"context", question:"...")` — server-side bundle: top-N relevant defs outlined + refs graph + Sonnet synthesis, all in ONE round-trip. Prefer this over 10-40 sequential search/read/impact calls when starting exploration. This is the single biggest lever for turn-1 discovery cost.
+- **Explore individual defs**: `code(op:"overview")`, `code(op:"outline", name:"F")`, `code(op:"search", pattern:"...")`, `code(op:"impact", name:"F")`. Use when you know which def matters. For open-ended "how does X work" reach for context first.
+- **Ask a specific question about a known def**: `code(op:"explain", name:"F", question:"how does F handle X")` — defn hands the source to a Sonnet co-processor and returns a synthesized paragraph answer with provenance. Accepts `names:["A","B"]` for multi-def scope. Requires `ANTHROPIC_API_KEY` on the serve.
+- **Saturate context in one call**: `code(op:"expand", name:"F", include:["outline","callers"])` — one round-trip instead of read → impact → read. Prefer `expand` over multiple sequential `code` calls whenever you'd otherwise chain them. **Have several targets in mind at once? Use `names:["A","B","C"]` instead of one `expand` per name** — round-trip *count* within a turn is the dominant session cost driver, not per-call size. Unresolvable names are skipped with a note rather than failing the whole call.
+- **Read the full body**: `code(op:"read", name:"F")` — returns the body **plus** a compact "Related" footer (summary + top-3 callers + top-3 callees + semantic neighbors). One call gives you what would otherwise take 3-4 sequential `impact`/`outline` calls. Add `full:true` to force the body when defn returns an upstream provenance tag.
+- **Edit a def**: `code(op:"edit", name:"F", new_body:"...")`, `code(op:"rename", name:"F", new_name:"G")` — updates every reference across the repo atomically. `Edit` on a `.go` file leaves defn's graph stale.
+- **New def / whole file**: `code(op:"create", name:"F", file:"pkg/x.go", body:"...")`.
+- **Batch changes**: `code(op:"apply", operations:[...])` — atomic, one emit+build for the whole batch.
+- **Test**: `code(op:"test", name:"F")` — runs only tests covering that def, not the whole suite.
 
-**Rule of thumb:** Always run impact before modifying an existing definition. Skip it for brand-new definitions.
+### Rules of thumb
+
+- **outline first, read only if you're editing** (or if outline genuinely wasn't enough — but check first). This is the single biggest lever for session cost.
+- Run `code(op:"impact", name:"F")` before modifying an existing def; skip it for brand-new ones.
+- If you must edit a `.go` file with a built-in tool, follow up with `code(op:"sync", file:"path")` so the graph stays correct.
 <!-- defn:end -->
+
