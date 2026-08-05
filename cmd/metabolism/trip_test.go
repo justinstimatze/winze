@@ -716,12 +716,17 @@ func TestCompatiblePredicates(t *testing.T) {
 		roleB string
 		want  []string
 	}{
-		{"Person", "Person", []string{"InfluencedBy"}},
-		{"Person", "Hypothesis", []string{"Accepts", "Disputes", "Proposes"}},
-		{"Hypothesis", "Person", []string{"Accepts", "Disputes", "Proposes"}}, // symmetric
-		{"Hypothesis", "Concept", []string{"TheoryOf"}},
-		{"Concept", "Concept", []string{"BelongsTo", "CommentaryOn", "DerivedFrom"}},
-		{"Place", "Person", []string{}}, // no compatible predicate
+		// StructurallyAnalogousTo is declared over *Entity, so it is compatible
+		// with every role pair — including Place↔Person, which has no other
+		// predicate. That is the point of the widening: an analogy says nothing
+		// about what its endpoints are. Whether trip may *use* it on a given
+		// pair is a separate question, answered by tripCompatiblePredicates.
+		{"Person", "Person", []string{"InfluencedBy", "StructurallyAnalogousTo"}},
+		{"Person", "Hypothesis", []string{"Accepts", "Disputes", "Proposes", "StructurallyAnalogousTo"}},
+		{"Hypothesis", "Person", []string{"Accepts", "Disputes", "Proposes", "StructurallyAnalogousTo"}}, // symmetric
+		{"Hypothesis", "Concept", []string{"StructurallyAnalogousTo", "TheoryOf"}},
+		{"Concept", "Concept", []string{"BelongsTo", "CommentaryOn", "DerivedFrom", "StructurallyAnalogousTo"}},
+		{"Place", "Person", []string{"StructurallyAnalogousTo"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.roleA+"-"+tc.roleB, func(t *testing.T) {
@@ -758,9 +763,17 @@ func TestTripCompatiblePredicates(t *testing.T) {
 		// Person ↔ Person used to surface InfluencedBy.
 		// InfluencedBy is biographical attribution; banned.
 		{"Person", "Person", []string{}},
-		// Concept-relational cases unaffected.
-		{"Hypothesis", "Concept", []string{"TheoryOf"}},
-		{"Concept", "Concept", []string{"BelongsTo", "CommentaryOn", "DerivedFrom"}},
+		// Place ↔ Person: StructurallyAnalogousTo is role-compatible since the
+		// *Entity widening, so the per-predicate ban list would let it through.
+		// The role-level Person guard is what stops it, and this case is here to
+		// keep that guard honest — it is the one a future wildcard predicate
+		// would slip past.
+		{"Place", "Person", []string{}},
+		// Concept-relational cases now also offer the analogy predicate, which
+		// is the whole point: Hypothesis↔Concept pairs were being forced into
+		// TheoryOf and refused as predicate misuse.
+		{"Hypothesis", "Concept", []string{"StructurallyAnalogousTo", "TheoryOf"}},
+		{"Concept", "Concept", []string{"BelongsTo", "CommentaryOn", "DerivedFrom", "StructurallyAnalogousTo"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.roleA+"-"+tc.roleB, func(t *testing.T) {

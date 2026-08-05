@@ -24,8 +24,8 @@ func TestConjectureBacksAClaim(t *testing.T) {
 	h1 := Hypothesis{&Entity{ID: "h1", Name: "A"}}
 	h2 := Hypothesis{&Entity{ID: "h2", Name: "B"}}
 	c := StructurallyAnalogousTo{
-		Subject: h1,
-		Object:  h2,
+		Subject: h1.Entity,
+		Object:  h2.Entity,
 		Prov: Conjecture{
 			GeneratedBy: "metabolism-trip",
 			From:        []*Entity{h1.Entity, h2.Entity},

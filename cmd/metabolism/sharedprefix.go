@@ -74,7 +74,7 @@ Only encode claims the source EXPLICITLY commits to. Do not infer, extrapolate, 
 
 - Attribution (Proposes/Disputes/Accepts, and Org variants): the Subject is the named agent of a position on a Hypothesis. The Quote must attribute the position to that agent, not merely cite them.
 - Theory (TheoryOf, HypothesisExplains): TheoryOf points a Hypothesis at the Concept it accounts for; it is //winze:contested, so many competing theories per concept is the expected, not contradictory, shape.
-- Cross-domain analogy (StructurallyAnalogousTo): two Hypotheses from different clusters sharing the same epistemic structure — symmetric, source-required, neither explains nor causes the other. Reject surface analogy.
+- Cross-domain analogy (StructurallyAnalogousTo): two entities of ANY roles from different clusters sharing the same epistemic structure — symmetric, source-required, neither explains nor causes the other. A Concept and a Hypothesis, a Person's method and an Organization's, all qualify; the roles do not constrain it. Reject surface analogy.
 - Taxonomy (BelongsTo, DerivedFrom, IsCognitiveBias, IsPolyvalentTerm, CorrectsCommonMisconception): structural/classificatory relations between Concepts; no Person attribution.
 - Functional predicates (FormedAt, EnergyEstimate, ResolvedAs, EnglishTranslationOf): at most one Object per Subject; a second Object with the same Subject is a value conflict, not a second fact.
 

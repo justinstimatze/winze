@@ -13,8 +13,8 @@ package winze
 // ---------------------------------------------------------------------------
 
 var TripCycle26KahnemanDualProcessFramingStructurallyAnalogousToConradApopheniaClinicalFraming = StructurallyAnalogousTo{
-	Subject: KahnemanDualProcessFraming,
-	Object:  ConradApopheniaClinicalFraming,
+	Subject: KahnemanDualProcessFraming.Entity,
+	Object:  ConradApopheniaClinicalFraming.Entity,
 	Prov: Conjecture{
 		GeneratedBy:      "metabolism-trip",
 		From:             []*Entity{KahnemanDualProcessFraming.Entity, ConradApopheniaClinicalFraming.Entity},

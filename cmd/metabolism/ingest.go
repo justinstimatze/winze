@@ -1063,11 +1063,19 @@ func collectPredicateSlots(dir string) map[string][2]string {
 	slots := map[string][2]string{}
 	fset := token.NewFileSet()
 
-	// Known role types that can appear in predicate slots
+	// Known role types that can appear in predicate slots. "Entity" is here
+	// because a predicate may declare *Entity slots when the relation is
+	// genuinely role-agnostic (References, StructurallyAnalogousTo). Without it
+	// the parser silently skips those declarations, and a predicate that exists
+	// in the corpus reads to the slot-drift test as deleted.
 	roleTypes := map[string]bool{
 		"Person": true, "Organization": true, "Concept": true,
 		"Hypothesis": true, "Event": true, "Place": true,
 		"Instrument": true, "Facility": true, "Substance": true,
+		// typeParamName keeps the star so *EnergyReading-style value slots stay
+		// distinguishable from role types, so the wildcard is spelled "*Entity"
+		// here and normalized to "Entity" when stored.
+		"*Entity": true,
 	}
 
 	for _, name := range []string{"predicates.go", "design_predicates.go"} {
@@ -1093,7 +1101,10 @@ func collectPredicateSlots(dir string) map[string][2]string {
 							subj := typeParamName(idx.Indices[0])
 							obj := typeParamName(idx.Indices[1])
 							if roleTypes[subj] && roleTypes[obj] {
-								slots[ts.Name.Name] = [2]string{subj, obj}
+								slots[ts.Name.Name] = [2]string{
+									strings.TrimPrefix(subj, "*"),
+									strings.TrimPrefix(obj, "*"),
+								}
 							}
 						}
 					}

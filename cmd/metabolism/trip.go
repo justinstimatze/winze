@@ -461,7 +461,19 @@ var predicateSlots = map[string]struct {
 	"Accepts":                 {"Person", "Hypothesis"},
 	"TheoryOf":                {"Hypothesis", "Concept"},
 	"CommentaryOn":            {"Concept", "Concept"},
-	"StructurallyAnalogousTo": {"Hypothesis", "Hypothesis"},
+	"StructurallyAnalogousTo": {"Entity", "Entity"},
+}
+
+// anyRole is the slot value for a predicate declared over *Entity. Such a
+// predicate accepts any role on that side, because the relation says nothing
+// about what its endpoints are — a structural analogy between a Concept and a
+// Hypothesis is still a structural analogy. Matching it literally would reject
+// every pair, which is the bug the *Entity widening exists to fix.
+const anyRole = "Entity"
+
+// slotAccepts reports whether a declared slot admits a given role.
+func slotAccepts(slot, role string) bool {
+	return slot == anyRole || slot == role
 }
 
 // validatePredicate returns true iff predicate's type constraints match subjRole→objRole.
@@ -470,7 +482,7 @@ func validatePredicate(pred, subjRole, objRole string) bool {
 	if !ok {
 		return false
 	}
-	return slots.Subject == subjRole && slots.Object == objRole
+	return slotAccepts(slots.Subject, subjRole) && slotAccepts(slots.Object, objRole)
 }
 
 // compatiblePredicates returns predicates where some ordering of (roleA, roleB)
@@ -478,8 +490,8 @@ func validatePredicate(pred, subjRole, objRole string) bool {
 func compatiblePredicates(roleA, roleB string) []string {
 	var out []string
 	for pred, slots := range predicateSlots {
-		if (slots.Subject == roleA && slots.Object == roleB) ||
-			(slots.Subject == roleB && slots.Object == roleA) {
+		if (slotAccepts(slots.Subject, roleA) && slotAccepts(slots.Object, roleB)) ||
+			(slotAccepts(slots.Subject, roleB) && slotAccepts(slots.Object, roleA)) {
 			out = append(out, pred)
 		}
 	}
@@ -530,6 +542,21 @@ var tripBannedPredicates = map[string]bool{
 // predicate menu to the LLM — keeps the generator from picking
 // predicates we'll later refuse to promote.
 func tripCompatiblePredicates(roleA, roleB string) []string {
+	// Role-level guard, checked before the per-predicate ban list. Trip has no
+	// source-grounding step, so any claim with a Person endpoint is a
+	// biographical or intellectual assertion about a real person that no source
+	// backs — the failure recorded in feedback_trip_promotion_fabrication.md.
+	//
+	// This used to be enforced only by tripBannedPredicates, which is a
+	// per-predicate list and therefore only as good as whoever remembers to
+	// extend it. Widening StructurallyAnalogousTo to *Entity slots walked
+	// straight through that list and made Person↔Person analogies generatable
+	// again, which is what surfaced the weakness. Keying the guard on the role
+	// instead of the predicate makes it hold for predicates that do not exist
+	// yet.
+	if roleA == "Person" || roleB == "Person" {
+		return nil
+	}
 	all := compatiblePredicates(roleA, roleB)
 	out := make([]string, 0, len(all))
 	for _, p := range all {

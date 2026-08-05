@@ -435,7 +435,30 @@ type TheoryOf BinaryRelation[Hypothesis, Concept]
 // explicitly lacks. Forcing function: 53 analogy-mode trip cycles
 // reached NONE because no predicate captured cross-cluster
 // structural isomorphisms between hypotheses.
-type StructurallyAnalogousTo BinaryRelation[Hypothesis, Hypothesis]
+//
+// Slots widened to *Entity 2026-08-05, because the original
+// [Hypothesis, Hypothesis] answered that forcing function too narrowly
+// and it kept firing. The isolated-connection log had accumulated 68
+// no-predicate generations, 65 of which describe an analogy or
+// structural isomorphism and 63 of which the critic scored 3+. They
+// could not be expressed because their endpoints are not both
+// Hypothesis: FiniteOntologyIncompleteness (Concept) is analogous to
+// ConsciousnessAsOverheadHypothesis (Hypothesis), a person's epistemic
+// move to an institution's, and so on. An isomorphism between a Concept
+// and a Hypothesis is still an isomorphism.
+//
+// The failure that narrow slots actually caused was worse than a missing
+// edge. Cornered by the type system, the generator reached for whatever
+// predicate's slots happened to fit — TheoryOf[Hypothesis, Concept] —
+// and asserted an explanatory relation it did not mean. Every promotion
+// in the 2026-08-05 run was refused as predicate_misuse_*. Narrow slots
+// on a relation that is genuinely role-agnostic do not prevent bad
+// claims; they redirect them into a predicate that lies.
+//
+// Same argument, same resolution as References (see above): a structural
+// analogy says nothing about what either end *is*, so constraining the
+// roles would either reject real analogies or misreport them.
+type StructurallyAnalogousTo BinaryRelation[*Entity, *Entity]
 
 // DerivedFrom: one concept is etymologically or technically derived
 // from another. Not functional — a concept can descend from multiple
