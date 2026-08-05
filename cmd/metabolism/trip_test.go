@@ -146,27 +146,38 @@ func TestPickCrossClusterPairs_BridgeBias(t *testing.T) {
 	}
 }
 
-// TestPickCrossClusterPairs_ZeroAffinityFloor pins the floor: a pair with no
-// shared 2-hop context, no predicate rhyme, and no brief vocabulary in common
-// has no route for an analogy to travel, so whatever the generator produces is
-// invented rather than found. Such pairs are dropped even when both endpoints
-// are bridges with briefs — the maximum primary score.
-func TestPickCrossClusterPairs_ZeroAffinityFloor(t *testing.T) {
+// TestPickCrossClusterPairs_AffinityFloor pins the floor: a pair whose
+// structural affinity falls below affinityFloor has too little route for an
+// analogy to travel, so whatever the generator produces is invented rather than
+// found. Such pairs are dropped even when both endpoints are bridges with
+// briefs — the maximum primary score.
+//
+// The weak case here is deliberately not zero-affinity. One shared predicate out
+// of three scores 133, which is a real but thin route, and the measured run
+// behind affinityFloor found exactly that band ("generic resemblance, not
+// structural isomorphism") is what the critic rejects.
+func TestPickCrossClusterPairs_AffinityFloor(t *testing.T) {
 	entities := []tripEntity{
-		// Max score (bridge+brief both sides), zero route: disjoint predicates.
-		{name: "Stranded0", cluster: 0, brief: "a", bridge: true, predicates: map[string]bool{"LocatedIn": true}},
-		{name: "Stranded1", cluster: 1, brief: "b", bridge: true, predicates: map[string]bool{"Disputes": true}},
+		// Max score (bridge+brief both sides), thin route: 1 shared predicate
+		// of 3 total → 133, under the floor.
+		{name: "Thin0", cluster: 0, brief: "a", bridge: true,
+			predicates: map[string]bool{"LocatedIn": true, "TheoryOf": true}},
+		{name: "Thin1", cluster: 1, brief: "b", bridge: true,
+			predicates: map[string]bool{"Disputes": true, "TheoryOf": true}},
+	}
+	if got := pairStructuralAffinity(entities[0], entities[1]); got >= affinityFloor {
+		t.Fatalf("fixture is meant to sit under the floor; scored %d vs floor %d", got, affinityFloor)
 	}
 	if pairs := pickCrossClusterPairs(entities, 5, nil); len(pairs) != 0 {
-		t.Fatalf("expected zero-affinity bridge×bridge pair to be floored, got %d: %s↔%s",
+		t.Fatalf("expected under-floor bridge×bridge pair to be dropped, got %d: %s↔%s",
 			len(pairs), pairs[0].A.name, pairs[0].B.name)
 	}
 
-	// Same fixture, one shared predicate: now there is a route, so it survives.
-	entities[0].predicates = map[string]bool{"LocatedIn": true, "TheoryOf": true}
-	entities[1].predicates = map[string]bool{"Disputes": true, "TheoryOf": true}
+	// Same fixture with matching predicate sets: a full route, so it survives.
+	entities[0].predicates = map[string]bool{"TheoryOf": true}
+	entities[1].predicates = map[string]bool{"TheoryOf": true}
 	if pairs := pickCrossClusterPairs(entities, 5, nil); len(pairs) != 1 {
-		t.Fatalf("expected 1 pair once a shared predicate exists, got %d", len(pairs))
+		t.Fatalf("expected 1 pair once the route clears the floor, got %d", len(pairs))
 	}
 }
 
@@ -179,11 +190,17 @@ func TestPickCrossClusterPairs_ZeroAffinityFloor(t *testing.T) {
 // outranks the bridge bonus.
 func TestPickCrossClusterPairs_AffinityOutranksBridge(t *testing.T) {
 	entities := []tripEntity{
-		// Bridge×bridge, max primary score (8), minimal route.
+		// Bridge×bridge, max primary score (8), thin-but-above-floor route:
+		// 2 shared predicates of 4 → 200 on that signal, plus a shared 2-hop
+		// node, which clears affinityFloor without approaching a full route.
+		// It must clear the floor or this test would pass via the floor rather
+		// than via the blend it is meant to exercise.
 		{name: "BridgeA", cluster: 0, brief: "x", bridge: true,
-			predicates: map[string]bool{"TheoryOf": true, "P1": true, "P2": true, "P3": true, "P4": true}},
+			predicates: map[string]bool{"TheoryOf": true, "Shared2": true, "P1": true},
+			twoHop:     map[string]bool{"N": true, "PA": true}},
 		{name: "BridgeB", cluster: 1, brief: "y", bridge: true,
-			predicates: map[string]bool{"TheoryOf": true, "Q1": true, "Q2": true, "Q3": true, "Q4": true}},
+			predicates: map[string]bool{"TheoryOf": true, "Shared2": true, "Q1": true},
+			twoHop:     map[string]bool{"N": true, "QB": true}},
 		// No bridges, minimal primary score (2), maximal route: identical
 		// predicates, identical 2-hop neighborhood, identical brief vocabulary.
 		{name: "RoutedA", cluster: 0, brief: "shared vocabulary here",
@@ -194,6 +211,10 @@ func TestPickCrossClusterPairs_AffinityOutranksBridge(t *testing.T) {
 			predicates:  map[string]bool{"TheoryOf": true},
 			twoHop:      map[string]bool{"N": true},
 			briefTokens: map[string]bool{"shared": true, "vocabulary": true}},
+	}
+
+	if got := pairStructuralAffinity(entities[0], entities[1]); got < affinityFloor {
+		t.Fatalf("bridge fixture must clear the floor or this tests the floor, not the blend: %d < %d", got, affinityFloor)
 	}
 
 	// Run repeatedly: the shuffle must not be what decides this.

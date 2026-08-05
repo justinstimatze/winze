@@ -1268,6 +1268,23 @@ func pairCandidateScore(a, b tripEntity) int {
 // was not.
 const affinityMax = 1000
 
+// affinityFloor is the minimum structural affinity a pair needs to be worth an
+// LLM call. Set from a measured run rather than taste: 8 pairs generated and
+// critic-scored 2026-08-05 split perfectly on route strength.
+//
+//	affinity 419, 418, 415, 410, 409  ->  critic 3, 4, 3, 4, 4
+//	affinity 200, 100,   9            ->  critic 2, 2, 2   (all "generic
+//	                                      resemblance, not structural isomorphism")
+//
+// Every pair at 409+ was worth keeping; every pair at 200 or below was rejected
+// in the same terms. With the floor at 0 that was 3 of 8 calls — 37% of the
+// budget — spent on candidates whose affinity said in advance they would fail.
+//
+// 250 sits above every observed failure and well below every observed success.
+// The gap between 200 and 409 is unsampled, so a tighter floor would be fitting
+// noise on n=8; raise it when a larger run says where the real boundary is.
+const affinityFloor = 250
+
 // pairStructuralAffinity scores how much genuine semantic route exists between
 // two cross-cluster entities, on 0–affinityMax. Three cheap graph/text signals,
 // all Jaccard-normalized so dense hub entities don't auto-win:
@@ -1410,7 +1427,7 @@ func pickCrossClusterPairs(entities []tripEntity, n int, refuted map[string]bool
 		rank     int
 	}
 	var candidates []candidate
-	zeroAffinity := 0
+	belowFloor := 0
 
 	for i, cidA := range clusterIDs {
 		for _, cidB := range clusterIDs[i+1:] {
@@ -1420,34 +1437,46 @@ func pickCrossClusterPairs(entities []tripEntity, n int, refuted map[string]bool
 						continue
 					}
 					affinity := pairStructuralAffinity(a, b)
-					// Zero-affinity floor: no shared 2-hop context, no
-					// predicate rhyme, no brief vocabulary in common. There is
-					// no route between these two concepts for an analogy to
-					// travel, so anything the generator produces is invented
-					// rather than found. Excluding them is the difference
-					// between a discovery engine and a confabulation engine.
-					if affinity == 0 {
-						zeroAffinity++
+					// Affinity floor: too little shared 2-hop context, predicate
+					// rhyme, or brief vocabulary means no route between the two
+					// concepts for an analogy to travel, so what the generator
+					// produces is invented rather than found. Excluding them is
+					// the difference between a discovery engine and a
+					// confabulation engine.
+					if affinity < affinityFloor {
+						belowFloor++
 						continue
 					}
 					candidates = append(candidates, candidate{
 						pair:     tripPair{A: a, B: b},
 						clusters: [2]int{cidA, cidB},
-						// Blend, not lexicographic. pairCandidateScore is 0–8
-						// and affinity is 0–affinityMax, so scaling the score
-						// by affinityMax/8 puts both on the same footing and a
-						// strong route can outweigh a bridge bonus. Under the
-						// old strict ordering it never could, which is how
-						// bridge×bridge pairs with no semantic connection won
-						// every cycle.
-						rank: pairCandidateScore(a, b)*(affinityMax/8) + affinity,
+						// Blend, not lexicographic. pairCandidateScore is 0–8,
+						// affinity is affinityFloor–affinityMax.
+						//
+						// The per-point weight is affinityMax/16, not the /8
+						// that would put the two on nominally equal footing.
+						// At /8 a bridge×bridge pair's 6-point edge is worth
+						// 750, which exactly equals the whole affinity range
+						// above the floor — so bridge always wins and the
+						// blend is lexicographic ordering wearing a disguise.
+						//
+						// The measured run (2026-08-05, 8 pairs, critic-scored)
+						// says that ordering is backwards. Every score-8 pair
+						// in it was rejected at critic 2 ("generic resemblance,
+						// not structural isomorphism"), while a score-2 pair
+						// with affinity 415 scored 3. Bridge-ness anti-
+						// correlated with connection quality; affinity tracked
+						// it exactly. Halving the weight lets a strong route
+						// outrank the bridge bonus while keeping bridge-ness a
+						// real contributor among comparable routes.
+						rank: pairCandidateScore(a, b)*(affinityMax/16) + affinity,
 					})
 				}
 			}
 		}
 	}
-	if zeroAffinity > 0 {
-		fmt.Printf("[trip] excluding %d zero-affinity pair(s) (no shared route)\n", zeroAffinity)
+	if belowFloor > 0 {
+		fmt.Printf("[trip] excluding %d pair(s) below the affinity floor of %d (no shared route)\n", belowFloor, affinityFloor)
 	}
 
 	// Shuffle, then stable-sort by blended rank. Random shuffle survives within
