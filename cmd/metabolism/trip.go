@@ -476,6 +476,32 @@ func slotAccepts(slot, role string) bool {
 	return slot == anyRole || slot == role
 }
 
+// slotExpr renders the Go expression for a promoted claim's Subject (idx 0)
+// or Object (idx 1). A predicate declared over a named role takes the role
+// var directly; one declared over the anyRole slot is a BinaryRelation over
+// *Entity and takes the embedded field instead.
+//
+// This exists because widening a predicate's slots to *Entity silently
+// breaks the generator otherwise: every promotion of that predicate emits a
+// role struct where an *Entity is wanted, fails the build gate, and gets
+// reverted — so the predicate looks accepted by the critic and still never
+// lands. Unknown predicates fall through to the bare var, matching the
+// pre-widening behavior.
+func slotExpr(predicate string, idx int, entityVar string) string {
+	slots, ok := predicateSlots[predicate]
+	if !ok {
+		return entityVar
+	}
+	slot := slots.Subject
+	if idx == 1 {
+		slot = slots.Object
+	}
+	if slot == anyRole {
+		return entityVar + ".Entity"
+	}
+	return entityVar
+}
+
 // validatePredicate returns true iff predicate's type constraints match subjRole→objRole.
 func validatePredicate(pred, subjRole, objRole string) bool {
 	slots, ok := predicateSlots[pred]
@@ -618,6 +644,7 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 	var promotedVars []string
 	var promotedClaims []promotedClaim
 	var attempts []tripPromotionAttempt
+	var verdicts []tripVerdictRow
 	for _, c := range promotable {
 		attemptName := fmt.Sprintf("%s_%s_%s", c.EntityA, c.Predicate, c.EntityB)
 
@@ -686,7 +713,30 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 			critic := c // copy with possibly-swapped subj/obj reflected
 			critic.EntityA = subj
 			critic.EntityB = obj
-			if verdict := critiqueTripConnection(*criticClient, critic, criticExemplars); !verdict.Accept {
+			verdict := critiqueTripConnection(*criticClient, critic, criticExemplars)
+			// Record every ruling, accepts included. A log of rejections
+			// alone cannot answer whether the bar is set right — that
+			// question needs the accepts as the other half of the
+			// comparison. See tripVerdictRow for the labelling workflow.
+			verdicts = append(verdicts, tripVerdictRow{
+				Subject:     subj,
+				Object:      obj,
+				SubjectRole: subjRole,
+				ObjectRole:  objRole,
+				ClusterA:    c.ClusterA,
+				ClusterB:    c.ClusterB,
+				Predicate:   c.Predicate,
+				Connection:  c.Connection,
+				Rationale:   c.Rationale,
+				Score:       c.Score,
+				PromptType:  c.PromptType,
+				Temperature: c.Temperature,
+				Accept:      verdict.Accept,
+				Reason:      verdict.Reason,
+				RawReason:   verdict.RawReason,
+				CriticModel: string(anthropic.ModelClaudeHaiku4_5),
+			})
+			if !verdict.Accept {
 				evidence := fmt.Sprintf("%s %s %s: critic-reject (%s)", subj, c.Predicate, obj, verdict.Reason)
 				fmt.Printf("[trip-promote] skip %s\n", evidence)
 				attempts = append(attempts, tripPromotionAttempt{
@@ -714,8 +764,8 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 		// The parser flags it Conjectural; it can later be promoted to a
 		// Provenance if a real source is found, or pruned.
 		b.WriteString(fmt.Sprintf("var %s = %s{\n", claimVar, c.Predicate))
-		b.WriteString(fmt.Sprintf("\tSubject: %s,\n", subj))
-		b.WriteString(fmt.Sprintf("\tObject:  %s,\n", obj))
+		b.WriteString(fmt.Sprintf("\tSubject: %s,\n", slotExpr(c.Predicate, 0, subj)))
+		b.WriteString(fmt.Sprintf("\tObject:  %s,\n", slotExpr(c.Predicate, 1, obj)))
 		b.WriteString("\tProv: Conjecture{\n")
 		b.WriteString("\t\tGeneratedBy:      \"metabolism-trip\",\n")
 		b.WriteString(fmt.Sprintf("\t\tFrom:             []*Entity{%s.Entity, %s.Entity},\n", subj, obj))
@@ -753,6 +803,14 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 		if err := logTripPromotionAttempts(dir, attempts); err != nil {
 			fmt.Fprintf(os.Stderr, "[trip-promote] log promotion attempts: %v\n", err)
 		}
+	}
+
+	// Persist the critic's rulings with the candidates they were passed on.
+	// The attempt log above records the reason code; this records the
+	// argument the code was a verdict about, which is what calibrating the
+	// bar needs and what no existing artifact carried.
+	if n := appendTripVerdicts(dir, verdicts); n > 0 {
+		fmt.Printf("[trip-promote] %d critic ruling(s) appended to %s\n", n, tripVerdictsFile)
 	}
 
 	if promoted == 0 {

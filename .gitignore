@@ -44,6 +44,11 @@
 # Trip-cycle NONE-predicate connections (predicate-ontology gap log)
 .metabolism-trip-isolated.jsonl
 
+# Trip-cycle critic rulings — the calibration worksheet for the shallowness
+# bar. Hand-edited during labelling, so it is local working state, not a
+# committed artifact.
+.metabolism-trip-verdicts.jsonl
+
 # Bias audit snapshot (injected into --ask context at query time)
 .metabolism-bias-state.json
 

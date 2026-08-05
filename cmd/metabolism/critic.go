@@ -34,7 +34,13 @@ import (
 // criticVerdict is the parsed result of a single critic call.
 type criticVerdict struct {
 	Accept bool
-	Reason string // populated only on reject
+	Reason string // populated only on reject; sanitized for the pipeline reason field
+	// RawReason is the critic's REASON line exactly as written, before the
+	// space-to-underscore sanitization and 60-char truncation Reason gets.
+	// Only the sanitized form flows into the pipeline; the verbatim text is
+	// kept so the critic calibration log (tripVerdictRow) records what the
+	// critic actually said rather than a slug cut mid-word.
+	RawReason string
 }
 
 // claimExemplar is one high-quality reference claim sampled from the
@@ -312,6 +318,7 @@ func parseCriticVerdict(text string) criticVerdict {
 		if reason == "" {
 			reason = "unspecified"
 		}
+		raw := reason
 		// Sanitize for use in pipeline reason field (no spaces, no
 		// special chars — match the existing Reason convention).
 		reason = strings.ReplaceAll(reason, " ", "_")
@@ -319,7 +326,7 @@ func parseCriticVerdict(text string) criticVerdict {
 		if len(reason) > 60 {
 			reason = reason[:60]
 		}
-		return criticVerdict{Accept: false, Reason: reason}
+		return criticVerdict{Accept: false, Reason: reason, RawReason: raw}
 	}
 	// Ambiguous response — default to ACCEPT to avoid false negatives
 	// from a malformed critic call.
