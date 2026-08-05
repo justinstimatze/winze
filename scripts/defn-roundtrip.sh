@@ -58,17 +58,43 @@ while IFS= read -r ef; do
     echo "    DIFFERS  $rel  ($(diff <(gofmt "$sf") <(gofmt "$ef") | grep -c '^[<>]') changed lines)"
   fi
 done < <(find "$OUT" -name '*.go')
-# Source .go files defn never emitted (dropped decls / un-ingested files).
+# Source .go files defn never emitted, split by whether that is a defect.
+#
+# defn indexes DECLARATIONS, so a file holding only a package clause and its
+# doc comment (corpus/doc.go) has nothing to store and can never round-trip.
+# Counting it as a failure made the PASS branch below unreachable: `missing`
+# was permanently 1, so a genuine regression and the steady state printed the
+# same RESULT line and you had to read the numbers to tell them apart.
+#
+# The split keeps the teeth. A source file WITH top-level declarations that
+# defn did not emit is a real fidelity loss and still fails. A file without
+# any is reported and tolerated.
+#
+# Declaration detection is a column-0 keyword match, not a parse — a raw
+# string literal containing "\nvar " at column 0 would read as a declaration.
+# That errs toward calling a file declarative, which fails loudly rather than
+# passing quietly, so the bias points the safe way.
 # Exclude polecats/ (separate worktree clones defn never ingested) and .defn/.
+declfree=""
 while IFS= read -r sf; do
   rel="${sf#"$SRC"/}"
-  [ -f "$OUT/$rel" ] || { echo "    SOURCE-ONLY $rel (not emitted)"; missing=$((missing + 1)); }
+  [ -f "$OUT/$rel" ] && continue
+  if grep -qE '^(func|var|const|type)[[:space:](]' "$sf"; then
+    echo "    SOURCE-ONLY $rel (not emitted — HAS declarations, this is a fidelity loss)"
+    missing=$((missing + 1))
+  else
+    declfree="$declfree $rel"
+  fi
 done < <(find "$SRC" -name '*.go' -not -path '*/.defn/*' -not -path '*/polecats/*')
+
+if [ -n "$declfree" ]; then
+  echo "    note: declaration-free, nothing for defn to store —$declfree"
+fi
 
 if [ "$diffs" -eq 0 ] && [ "$missing" -eq 0 ]; then
   echo "PASS: every emitted file is byte-identical to source (gofmt) — winze round-trips losslessly"
 else
-  echo "RESULT: $diffs file(s) differ, $missing source file(s) not emitted."
+  echo "RESULT: $diffs file(s) differ, $missing source file(s) with declarations not emitted."
   echo "  If the differences are ONLY declaration reordering, switch to the decl-level bar."
   echo "  If any difference drops/alters/truncates a declaration, that is a real fidelity loss."
   exit 1
