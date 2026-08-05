@@ -756,7 +756,26 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 	}
 
 	if promoted == 0 {
-		fmt.Println("[trip-promote] no valid connections to promote (entities not found)")
+		// Report why, from the attempt log, rather than asserting one cause.
+		// This line used to read "(entities not found)" unconditionally, which
+		// named the wrong culprit every time the real reason was a critic
+		// rejection — and sent me looking at entity resolution twice.
+		byReason := map[string]int{}
+		for _, a := range attempts {
+			if !a.Accepted {
+				byReason[a.Reason]++
+			}
+		}
+		if len(byReason) == 0 {
+			fmt.Println("[trip-promote] nothing to promote: no connection reached the score threshold")
+			return nil
+		}
+		reasons := make([]string, 0, len(byReason))
+		for r, n := range byReason {
+			reasons = append(reasons, fmt.Sprintf("%s×%d", r, n))
+		}
+		sort.Strings(reasons)
+		fmt.Printf("[trip-promote] nothing promoted — %s\n", strings.Join(reasons, ", "))
 		return nil
 	}
 

@@ -404,10 +404,11 @@ Subject: `)
 1. SUBSTANTIVE-ISOMORPHISM. The connection identifies a SPECIFIC shared mechanism, failure mode, or epistemic structure — not a generic "both X" framing. "Both extract patterns" / "both involve prediction" / "both are about how minds work" are SHALLOW and should be rejected.
 
 2. PREDICATE-PRECONDITIONS:
-   - CommentaryOn requires Subject to be a creative work that EXPLICITLY references Object — NOT just a structural analogy.
-   - TheoryOf requires Subject Hypothesis to be a structural account whose explanans is Object Concept — NOT analogy or "operates similarly."
+   - StructurallyAnalogousTo IS the predicate for structural analogy — it is where the "NOT analogy" clauses below are telling you to go, and a well-supported analogy under it is a correct use, not a misuse. Its slots are *Entity, so ANY pair of roles is admissible: Concept↔Concept, Concept↔Hypothesis, Concept↔CreativeWork all qualify and none of them are a predicate error. What it requires is rule 1: a specific shared mechanism or failure mode, symmetric, with neither side explaining or causing the other. Reject it for shallowness when rule 1 fails. Do NOT reject it for being an analogy, and do NOT reject it on the roles of its endpoints.
+   - CommentaryOn requires Subject to be a creative work that EXPLICITLY references Object — NOT just a structural analogy (use StructurallyAnalogousTo).
+   - TheoryOf requires Subject Hypothesis to be a structural account whose explanans is Object Concept — NOT analogy or "operates similarly" (use StructurallyAnalogousTo).
    - HypothesisExplains requires actual mechanistic explanation — NOT speculative resemblance.
-   - BelongsTo / DerivedFrom require sub-classing or derivation — NOT analogy.
+   - BelongsTo / DerivedFrom require sub-classing or derivation — NOT analogy (use StructurallyAnalogousTo).
 
 3. CATEGORY-FIT. The two entities aren't from category-incompatible domains where the connection is a category error. (E.g. "Searle's Chinese Room CommentaryOn Advaita nondualism" conflates syntax/semantics dualism with subject/object metaphysical dualism.)
 
