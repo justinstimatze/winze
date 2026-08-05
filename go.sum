@@ -88,8 +88,8 @@ github.com/invopop/jsonschema v0.14.0 h1:MHQqLhvpNUZfw+hM3AZDYK7jxO8FZoQeQM77g8i
 github.com/invopop/jsonschema v0.14.0/go.mod h1:ygm6C2EaVNMBDPpaPlnOA2pFAxBnxGjFlMZABxm9n2I=
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
 github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
-github.com/justinstimatze/defn v0.26.1 h1:BpAPliIkPeklHFYzHLNMbgWe2RRUaTlO8FQBKDT+3dA=
-github.com/justinstimatze/defn v0.26.1/go.mod h1:ARp9TYWshDGOc6Nah1rCS8jyLjyiVokbxBaru10Ryyk=
+github.com/justinstimatze/defn v0.26.3 h1:unEE5Jw6M311rq7pCqn+olXM4nlJEha6Hu3W+hJXvA0=
+github.com/justinstimatze/defn v0.26.3/go.mod h1:ARp9TYWshDGOc6Nah1rCS8jyLjyiVokbxBaru10Ryyk=
 github.com/justinstimatze/gozim v0.2.1 h1:yQFGfxHsbkXE/iapxm7vHf/2U2H7bl2Xf9/1doi7/VI=
 github.com/justinstimatze/gozim v0.2.1/go.mod h1:/qRz7zUSgcxuFnnwRLegObS0tm7dVvRX/OQWa1eKGN0=
 github.com/klauspost/compress v1.18.5 h1:/h1gH5Ce+VWNLSWqPzOVn6XBO+vJbCNGvjoaGBFW2IE=

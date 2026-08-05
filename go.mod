@@ -6,7 +6,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.61.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/justinstimatze/defn v0.26.1
+	github.com/justinstimatze/defn v0.26.3
 	github.com/justinstimatze/gozim v0.2.1
 	github.com/mark3labs/mcp-go v0.48.0
 	gopkg.in/yaml.v2 v2.4.0
