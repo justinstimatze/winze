@@ -8,13 +8,21 @@ import (
 	"testing"
 )
 
+// sharedRoute is a minimal non-zero structural-affinity signal. pickCrossClusterPairs
+// drops pairs with zero affinity — no shared 2-hop context, no predicate rhyme, no
+// brief vocabulary in common — so a fixture that only means to exercise *scoring*
+// must still give its entities some route, or it ends up testing the floor instead
+// of the property it names. Uniform across a fixture, so affinity contributes
+// equally to every candidate and the property under test is what decides.
+var sharedRoute = map[string]bool{"TheoryOf": true}
+
 func TestPickCrossClusterPairs(t *testing.T) {
 	t.Run("two clusters", func(t *testing.T) {
 		entities := []tripEntity{
-			{name: "A1", cluster: 0, brief: "entity a1"},
-			{name: "A2", cluster: 0, brief: "entity a2"},
-			{name: "B1", cluster: 1, brief: "entity b1"},
-			{name: "B2", cluster: 1, brief: "entity b2"},
+			{name: "A1", cluster: 0, brief: "entity a1", predicates: sharedRoute},
+			{name: "A2", cluster: 0, brief: "entity a2", predicates: sharedRoute},
+			{name: "B1", cluster: 1, brief: "entity b1", predicates: sharedRoute},
+			{name: "B2", cluster: 1, brief: "entity b2", predicates: sharedRoute},
 		}
 		pairs := pickCrossClusterPairs(entities, 2, nil)
 		if len(pairs) == 0 {
@@ -43,10 +51,10 @@ func TestPickCrossClusterPairs(t *testing.T) {
 
 	t.Run("prefer entities with briefs", func(t *testing.T) {
 		entities := []tripEntity{
-			{name: "Blank1", cluster: 0},
-			{name: "Rich1", cluster: 0, brief: "has a brief"},
-			{name: "Blank2", cluster: 1},
-			{name: "Rich2", cluster: 1, brief: "also has a brief"},
+			{name: "Blank1", cluster: 0, predicates: sharedRoute},
+			{name: "Rich1", cluster: 0, brief: "has a brief", predicates: sharedRoute},
+			{name: "Blank2", cluster: 1, predicates: sharedRoute},
+			{name: "Rich2", cluster: 1, brief: "also has a brief", predicates: sharedRoute},
 		}
 		pairs := pickCrossClusterPairs(entities, 1, nil)
 		if len(pairs) == 0 {
@@ -61,9 +69,9 @@ func TestPickCrossClusterPairs(t *testing.T) {
 
 	t.Run("negative cluster excluded", func(t *testing.T) {
 		entities := []tripEntity{
-			{name: "A1", cluster: 0, brief: "a1"},
-			{name: "Orphan", cluster: -1, brief: "no cluster"},
-			{name: "B1", cluster: 1, brief: "b1"},
+			{name: "A1", cluster: 0, brief: "a1", predicates: sharedRoute},
+			{name: "Orphan", cluster: -1, brief: "no cluster", predicates: sharedRoute},
+			{name: "B1", cluster: 1, brief: "b1", predicates: sharedRoute},
 		}
 		pairs := pickCrossClusterPairs(entities, 5, nil)
 		for _, p := range pairs {
@@ -114,12 +122,18 @@ func TestPairCandidateScore(t *testing.T) {
 // sampler picks uniformly across cross-cluster pairs and most candidates
 // are weak-analogy random concept pairs (the 2026-04-27 demo failure
 // mode).
+//
+// Affinity is held uniform across the fixture on purpose. Since 2026-08-05 the
+// rank blends score with affinity rather than treating affinity as a tie-break,
+// so bridge bias only decides when the route strength is equal — which is the
+// property this test is about. A fixture with varying affinity would be testing
+// the blend, and that is TestPickCrossClusterPairs_AffinityOutranksBridge.
 func TestPickCrossClusterPairs_BridgeBias(t *testing.T) {
 	entities := []tripEntity{
-		{name: "BridgeA", cluster: 0, brief: "anchor", bridge: true},
-		{name: "PlainA", cluster: 0, brief: "plain"},
-		{name: "BridgeB", cluster: 1, brief: "anchor", bridge: true},
-		{name: "PlainB", cluster: 1, brief: "plain"},
+		{name: "BridgeA", cluster: 0, brief: "anchor", bridge: true, predicates: sharedRoute},
+		{name: "PlainA", cluster: 0, brief: "plain", predicates: sharedRoute},
+		{name: "BridgeB", cluster: 1, brief: "anchor", bridge: true, predicates: sharedRoute},
+		{name: "PlainB", cluster: 1, brief: "plain", predicates: sharedRoute},
 	}
 	pairs := pickCrossClusterPairs(entities, 1, nil)
 	if len(pairs) == 0 {
@@ -129,6 +143,106 @@ func TestPickCrossClusterPairs_BridgeBias(t *testing.T) {
 	if !p.A.bridge || !p.B.bridge {
 		t.Errorf("expected bridge×bridge to surface first, got %s(bridge=%v) ↔ %s(bridge=%v)",
 			p.A.name, p.A.bridge, p.B.name, p.B.bridge)
+	}
+}
+
+// TestPickCrossClusterPairs_ZeroAffinityFloor pins the floor: a pair with no
+// shared 2-hop context, no predicate rhyme, and no brief vocabulary in common
+// has no route for an analogy to travel, so whatever the generator produces is
+// invented rather than found. Such pairs are dropped even when both endpoints
+// are bridges with briefs — the maximum primary score.
+func TestPickCrossClusterPairs_ZeroAffinityFloor(t *testing.T) {
+	entities := []tripEntity{
+		// Max score (bridge+brief both sides), zero route: disjoint predicates.
+		{name: "Stranded0", cluster: 0, brief: "a", bridge: true, predicates: map[string]bool{"LocatedIn": true}},
+		{name: "Stranded1", cluster: 1, brief: "b", bridge: true, predicates: map[string]bool{"Disputes": true}},
+	}
+	if pairs := pickCrossClusterPairs(entities, 5, nil); len(pairs) != 0 {
+		t.Fatalf("expected zero-affinity bridge×bridge pair to be floored, got %d: %s↔%s",
+			len(pairs), pairs[0].A.name, pairs[0].B.name)
+	}
+
+	// Same fixture, one shared predicate: now there is a route, so it survives.
+	entities[0].predicates = map[string]bool{"LocatedIn": true, "TheoryOf": true}
+	entities[1].predicates = map[string]bool{"Disputes": true, "TheoryOf": true}
+	if pairs := pickCrossClusterPairs(entities, 5, nil); len(pairs) != 1 {
+		t.Fatalf("expected 1 pair once a shared predicate exists, got %d", len(pairs))
+	}
+}
+
+// TestPickCrossClusterPairs_AffinityOutranksBridge is the rebalance itself. Until
+// 2026-08-05 affinity was a tie-break only, so a bridge×bridge pair with a barely
+// existent route beat a non-bridge pair with a strong one — no amount of semantic
+// connection could overcome a 3-point bridge bonus. That ordering is what produced
+// shallow promotions like cycle 27's ErrorManagementTheoryOfApophenia ↔
+// UDHRAsTheoryOfHumanRights. The rank now blends the two, so a full-strength route
+// outranks the bridge bonus.
+func TestPickCrossClusterPairs_AffinityOutranksBridge(t *testing.T) {
+	entities := []tripEntity{
+		// Bridge×bridge, max primary score (8), minimal route.
+		{name: "BridgeA", cluster: 0, brief: "x", bridge: true,
+			predicates: map[string]bool{"TheoryOf": true, "P1": true, "P2": true, "P3": true, "P4": true}},
+		{name: "BridgeB", cluster: 1, brief: "y", bridge: true,
+			predicates: map[string]bool{"TheoryOf": true, "Q1": true, "Q2": true, "Q3": true, "Q4": true}},
+		// No bridges, minimal primary score (2), maximal route: identical
+		// predicates, identical 2-hop neighborhood, identical brief vocabulary.
+		{name: "RoutedA", cluster: 0, brief: "shared vocabulary here",
+			predicates:  map[string]bool{"TheoryOf": true},
+			twoHop:      map[string]bool{"N": true},
+			briefTokens: map[string]bool{"shared": true, "vocabulary": true}},
+		{name: "RoutedB", cluster: 1, brief: "shared vocabulary here",
+			predicates:  map[string]bool{"TheoryOf": true},
+			twoHop:      map[string]bool{"N": true},
+			briefTokens: map[string]bool{"shared": true, "vocabulary": true}},
+	}
+
+	// Run repeatedly: the shuffle must not be what decides this.
+	for i := 0; i < 20; i++ {
+		pairs := pickCrossClusterPairs(entities, 1, nil)
+		if len(pairs) == 0 {
+			t.Fatal("expected at least 1 pair")
+		}
+		if pairs[0].A.bridge || pairs[0].B.bridge {
+			t.Fatalf("iter %d: fully-routed non-bridge pair should outrank the thin bridge×bridge pair, got %s↔%s",
+				i, pairs[0].A.name, pairs[0].B.name)
+		}
+	}
+}
+
+// TestPickCrossClusterPairs_ClusterDiversity pins the round-robin. Ranking alone
+// produced a monoculture on the live corpus: all 25 selected pairs were cluster 0
+// × cluster 6, because that one cluster pair saturated the top score class and
+// every trip became "some consciousness thesis ↔ some Tunguska hypothesis." The
+// budget should spend across the topology instead of exhausting one seam.
+func TestPickCrossClusterPairs_ClusterDiversity(t *testing.T) {
+	var entities []tripEntity
+	for c := 0; c < 4; c++ {
+		for i := 0; i < 5; i++ {
+			e := tripEntity{
+				name: fmt.Sprintf("C%dE%d", c, i), cluster: c,
+				brief: "b", predicates: sharedRoute,
+			}
+			// Cluster 0 and 1 are all bridges, so under pure ranking the 0×1
+			// cross-product would take every slot.
+			e.bridge = c < 2
+			entities = append(entities, e)
+		}
+	}
+
+	pairs := pickCrossClusterPairs(entities, 6, nil)
+	if len(pairs) != 6 {
+		t.Fatalf("expected 6 pairs, got %d", len(pairs))
+	}
+	seen := map[[2]int]bool{}
+	for _, p := range pairs {
+		a, b := p.A.cluster, p.B.cluster
+		if a > b {
+			a, b = b, a
+		}
+		seen[[2]int{a, b}] = true
+	}
+	if len(seen) < 3 {
+		t.Errorf("expected the 6 pairs to span at least 3 cluster pairs, got %d: %v", len(seen), seen)
 	}
 }
 
@@ -197,12 +311,12 @@ func TestPairStructuralAffinity(t *testing.T) {
 	})
 
 	t.Run("2-hop Jaccard partial overlap", func(t *testing.T) {
-		// A reaches {X, Y}, B reaches {X}. Jaccard = 1/2 = 0.5 → 1.
+		// A reaches {X, Y}, B reaches {X}. Jaccard = 1/2 = 0.5 → 150.
 		// Other signals zero (predicates and tokens nil).
 		a := tripEntity{name: "A", twoHop: map[string]bool{"X": true, "Y": true}}
 		b := tripEntity{name: "B", twoHop: map[string]bool{"X": true}}
-		if got := pairStructuralAffinity(a, b); got != 1 {
-			t.Errorf("expected 1 (Jaccard 0.5 × 3 = 1), got %d", got)
+		if got := pairStructuralAffinity(a, b); got != 150 {
+			t.Errorf("expected 150 (Jaccard 0.5 × 300), got %d", got)
 		}
 	})
 
@@ -210,9 +324,9 @@ func TestPairStructuralAffinity(t *testing.T) {
 		shared := map[string]bool{"X1": true, "X2": true, "X3": true, "X4": true, "X5": true}
 		a := tripEntity{name: "A", twoHop: shared}
 		b := tripEntity{name: "B", twoHop: shared}
-		// Identical sets → Jaccard 1.0 → cap at 3.
-		if got := pairStructuralAffinity(a, b); got != 3 {
-			t.Errorf("expected cap at 3, got %d", got)
+		// Identical sets → Jaccard 1.0 → cap at 300.
+		if got := pairStructuralAffinity(a, b); got != 300 {
+			t.Errorf("expected cap at 300, got %d", got)
 		}
 	})
 
@@ -229,19 +343,29 @@ func TestPairStructuralAffinity(t *testing.T) {
 		hub["shared"] = true
 		a := tripEntity{name: "Hub", twoHop: hub}
 		b := tripEntity{name: "Tiny", twoHop: map[string]bool{"shared": true}}
-		// Jaccard = 1 / 51 ≈ 0.02. (0.02 * 3) = 0 in integer math.
-		if got := pairStructuralAffinity(a, b); got != 0 {
-			t.Errorf("expected 0 (hub dilutes single overlap), got %d", got)
+		// Jaccard = 1/51 ≈ 0.02 → 5 at milli-scale. The assertion is relative,
+		// not exact-zero: what matters is that the hub's diluted overlap ranks
+		// far below a genuine partial overlap, not that it rounds away. Before
+		// the milli-scale rescale this truncated to 0, which read as a cleaner
+		// result than it was — integer division was discarding every weak
+		// signal, not just the hub's.
+		hubScore := pairStructuralAffinity(a, b)
+		genuine := pairStructuralAffinity(
+			tripEntity{twoHop: map[string]bool{"X": true, "Y": true}},
+			tripEntity{twoHop: map[string]bool{"X": true}},
+		)
+		if hubScore*10 > genuine {
+			t.Errorf("hub overlap (%d) should rank an order of magnitude below a genuine partial overlap (%d)", hubScore, genuine)
 		}
 	})
 
 	t.Run("predicate complementarity (full overlap)", func(t *testing.T) {
-		// Identical predicate sets → Jaccard 1.0 → score 4.
+		// Identical predicate sets → Jaccard 1.0 → score 400.
 		preds := map[string]bool{"TheoryOf": true, "CommentaryOn": true}
 		a := tripEntity{name: "A", predicates: preds}
 		b := tripEntity{name: "B", predicates: preds}
-		if got := pairStructuralAffinity(a, b); got != 4 {
-			t.Errorf("expected 4 (full predicate overlap), got %d", got)
+		if got := pairStructuralAffinity(a, b); got != 400 {
+			t.Errorf("expected 400 (full predicate overlap), got %d", got)
 		}
 	})
 
@@ -256,11 +380,11 @@ func TestPairStructuralAffinity(t *testing.T) {
 
 	t.Run("brief vocab Jaccard partial", func(t *testing.T) {
 		// A: {consciousness, perception}, B: {consciousness}.
-		// Jaccard = 1/2 = 0.5 → 1.
+		// Jaccard = 1/2 = 0.5 → 150.
 		a := tripEntity{name: "A", briefTokens: map[string]bool{"consciousness": true, "perception": true}}
 		b := tripEntity{name: "B", briefTokens: map[string]bool{"consciousness": true}}
-		if got := pairStructuralAffinity(a, b); got != 1 {
-			t.Errorf("expected 1 (Jaccard 0.5 × 3 = 1), got %d", got)
+		if got := pairStructuralAffinity(a, b); got != 150 {
+			t.Errorf("expected 150 (Jaccard 0.5 × 300), got %d", got)
 		}
 	})
 
@@ -268,14 +392,14 @@ func TestPairStructuralAffinity(t *testing.T) {
 		shared := map[string]bool{"a": true, "b": true, "c": true, "d": true, "e": true}
 		a := tripEntity{name: "A", briefTokens: shared}
 		b := tripEntity{name: "B", briefTokens: shared}
-		if got := pairStructuralAffinity(a, b); got != 3 {
-			t.Errorf("expected cap at 3, got %d", got)
+		if got := pairStructuralAffinity(a, b); got != 300 {
+			t.Errorf("expected cap at 300, got %d", got)
 		}
 	})
 
 	t.Run("composite (all three signals, Jaccard)", func(t *testing.T) {
-		// All three signals at Jaccard = 1.0: 2-hop +3, predicates +4,
-		// tokens +3. Total: 10.
+		// All three signals at Jaccard = 1.0: 2-hop +300, predicates +400,
+		// tokens +300. Total: affinityMax.
 		a := tripEntity{
 			name:        "A",
 			twoHop:      map[string]bool{"X": true},
@@ -288,8 +412,8 @@ func TestPairStructuralAffinity(t *testing.T) {
 			predicates:  map[string]bool{"TheoryOf": true},
 			briefTokens: map[string]bool{"alpha": true, "beta": true},
 		}
-		if got := pairStructuralAffinity(a, b); got != 10 {
-			t.Errorf("expected 10 (3+4+3 at Jaccard 1.0), got %d", got)
+		if got := pairStructuralAffinity(a, b); got != affinityMax {
+			t.Errorf("expected %d (300+400+300 at Jaccard 1.0), got %d", affinityMax, got)
 		}
 	})
 }

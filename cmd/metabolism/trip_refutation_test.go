@@ -77,11 +77,14 @@ func TestRefutedPairKeysFromLog(t *testing.T) {
 }
 
 func TestPickCrossClusterPairsExcludesRefuted(t *testing.T) {
+	// predicates give every pair a non-zero structural route, so the
+	// zero-affinity floor doesn't drop them before the refusal check runs —
+	// this test is about the refuted set, not the floor.
 	entities := []tripEntity{
-		{name: "A1", cluster: 0},
-		{name: "A2", cluster: 0},
-		{name: "B1", cluster: 1},
-		{name: "B2", cluster: 1},
+		{name: "A1", cluster: 0, predicates: sharedRoute},
+		{name: "A2", cluster: 0, predicates: sharedRoute},
+		{name: "B1", cluster: 1, predicates: sharedRoute},
+		{name: "B2", cluster: 1, predicates: sharedRoute},
 	}
 	refuted := map[string]bool{pairKey("A1", "B1"): true}
 

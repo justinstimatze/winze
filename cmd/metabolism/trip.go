@@ -1259,78 +1259,71 @@ func pairCandidateScore(a, b tripEntity) int {
 	return s
 }
 
-// pairStructuralAffinity returns a secondary score used to break ties
-// among candidates with the same pairCandidateScore. The structural
-// affinity is computed from three cheap graph/text signals, all
-// Jaccard-normalized so dense hub entities don't auto-win the
-// tie-breaker:
+// affinityMax is the ceiling of pairStructuralAffinity: 300 + 400 + 300, one
+// per signal below. Milli-scale rather than the original 0–10 because integer
+// division at 0–10 truncated almost every real pair to 0–2. Measured on the
+// live corpus before the rescale: all 25 selected pairs scored affinity 1 or 2
+// out of a nominal 10, so the "tie-breaker" was discriminating between two
+// values and ties resolved by shuffle. The signals were fine; the resolution
+// was not.
+const affinityMax = 1000
+
+// pairStructuralAffinity scores how much genuine semantic route exists between
+// two cross-cluster entities, on 0–affinityMax. Three cheap graph/text signals,
+// all Jaccard-normalized so dense hub entities don't auto-win:
 //
-//   - 2-hop neighborhood Jaccard (cap +3): |N²(a) ∩ N²(b)| / |N²(a) ∪ N²(b)|.
-//     Non-zero overlap means the two cross-cluster entities share
-//     intermediate context, usually through a bridge — the analogy has
-//     a real route. Jaccard rather than raw count so a hub like
-//     GigerenzerRationalDeviationReframing (huge 2-hop neighborhood)
-//     doesn't trivially overlap with everything.
-//   - predicate-type Jaccard (cap +4): entities whose predicate
-//     signatures rhyme (e.g. both heavy in TheoryOf and CommentaryOn)
-//     score above categorical mismatches (LocatedIn vs Disputes).
-//   - brief-vocabulary Jaccard (cap +3): shared content tokens between
-//     briefs as a cheap proxy for "would these concepts naturally share
-//     vocabulary," normalized so a verbose-brief entity doesn't pile up
-//     overlap by sheer surface area.
+//   - 2-hop neighborhood Jaccard (cap +300): |N²(a) ∩ N²(b)| / |N²(a) ∪ N²(b)|.
+//     Non-zero overlap means the two entities share intermediate context,
+//     usually through a bridge — the analogy has a real route. Jaccard rather
+//     than raw count so a hub like GigerenzerRationalDeviationReframing (huge
+//     2-hop neighborhood) doesn't trivially overlap with everything.
+//   - predicate-type Jaccard (cap +400): entities whose predicate signatures
+//     rhyme (e.g. both heavy in TheoryOf and CommentaryOn) score above
+//     categorical mismatches (LocatedIn vs Disputes).
+//   - brief-vocabulary Jaccard (cap +300): shared content tokens between briefs
+//     as a cheap proxy for "would these concepts naturally share vocabulary,"
+//     normalized so a verbose-brief entity doesn't pile up overlap by sheer
+//     surface area.
 //
-// Used as a secondary sort key only — never combined with the primary
-// score. This preserves the strict invariant from idea #1 that any
-// bridge-anchored pair outranks any pure brief-only pair, while
-// differentiating among the (often thousands of) tied bridge×bridge
-// candidates that idea #1 alone leaves randomly ordered.
+// This is a PRIMARY ranking input, not a tie-breaker. It was tie-break-only
+// until 2026-08-05, which is what produced the shallow trip promotions: a
+// bridge×bridge pair with zero semantic route between the endpoints outranked
+// every non-bridge pair no matter how well the two concepts actually connected,
+// because affinity could never overcome a 3-point bridge bonus. Cycle 27's
+// ErrorManagementTheoryOfApophenia ↔ UDHRAsTheoryOfHumanRights promotion is the
+// artifact of that ordering. See pickCrossClusterPairs for the blend and the
+// zero-affinity floor.
 //
-// Hub-bias mitigation: the post-9ccf567 polecat run (wi-085, 4 cycles
-// × 5 pairs) showed GigerenzerRationalDeviationReframing dominating
-// 3 of 4 cycles because raw-count signals favored its dense
-// neighborhood. Switching to Jaccard normalizes for connectivity
-// degree without losing the "rhyming shape" intuition.
+// Hub-bias mitigation: the post-9ccf567 polecat run (wi-085, 4 cycles × 5 pairs)
+// showed GigerenzerRationalDeviationReframing dominating 3 of 4 cycles because
+// raw-count signals favored its dense neighborhood. Jaccard normalizes for
+// connectivity degree without losing the "rhyming shape" intuition — at
+// milli-scale a hub's single diluted overlap scores a few points rather than
+// truncating to zero, which keeps it ranked far below a genuine partial overlap
+// without discarding the signal entirely.
 func pairStructuralAffinity(a, b tripEntity) int {
 	s := 0
 
-	if len(a.twoHop) > 0 && len(b.twoHop) > 0 {
+	jaccard := func(x, y map[string]bool, weight int) int {
+		if len(x) == 0 || len(y) == 0 {
+			return 0
+		}
 		inter := 0
-		for n := range a.twoHop {
-			if b.twoHop[n] {
+		for k := range x {
+			if y[k] {
 				inter++
 			}
 		}
-		union := len(a.twoHop) + len(b.twoHop) - inter
-		if union > 0 {
-			s += (inter * 3) / union
+		union := len(x) + len(y) - inter
+		if union == 0 {
+			return 0
 		}
+		return (inter * weight) / union
 	}
 
-	if len(a.predicates) > 0 && len(b.predicates) > 0 {
-		inter := 0
-		for p := range a.predicates {
-			if b.predicates[p] {
-				inter++
-			}
-		}
-		union := len(a.predicates) + len(b.predicates) - inter
-		if union > 0 {
-			s += (inter * 4) / union
-		}
-	}
-
-	if len(a.briefTokens) > 0 && len(b.briefTokens) > 0 {
-		inter := 0
-		for t := range a.briefTokens {
-			if b.briefTokens[t] {
-				inter++
-			}
-		}
-		union := len(a.briefTokens) + len(b.briefTokens) - inter
-		if union > 0 {
-			s += (inter * 3) / union
-		}
-	}
+	s += jaccard(a.twoHop, b.twoHop, 300)
+	s += jaccard(a.predicates, b.predicates, 400)
+	s += jaccard(a.briefTokens, b.briefTokens, 300)
 
 	return s
 }
@@ -1413,10 +1406,11 @@ func pickCrossClusterPairs(entities []tripEntity, n int, refuted map[string]bool
 	// rejects it again — a rejection treadmill with zero forward progress.
 	type candidate struct {
 		pair     tripPair
-		score    int
-		affinity int
+		clusters [2]int
+		rank     int
 	}
 	var candidates []candidate
+	zeroAffinity := 0
 
 	for i, cidA := range clusterIDs {
 		for _, cidB := range clusterIDs[i+1:] {
@@ -1425,36 +1419,82 @@ func pickCrossClusterPairs(entities []tripEntity, n int, refuted map[string]bool
 					if refuted[pairKey(a.name, b.name)] {
 						continue
 					}
+					affinity := pairStructuralAffinity(a, b)
+					// Zero-affinity floor: no shared 2-hop context, no
+					// predicate rhyme, no brief vocabulary in common. There is
+					// no route between these two concepts for an analogy to
+					// travel, so anything the generator produces is invented
+					// rather than found. Excluding them is the difference
+					// between a discovery engine and a confabulation engine.
+					if affinity == 0 {
+						zeroAffinity++
+						continue
+					}
 					candidates = append(candidates, candidate{
 						pair:     tripPair{A: a, B: b},
-						score:    pairCandidateScore(a, b),
-						affinity: pairStructuralAffinity(a, b),
+						clusters: [2]int{cidA, cidB},
+						// Blend, not lexicographic. pairCandidateScore is 0–8
+						// and affinity is 0–affinityMax, so scaling the score
+						// by affinityMax/8 puts both on the same footing and a
+						// strong route can outweigh a bridge bonus. Under the
+						// old strict ordering it never could, which is how
+						// bridge×bridge pairs with no semantic connection won
+						// every cycle.
+						rank: pairCandidateScore(a, b)*(affinityMax/8) + affinity,
 					})
 				}
 			}
 		}
 	}
+	if zeroAffinity > 0 {
+		fmt.Printf("[trip] excluding %d zero-affinity pair(s) (no shared route)\n", zeroAffinity)
+	}
 
-	// Shuffle, then stable-sort by primary score then affinity. Random
-	// shuffle survives within the (score, affinity) tie class so the
-	// trip cycle keeps exploration variance even after ranking.
+	// Shuffle, then stable-sort by blended rank. Random shuffle survives within
+	// a rank tie class so the cycle keeps exploration variance after ranking.
 	rand.Shuffle(len(candidates), func(i, j int) {
 		candidates[i], candidates[j] = candidates[j], candidates[i]
 	})
 	sort.SliceStable(candidates, func(i, j int) bool {
-		if candidates[i].score != candidates[j].score {
-			return candidates[i].score > candidates[j].score
-		}
-		return candidates[i].affinity > candidates[j].affinity
+		return candidates[i].rank > candidates[j].rank
 	})
 
-	// Take top n
 	if n > len(candidates) {
 		n = len(candidates)
 	}
-	pairs := make([]tripPair, n)
-	for i := 0; i < n; i++ {
-		pairs[i] = candidates[i].pair
+
+	// Round-robin across cluster pairs. Ranking alone produces a monoculture:
+	// measured on the live corpus (225 entities, 8 clusters), all 25 selected
+	// pairs were cluster 0 × cluster 6 — every trip was "some consciousness
+	// thesis ↔ some Tunguska impact hypothesis," because that one cluster pair
+	// saturated the top score class. Taking the best remaining candidate from
+	// each cluster pair in turn spends the budget across the topology instead
+	// of exhausting one seam.
+	groups := map[[2]int][]candidate{}
+	var order [][2]int
+	for _, c := range candidates {
+		if _, seen := groups[c.clusters]; !seen {
+			order = append(order, c.clusters) // first sighting = best-ranked
+		}
+		groups[c.clusters] = append(groups[c.clusters], c)
+	}
+
+	pairs := make([]tripPair, 0, n)
+	for round := 0; len(pairs) < n; round++ {
+		progressed := false
+		for _, key := range order {
+			if round >= len(groups[key]) {
+				continue
+			}
+			pairs = append(pairs, groups[key][round].pair)
+			progressed = true
+			if len(pairs) == n {
+				break
+			}
+		}
+		if !progressed {
+			break // every group exhausted
+		}
 	}
 	return pairs
 }
