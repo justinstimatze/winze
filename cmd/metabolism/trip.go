@@ -2140,3 +2140,23 @@ func drugProfile(temperature float64, promptType string) string {
 
 	return tempLabel + "/" + promptLabel
 }
+
+// symmetricPredicates are the relations where argument order carries no
+// meaning: "A StructurallyAnalogousTo B" and "B StructurallyAnalogousTo A"
+// assert the same thing. Documented in docs/predicates.md.
+//
+// The forcing function was a measured inconsistency rather than a tidiness
+// urge. In .metabolism-trip-verdicts.jsonl the critic ACCEPTED
+// SelfAuditEpiphenomenalism → Schizophrenia and REJECTED
+// Schizophrenia → SelfAuditEpiphenomenalism as shallow_pattern_matching —
+// same two entities, same predicate, same log. It was reading argument
+// order as evidence on a relation that has none, which also explains the
+// cycle-27 run-to-run flip that criticstability_test.go was written for:
+// the generator emits the pair in whichever order it happened to sample.
+//
+// Note the prompt already told it the predicate was symmetric, in those
+// words, and that did not prevent the split. Saying so is not the fix;
+// presenting the pair identically is.
+var symmetricPredicates = map[string]bool{
+	"StructurallyAnalogousTo": true,
+}

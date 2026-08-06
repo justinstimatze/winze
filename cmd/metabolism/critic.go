@@ -394,14 +394,29 @@ func buildTripCriticPrompt(conn TripConnection, exemplars []claimExemplar) strin
 
 `)
 	b.WriteString(formatExemplars(exemplars))
-	b.WriteString(`# Candidate trip connection
-
-Subject: `)
-	b.WriteString(conn.EntityA)
-	b.WriteString("\nObject: ")
-	b.WriteString(conn.EntityB)
-	b.WriteString("\nPredicate: ")
-	b.WriteString(conn.Predicate)
+	b.WriteString("# Candidate trip connection\n\n")
+	// Symmetric predicates are presented in a fixed order under neutral
+	// labels. "Subject"/"Object" invite a reading of direction that the
+	// relation does not have, and the sort makes both orderings of a pair
+	// into one prompt — see symmetricPredicates for the measured split
+	// that prompted this.
+	first, second, symmetric := criticPresentationOrder(conn)
+	if symmetric {
+		b.WriteString("Entity 1: ")
+		b.WriteString(first)
+		b.WriteString("\nEntity 2: ")
+		b.WriteString(second)
+		b.WriteString("\nPredicate: ")
+		b.WriteString(conn.Predicate)
+		b.WriteString(" (SYMMETRIC — the two entities are listed in alphabetical order, which carries no meaning. Judge the connection, not the ordering.)")
+	} else {
+		b.WriteString("Subject: ")
+		b.WriteString(first)
+		b.WriteString("\nObject: ")
+		b.WriteString(second)
+		b.WriteString("\nPredicate: ")
+		b.WriteString(conn.Predicate)
+	}
 	b.WriteString("\nLLM rationale (Quote): ")
 	b.WriteString(truncateQuote(conn.Rationale, 800))
 	b.WriteString(`
@@ -433,4 +448,25 @@ VERDICT: REJECT
 REASON: <short phrase, e.g. "shallow_pattern_matching", "predicate_misuse_commentaryon_no_paper", "category_mismatch_dualism", "below_exemplar_substance_bar">
 `)
 	return b.String()
+}
+
+// criticPresentationOrder returns the two entities in the order the critic
+// prompt should show them, plus whether the predicate is symmetric.
+//
+// For a symmetric predicate the pair is sorted, so both orderings the
+// generator might emit produce one identical prompt and therefore one
+// verdict. For everything else the order is meaningful and is left alone.
+//
+// This changes only what the critic is shown. The stored claim keeps the
+// order the generator produced — for a symmetric relation that order is
+// arbitrary but harmless, and rewriting it here would mean the emitted Go
+// no longer matched the candidate that was judged.
+func criticPresentationOrder(conn TripConnection) (first, second string, symmetric bool) {
+	if !symmetricPredicates[conn.Predicate] {
+		return conn.EntityA, conn.EntityB, false
+	}
+	if conn.EntityB < conn.EntityA {
+		return conn.EntityB, conn.EntityA, true
+	}
+	return conn.EntityA, conn.EntityB, true
 }
