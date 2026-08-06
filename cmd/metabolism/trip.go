@@ -1532,12 +1532,32 @@ func pickCrossClusterPairs(entities []tripEntity, n int, refuted map[string]bool
 	}
 	var candidates []candidate
 	belowFloor := 0
+	unpromotable := 0
 
 	for i, cidA := range clusterIDs {
 		for _, cidB := range clusterIDs[i+1:] {
 			for _, a := range byCluster[cidA] {
 				for _, b := range byCluster[cidB] {
 					if refuted[pairKey(a.name, b.name)] {
+						continue
+					}
+					// No legal predicate for these two roles means nothing
+					// this pair produces could ever be promoted. The refusal
+					// already existed one step later, at the point where the
+					// generator is handed its predicate menu — but by then a
+					// Sonnet call has been spent writing a rationale for a
+					// claim with nowhere to go. Measured on the 2026-08-05
+					// run: 10 of the 11 rows in
+					// .metabolism-trip-isolated.jsonl are Person-endpoint
+					// pairs that died exactly this way.
+					//
+					// Asking tripCompatiblePredicates rather than testing the
+					// roles directly keeps one source of truth. It already
+					// encodes the Person guard and the attribution ban list,
+					// so a future addition to either is inherited here for
+					// free instead of needing a second edit nobody remembers.
+					if len(tripCompatiblePredicates(a.roleType, b.roleType)) == 0 {
+						unpromotable++
 						continue
 					}
 					affinity := pairStructuralAffinity(a, b)
@@ -1581,6 +1601,9 @@ func pickCrossClusterPairs(entities []tripEntity, n int, refuted map[string]bool
 	}
 	if belowFloor > 0 {
 		fmt.Printf("[trip] excluding %d pair(s) below the affinity floor of %d (no shared route)\n", belowFloor, affinityFloor)
+	}
+	if unpromotable > 0 {
+		fmt.Printf("[trip] excluding %d pair(s) with no promotable predicate for their roles (mostly Person endpoints — trip has no source grounding)\n", unpromotable)
 	}
 
 	// Shuffle, then stable-sort by blended rank. Random shuffle survives within
