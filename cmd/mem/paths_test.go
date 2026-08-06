@@ -80,3 +80,78 @@ func TestMemRootResolutionOrder(t *testing.T) {
 		t.Errorf("with WINZE_MEMORY set: memRoot() = %q, want /srv/override", got)
 	}
 }
+
+// TestMemRootConfigured covers the distinction memRoot itself cannot make:
+// an opted-in store versus the last-resort default. The capture guard is
+// installed user-wide on the strength of this, so the case that matters most
+// is the negative one — a directory outside any repo, with no env var and no
+// ~/winze-memory, must report false and let the native write through.
+func TestMemRootConfigured(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	// HOME is redirected so the ~/winze-memory leg is testable without
+	// depending on whether the real home has one.
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+
+	outside := t.TempDir()
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(outside); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(prev) })
+
+	t.Setenv("WINZE_MEMORY", "")
+	if memRootConfigured() {
+		t.Error("no env, no repo, no ~/winze-memory: want false — the guard would " +
+			"block a native write and have nowhere to redirect it")
+	}
+
+	// The bare default counts once the directory actually exists.
+	if err := os.Mkdir(filepath.Join(fakeHome, "winze-memory"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !memRootConfigured() {
+		t.Error("~/winze-memory exists: want true")
+	}
+	if err := os.Remove(filepath.Join(fakeHome, "winze-memory")); err != nil {
+		t.Fatal(err)
+	}
+
+	// A file at that path is not a store.
+	if err := os.WriteFile(filepath.Join(fakeHome, "winze-memory"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if memRootConfigured() {
+		t.Error("~/winze-memory is a regular file: want false")
+	}
+	if err := os.Remove(filepath.Join(fakeHome, "winze-memory")); err != nil {
+		t.Fatal(err)
+	}
+
+	// git config is opt-in by construction, and needs no store on disk yet.
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = outside
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q", "-b", "main")
+	run("config", "winze.memory", "/srv/shared-store")
+	if !memRootConfigured() {
+		t.Error("winze.memory set in git config: want true")
+	}
+
+	// The env var alone is enough, in any directory.
+	run("config", "--unset", "winze.memory")
+	t.Setenv("WINZE_MEMORY", "/srv/explicit")
+	if !memRootConfigured() {
+		t.Error("WINZE_MEMORY set: want true")
+	}
+}

@@ -54,6 +54,16 @@ func runCaptureGuard() {
 		os.Exit(0)
 	}
 
+	// Only redirect somewhere that exists. This guard is safe to install
+	// user-wide precisely because of this check: in a project that never opted
+	// in to a store, blocking the native write would take away the only place
+	// the memory could go and point at nothing. Deliberately last — it shells
+	// out to git, so it runs only on the writes already about to be blocked,
+	// not on every Write and Edit in the session.
+	if !memRootConfigured() {
+		os.Exit(0)
+	}
+
 	fmt.Fprint(os.Stderr, blockMessage)
 	os.Exit(2)
 }

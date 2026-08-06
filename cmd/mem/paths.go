@@ -78,3 +78,26 @@ func gitConfigMemory() string {
 	}
 	return strings.TrimSpace(buf.String())
 }
+
+// memRootConfigured reports whether this working directory has actually opted
+// in to a winze-memory store, as opposed to memRoot() merely handing back its
+// last-resort default.
+//
+// memRoot always returns a path, so it cannot distinguish "this project uses
+// winze-memory" from "nobody said, here is ~/winze-memory". The capture guard
+// needs that distinction: it blocks native auto-memory writes and tells the
+// caller to use winze-memory instead, which is only sound advice where a store
+// exists. Fired in a project with no store, it would block the write and offer
+// nowhere to put it.
+//
+// An explicit $WINZE_MEMORY or `winze.memory` git config is opt-in by
+// construction. The bare default counts only when the directory is really
+// there, which keeps a pre-existing ~/winze-memory user working without
+// requiring them to set anything.
+func memRootConfigured() bool {
+	if os.Getenv("WINZE_MEMORY") != "" || gitConfigMemory() != "" {
+		return true
+	}
+	fi, err := os.Stat(filepath.Join(home(), "winze-memory"))
+	return err == nil && fi.IsDir()
+}
