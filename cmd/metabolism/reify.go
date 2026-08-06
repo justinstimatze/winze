@@ -7,10 +7,40 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
 )
+
+// reifySourceRe matches the provenance header runReify writes into
+// predictions.go, capturing the cycle count that produced it.
+var reifySourceRe = regexp.MustCompile(`// Source: \.metabolism-log\.json \((\d+) cycles`)
+
+// existingReifyCycleCount reads the cycle count a previously-generated
+// predictions.go records in its own header. Returns -1 when the file is
+// absent or the header is unreadable, which the caller treats as "no
+// previous state to compare against".
+//
+// The generated file carrying its own provenance is what makes the shrink
+// guard below possible without any side channel: the file states how many
+// cycles produced it, so a reify can compare its input against the output
+// it is about to overwrite.
+func existingReifyCycleCount(outPath string) int {
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		return -1
+	}
+	m := reifySourceRe.FindSubmatch(data)
+	if m == nil {
+		return -1
+	}
+	n, err := strconv.Atoi(string(m[1]))
+	if err != nil {
+		return -1
+	}
+	return n
+}
 
 // runReify reads the metabolism log and generates a Go corpus file that
 // encodes the metabolism loop's predictions as first-class KB claims using
@@ -237,6 +267,38 @@ func runReify(dir string) {
 
 	today := time.Now().Format("2006-01-02")
 	outPath := filepath.Join(dir, "predictions.go")
+
+	// Shrink guard. predictions.go is a pure function of the log — the whole
+	// file is rebuilt and overwritten, nothing on disk is merged forward. So a
+	// log with fewer cycles than the one that produced the current file
+	// silently deletes the difference.
+	//
+	// That is not hypothetical: on 2026-08-05 an unattended cycle regenerated a
+	// 376-cycle predictions.go from a 44-cycle log, dropping 3019 lines to 982
+	// and taking 375 var declarations of resolution history with it. The corpus
+	// had moved into corpus/ and the 4.2 MB log stayed behind at the repo root,
+	// so reify read a log that had lost nearly all its history. The only guard
+	// then was len(mlog.Cycles) == 0, which an emptier-but-nonempty log walks
+	// straight past.
+	//
+	// A test existed that would have caught the shrinkage and did — it just ran
+	// outside the write gate, so nothing acted on it. This check is inside the
+	// path that does the writing, which is the whole difference.
+	//
+	// Set WINZE_REIFY_ALLOW_SHRINK=1 when a smaller log is deliberate (a
+	// genuine prune). Fails closed otherwise: refusing to write costs a re-run,
+	// writing costs history that only git has.
+	if prev := existingReifyCycleCount(outPath); prev > totalCycles && os.Getenv("WINZE_REIFY_ALLOW_SHRINK") == "" {
+		fmt.Fprintf(os.Stderr,
+			"[reify] REFUSING to write %s: it was generated from %d cycles but this log has only %d.\n",
+			filepath.Base(outPath), prev, totalCycles)
+		fmt.Fprintf(os.Stderr,
+			"[reify] Regenerating would delete the difference. Check that %s is the right log\n",
+			filepath.Join(dir, ".metabolism-log.json"))
+		fmt.Fprintf(os.Stderr,
+			"[reify] (a moved corpus can strand it), or set WINZE_REIFY_ALLOW_SHRINK=1 if the prune is deliberate.\n")
+		os.Exit(1)
+	}
 
 	var b strings.Builder
 
