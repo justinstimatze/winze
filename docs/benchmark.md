@@ -67,6 +67,21 @@ automatically the right number — whether an error is a harness bug or a genuin
 failure to answer is a judgement for whoever reads the stderr lines. Quote the
 one you can defend, and say which.
 
+### Committing a baseline
+
+`--baseline <path>` writes the per-question outcomes as JSONL: qid, type,
+question, gold, answer, verdict, and the fact counts. Pass it on any run whose
+configuration you might later want to compare against, and commit the file to
+`cmd/longmemeval/baselines/`.
+
+This exists because of the noise floor below. A two-question move in the
+aggregate is unreadable; *which* questions flipped is not, and that comparison
+needs the previous run's rows. Answers and judgements do not cache, so
+regenerating a baseline costs real spend — cheaper to keep it than to re-earn
+it. The run log stays out of git: its lessons belong in this file, and its
+timing columns are contaminated (see below). The diff recipe is in
+`cmd/longmemeval/baselines/README.md`.
+
 ### Results, 2026-08-06
 
 First scoring runs the harness has ever had. Balanced 60-question subset, ten
