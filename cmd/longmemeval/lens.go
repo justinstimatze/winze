@@ -22,11 +22,23 @@ import (
 // against 40-90% everywhere else — a cliff, not a slope, and the lens was
 // doing what it was told: the v2 rulebook said "durable personal facts a user
 // stated about themselves" and "skip generic assistant explanations", while
-// that question type asks what the assistant said. Those questions want a
-// venue it named, a schedule it produced, a colour it described. The --probe
-// pass on 2026-08-03 had already called lens scoping the ceiling without being
-// able to size it; this is the size.
-const lensVersion = "v3"
+// that question type asks what the assistant said.
+// v4: never collapse an enumeration. v3 took that row 1/10 -> 4/10 with no
+// regressions elsewhere (60% -> 70% overall), and every remaining failure was
+// the same shape: the assistant produced a table, ranking or numbered list and
+// the question asked for one element of it ("the rotation for Admon on a
+// Sunday", "the 7th job in the list"). Truncation was ruled out by --probe,
+// cut=0 on all ten. ATTRIBUTE<TAB>VALUE was collapsing a 56-cell sheet into a
+// single "shift rotation sheet provided" fact, so the evidence arrived and the
+// lens threw the structure away.
+//
+// The never-compress doctrine is borrowed from mem0's extraction prompt, which
+// says to split into more memories rather than drop details, and never
+// sacrifice a proper noun or quantity for brevity. Not borrowed: their prose
+// form. mem0 packs context into 15-80 word sentences partly because it has no
+// schema to put it in; winze has typed slots, so the same rule lands as one
+// typed row per element instead of longer text.
+const lensVersion = "v4"
 
 // lensSystem is the extraction rulebook — identical across every session call,
 // so it rides an ephemeral cache_control block (marked in callLens).
@@ -51,6 +63,12 @@ Rules:
    - specific attributes described (a colour, a material, a size) where the description is the answer someone would come back for.
    Skip the generic explanation, the caveats, and the reasoning that surrounded them. "Here are three things to consider when choosing a hotel" is not a fact; "recommended the Hotel Meridien in Lyon" is.
 3. One fact per line. Skip small talk and puzzle-solving — but a concrete thing the user did on a given day is a fact, not small talk, and a concrete thing you named for them is a fact, not an explanation.
+3a. NEVER COLLAPSE AN ENUMERATION. When the content is a list, a table, a ranking, a schedule, or a set of items each with their own attributes, emit ONE LINE PER ELEMENT — not one line summarising that a list was given. "provided a shift rotation sheet" is worthless to someone who later asks who works Sunday; the row for each person and day is the fact. Split rather than compress, and never drop a name, number, or date to keep the output short. Specifically:
+   - Tables and schedules: one line per cell that carries meaning, with the coordinates in the ATTRIBUTE (e.g. shift_admon_sunday, refinery_lake_charles_processes).
+   - Ordered or numbered lists: keep the position in the ATTRIBUTE, because people ask by index (e.g. wfh_job_7). Also emit the list itself as one line so "what did you suggest" still works.
+   - Sets of things each described: one line per thing per attribute asked about (e.g. plesiosaur_body_colour, tyrannosaur_body_colour).
+   - Recommendations carrying a qualifier — romantic, cheapest, closest, best for kids — keep the qualifier in the ATTRIBUTE or VALUE. It is usually the whole reason someone comes back for it.
+   A long enumeration is many facts, not one fact that happens to be long. If a table has thirty meaningful cells, thirty lines is the correct output.
 4. Each fact is a single tab-separated line:
    ATTRIBUTE<TAB>VALUE<TAB>KIND<TAB>QUOTE
    - ATTRIBUTE: a short snake_case slug naming the fact (e.g. graduation_degree, home_city, car_purchase, dietary_preference, restaurant_recommendation, shift_assignment).
