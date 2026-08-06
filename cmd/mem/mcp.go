@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/justinstimatze/winze/internal/corpuslock"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -403,7 +404,21 @@ func execAdd(note, role, title string) (string, error) {
 
 // gitCommitMemory stages memory.go and commits. The store is local-only (no
 // remote), so this is safe and unattended.
+//
+// It takes the corpus lock for the same reason commitDecl does, but covers a
+// different span. execAdd/execLink/execSetBrief shell out to winze-add and
+// winze-edit, which acquire and release the lock inside the child process; by
+// the time control returns here the file mutation is serialized but the commit
+// is not. Two sessions sharing one store would then race on .git/index.lock —
+// git errors rather than corrupts, but the write fails for no good reason.
+// Acquiring here is not nested: the child has already released.
 func gitCommitMemory(note string) (string, error) {
+	unlock, err := corpuslock.Acquire(memRoot())
+	if err != nil {
+		return "", fmt.Errorf("corpus lock: %w", err)
+	}
+	defer unlock()
+
 	subject := oneLine(note)
 	if len(subject) > 60 {
 		subject = subject[:60] + "…"
