@@ -111,11 +111,13 @@ func main() {
 	}
 
 	var rows []resultRow
+	errored := 0
 	for i, q := range questions {
 		fmt.Printf("\n[%d/%d] %s [%s]\n  Q: %s\n", i+1, len(questions), q.QuestionID, q.QuestionType, q.Question)
 		row, err := r.runQuestion(q, *topK)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+			errored++
 			continue
 		}
 		mark := "✗"
@@ -126,7 +128,7 @@ func main() {
 		rows = append(rows, row)
 	}
 
-	report(rows, r.stats)
+	report(rows, errored, r.stats)
 }
 
 // runQuestion runs the full loop for one question, timing each hop.

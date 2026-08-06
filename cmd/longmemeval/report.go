@@ -58,9 +58,22 @@ func ms(ns int64) float64 { return float64(ns) / 1e6 }
 // report prints the accuracy and the timing breakdown that the perf story
 // cares about: the winze-via-defn machinery (build + sync + retrieve) held
 // apart from the LLM hops (extract + answer + judge).
-func report(rows []resultRow, stats *usageStats) {
+//
+// errored is the count of questions that raised before producing a row. It
+// is reported rather than absorbed, because rows is the SURVIVORS and
+// dividing by it alone turns harness failures into a higher score: three
+// questions failing to build out of five would print "RESULTS (2
+// questions) … accuracy 2/2 = 100%", with nothing on screen saying the
+// subset was ever larger. A benchmark number that silently shrinks its own
+// denominator is worse than no number, since the first one produced is the
+// one that gets quoted.
+func report(rows []resultRow, errored int, stats *usageStats) {
 	fmt.Printf("\n%s\n", divider())
-	fmt.Printf("RESULTS  (%d questions)\n", len(rows))
+	fmt.Printf("RESULTS  (%d scored", len(rows))
+	if errored > 0 {
+		fmt.Printf(", %d errored", errored)
+	}
+	fmt.Printf(" of %d attempted)\n", len(rows)+errored)
 	fmt.Printf("%s\n", divider())
 
 	if len(rows) == 0 {
@@ -85,7 +98,16 @@ func report(rows []resultRow, stats *usageStats) {
 		sumLLM += ms(r.extractNS + r.answerNS + r.judgeNS)
 	}
 
-	fmt.Printf("accuracy: %d/%d = %.0f%%\n", correct, len(rows), 100*float64(correct)/float64(len(rows)))
+	fmt.Printf("accuracy: %d/%d = %.0f%%  (of scored)\n", correct, len(rows), 100*float64(correct)/float64(len(rows)))
+	if errored > 0 {
+		// The honest lower bound. Which of the two is the real number depends
+		// on whether the errors are harness bugs or genuine inability to
+		// answer, and that is a judgement for whoever reads the stderr lines
+		// — so print both and make the spread visible rather than picking.
+		att := len(rows) + errored
+		fmt.Printf("          %d/%d = %.0f%%  (of attempted — counts the %d errored as wrong)\n",
+			correct, att, 100*float64(correct)/float64(att), errored)
+	}
 	var types []string
 	for t := range byType {
 		types = append(types, t)
