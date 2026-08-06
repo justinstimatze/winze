@@ -44,7 +44,7 @@ func main() {
 		nMulti     = flag.Int("multi", 0, "number of multi-session questions")
 		nAsst      = flag.Int("assistant", 0, "number of single-session-assistant questions")
 		nPref      = flag.Int("preference", 0, "number of single-session-preference questions")
-		topK       = flag.Int("k", 15, "retrieval top-k facts fed to the answerer")
+		topK       = flag.Int("k", 60, "retrieval top-k facts fed to the answerer. Was 15, with no recorded rationale; the 2026-08-06 sweep scored 44/45/47 of 60 at k=15/30/60, monotone and concentrated in multi-session (7->8->9), the type with the most facts competing for the window. 27 of 60 questions produce more facts than 15 slots admit, so 15 was binding on nearly half the set. Not swept past 60 — no ceiling was found, so a larger value may still pay. Costs answerer input tokens only; retrieval searches the whole store either way.")
 		dryRun     = flag.Bool("dry-run", false, "select subset and report shape only; no API calls")
 		probe      = flag.Bool("probe", false, "report whether gold answer turns survive renderSession truncation; no API calls")
 	)
