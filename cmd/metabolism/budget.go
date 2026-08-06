@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -37,12 +38,30 @@ const (
 // ActualSpentCents is the *measured* tally from anthropic.Usage, recorded
 // after each LLM response. Estimates protect against runaway loops;
 // actuals show what really got spent in the trend reader.
+//
+// The two used to accumulate independently for the life of a month, which
+// made the gate progressively wrong in one direction: estimates are
+// deliberately pessimistic, so the tally that decides whether a phase may
+// run drifted above what was really spent and stayed there. Measured on
+// 2026-08-06 the corpus had SpentCents=300 against 11.90¢ actual and had
+// been refusing every generative phase for eighteen hours at 4% of its
+// cap. loadBudgetGuard now settles the estimate to the measured total on
+// load — see UnmeasuredCalls for when it declines to.
 type budgetState struct {
 	SchemaVersion    int     `json:"schema_version"`
 	Month            string  `json:"month"`              // "2026-04"
 	SpentCents       int     `json:"spent_cents"`        // accumulated estimated spend this month
 	ActualSpentCents float64 `json:"actual_spent_cents"` // measured spend from anthropic.Usage this month
 	UpdatedAt        string  `json:"updated_at"`         // RFC3339, last write
+
+	// UnmeasuredCalls counts LLM responses whose cost could not be measured
+	// because the model had no pricing entry (see warnUnknownModel). It is
+	// what makes settling safe: ActualSpentCents is a floor, not a total,
+	// and a month containing even one unpriced call is a month where
+	// settling down to it would erase real spend. Non-zero means the
+	// estimate stands and the gate stays conservative, which is the correct
+	// direction to be wrong in.
+	UnmeasuredCalls int `json:"unmeasured_calls,omitempty"`
 
 	// Cache-effectiveness telemetry (this month). CacheReadTokens is input
 	// served from the prompt cache (billed ~10%); FreshInputTokens is
@@ -69,6 +88,12 @@ type budgetGuard struct {
 // loadBudgetGuard reads .metabolism-budget.json (creating a fresh state
 // if absent) and resets the spent counter on month rollover. Reads the
 // cap from METABOLISM_BUDGET_CENTS — empty/invalid → 0 (unlimited).
+//
+// Load is also where the estimate tally is settled against measured spend
+// (see settleEstimateToActual). Doing it here rather than at the end of a
+// run means a crashed or killed cycle still gets reconciled on the next
+// start, and it keeps the whole correction outside the window where a
+// phase's own actuals have not arrived yet.
 func loadBudgetGuard(dir string) *budgetGuard {
 	g := &budgetGuard{dir: dir}
 	if v := os.Getenv("METABOLISM_BUDGET_CENTS"); v != "" {
@@ -90,13 +115,25 @@ func loadBudgetGuard(dir string) *budgetGuard {
 		g.loaded = true
 		return g
 	}
-	// Month rollover reset.
+	// Month rollover reset. Every per-month tally goes, not just the
+	// estimate: ActualSpentCents and UnmeasuredCalls are scoped to Month
+	// exactly as SpentCents is, and leaving them would hand the settle step
+	// below last month's measured total as if it were this month's — which
+	// would zero out a fresh month's cap on the first run of it.
 	if g.state.Month != currentMonth() {
 		g.state.Month = currentMonth()
 		g.state.SpentCents = 0
+		g.state.ActualSpentCents = 0
+		g.state.UnmeasuredCalls = 0
 		g.state.CacheReadTokens = 0
 		g.state.FreshInputTokens = 0
 		g.state.SchemaVersion = budgetSchema
+	}
+	if moved, why := settleEstimateToActual(&g.state); moved {
+		fmt.Fprintf(os.Stderr, "[budget] %s\n", why)
+		g.persist()
+	} else if why != "" {
+		fmt.Fprintf(os.Stderr, "[budget] not settling: %s\n", why)
 	}
 	g.loaded = true
 	return g
@@ -123,22 +160,17 @@ func (g *budgetGuard) allow(phase string, estCents int) (bool, string) {
 // writes the file. Called after a phase actually runs (not when gated
 // off). Errors during persistence are logged but don't fail the phase
 // — budget is bookkeeping, not a hard transaction.
+//
+// The estimate is still what accumulates here, and still what allow()
+// reads, so a single run cannot outspend its cap while its own actuals
+// are still arriving. The correction happens between runs, in
+// settleEstimateToActual.
 func (g *budgetGuard) charge(phase string, estCents int) {
 	if g.capCents <= 0 {
 		return // not tracking
 	}
 	g.state.SpentCents += estCents
-	g.state.UpdatedAt = time.Now().Format(time.RFC3339)
-	g.state.SchemaVersion = budgetSchema
-	path := filepath.Join(g.dir, ".metabolism-budget.json")
-	b, err := json.MarshalIndent(g.state, "", "  ")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[budget] marshal: %v\n", err)
-		return
-	}
-	if err := os.WriteFile(path, b, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "[budget] write %s: %v\n", path, err)
-	}
+	g.persist()
 }
 
 // loadBudgetSnapshot reads .metabolism-budget.json without applying month
@@ -250,26 +282,24 @@ func costCents(model string, inputTokens, cachedReadTokens, outputTokens int64) 
 // chargeActual records measured spend from one LLM response and persists
 // the running total. Unknown models log once to stderr and skip — better
 // to under-report than to crash the metabolism on a model rename.
+//
+// A skip is counted, not just logged. Silent under-reporting was harmless
+// while actuals were read-only telemetry; now that loadBudgetGuard settles
+// the estimate down to them, an uncounted call would settle away real
+// money. UnmeasuredCalls is how the settle step knows to keep its hands
+// off.
 func (g *budgetGuard) chargeActual(model string, inputTokens, cachedReadTokens, outputTokens int64) {
 	cents, ok := costCents(model, inputTokens, cachedReadTokens, outputTokens)
 	if !ok {
 		warnUnknownModel(model)
+		g.state.UnmeasuredCalls++
+		g.persist()
 		return
 	}
 	g.state.ActualSpentCents += cents
 	g.state.CacheReadTokens += cachedReadTokens
 	g.state.FreshInputTokens += inputTokens
-	g.state.UpdatedAt = time.Now().Format(time.RFC3339)
-	g.state.SchemaVersion = budgetSchema
-	path := filepath.Join(g.dir, ".metabolism-budget.json")
-	b, err := json.MarshalIndent(g.state, "", "  ")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[budget] marshal: %v\n", err)
-		return
-	}
-	if err := os.WriteFile(path, b, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "[budget] write %s: %v\n", path, err)
-	}
+	g.persist()
 }
 
 // globalBudget is set by runCycle (and ensureBudgetGuard for standalone
@@ -307,4 +337,72 @@ func warnUnknownModel(model string) {
 	}
 	unknownModelWarned[model] = true
 	fmt.Fprintf(os.Stderr, "[budget] no pricing entry for model %q — actual spend not counted. Add it to pricingByModel in budget.go.\n", model)
+}
+
+// persist stamps the schema version and timestamp and writes the state
+// file. Errors are logged, never returned — budget is bookkeeping, not a
+// hard transaction, and a failed write must not take a phase down with it.
+//
+// Extracted because charge and chargeActual had the same eighteen lines
+// twice, and the settle logic added a third writer.
+func (g *budgetGuard) persist() {
+	g.state.UpdatedAt = time.Now().Format(time.RFC3339)
+	g.state.SchemaVersion = budgetSchema
+	path := filepath.Join(g.dir, ".metabolism-budget.json")
+	b, err := json.MarshalIndent(g.state, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[budget] marshal: %v\n", err)
+		return
+	}
+	if err := os.WriteFile(path, b, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "[budget] write %s: %v\n", path, err)
+	}
+}
+
+// settleEstimateToActual brings the gate's estimate tally back down to
+// what was really spent, and reports whether it moved.
+//
+// This is the between-runs half of a reserve-then-settle pair. Within a
+// run the estimate is the right thing to gate on, because a phase is
+// charged before its own usage numbers exist and an optimistic tally
+// would let a runaway loop through. Between runs that argument is gone:
+// every prior call's actual has landed, so carrying the pessimistic
+// figure forward just shrinks next month's usable cap for no protection.
+// Left alone the two diverge monotonically, and the gap only ever points
+// one way — at 4x per cycle the corpus reached 300¢ estimated against
+// 11.90¢ actual and stopped generating for eighteen hours.
+//
+// Three refusals, each closing a way this could erase real spend:
+//
+// Zero measured. An estimate above zero with nothing measured under it
+// has two readings — nothing was billed, or the measurement path is not
+// running — and from here they are indistinguishable. The second is the
+// dangerous one: recordActualUsage is wired through a package-level
+// guard, so a call path that misses it reports zero while spending money,
+// and settling to zero every load would leave the cap permanently
+// unreachable. Requiring positive evidence that measurement is alive
+// costs nothing in the real case, where actuals are tens of cents.
+//
+// Unpriced calls. ActualSpentCents is then a floor rather than a total,
+// and settling to a floor drops whatever those calls cost.
+//
+// Measured above estimated. The estimator was optimistic; the larger
+// number is the safe one to keep.
+func settleEstimateToActual(s *budgetState) (moved bool, reason string) {
+	if s.UnmeasuredCalls > 0 {
+		return false, fmt.Sprintf("%d unpriced call(s) this month — actual is a floor, keeping the estimate", s.UnmeasuredCalls)
+	}
+	if s.ActualSpentCents <= 0 {
+		if s.SpentCents > 0 {
+			return false, fmt.Sprintf("%d¢ estimated but nothing measured — cannot tell an unbilled month from a broken meter, keeping the estimate", s.SpentCents)
+		}
+		return false, ""
+	}
+	settled := int(math.Ceil(s.ActualSpentCents))
+	if settled >= s.SpentCents {
+		return false, ""
+	}
+	was := s.SpentCents
+	s.SpentCents = settled
+	return true, fmt.Sprintf("settled %d¢ estimated → %d¢ measured", was, settled)
 }
