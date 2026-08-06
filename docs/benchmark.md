@@ -67,6 +67,58 @@ automatically the right number — whether an error is a harness bug or a genuin
 failure to answer is a judgement for whoever reads the stderr lines. Quote the
 one you can defend, and say which.
 
+### Results, 2026-08-06
+
+First scoring runs the harness has ever had. Balanced 60-question subset, ten
+of each type, oracle set. Accuracy over scored questions; every run was 60
+scored of 60 attempted, no errors.
+
+| lens | k | total | temporal | knowledge | single-user | multi | preference | assistant |
+|------|---|-------|----------|-----------|-------------|-------|------------|-----------|
+| v2   | 15 | 36/60 60% | 9/10 | 9/10 | 7/10 | 6/10 | 4/10 | 1/10 |
+| v3   | 15 | 42/60 70% | 9/10 | 9/10 | 9/10 | 6/10 | 5/10 | 4/10 |
+| v4   | 15 | 44/60 73% | 8/10 | 8/10 | 10/10 | 7/10 | 6/10 | 5/10 |
+| v4   | 30 | 45/60 75% | 9/10 | 8/10 | 10/10 | 8/10 | 5/10 | 5/10 |
+| v4   | 60 | 47/60 78% | 9/10 | 8/10 | 10/10 | 9/10 | 6/10 | 5/10 |
+
+**The noise floor is ±1 question.** Two runs of byte-identical input — same
+lens version, same `k`, all 102 sessions served from the extraction cache —
+scored 43/60 and 44/60. The lens, answerer and judge all sample at the API
+default because none of them sets `Temperature`, so the judge is stochastic.
+At n=60 that is ±1.7 points, which means a one- or two-question difference
+between configurations is not a result. Do not read the per-type columns above
+as trends unless a row moves by three or more.
+
+What survives that bar:
+
+- **v2 → v3 on assistant, 1/10 → 4/10.** The lens was told to skip assistant
+  content and did. See `lensVersion` for the whole diagnosis.
+- **k=15 → k=60, 44 → 47, driven by multi-session 7 → 8 → 9.** Monotone, and
+  concentrated in the type with the most sessions per question and therefore
+  the most facts competing for the window. The v3 run measured 27 of 60
+  questions producing more facts than `k=15` admits, so the mechanism was
+  visible in the fact counts before it was visible in the score.
+
+Two rows are flat across every `k`, which is its own finding:
+
+- **knowledge-update, 8/10 at all three.** More window does not reach it, so
+  those failures are extraction-side. "How many Korean restaurants have I
+  tried" answered correctly under v2 and v3 and wrongly under v4 — the
+  granularity rule emits the superseded and current counts as sibling rows
+  rather than one updated fact, and the answerer picks whichever ranks.
+- **assistant, 5/10 at all three.** The remaining failures answer "I don't
+  know", and no window recovers a fact that was never extracted. v4's
+  enumeration rule is not firing on those cases.
+
+**Preference questions are graded against the wrong shape.** Their gold is not
+an answer, it is a rubric — "the user would prefer relaxing activities before
+9:30 pm" — while the model produces a response that *satisfies* the rubric.
+The judge asks whether the answer conveys the same information as the gold, so
+it correctly reports that a list of activities is not a description of what a
+good list contains. A hand audit of all 15 failures at k=30 found exactly one
+clear mis-score of this kind; the other three preference failures answered "I
+don't know" and are genuine retrieval misses, not grading artifacts.
+
 ### Timings from a busy machine are ceilings, not measurements
 
 Accuracy is load-independent here: all three LLM calls use `context.Background()`
