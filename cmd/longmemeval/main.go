@@ -126,7 +126,9 @@ func main() {
 		stats:    &usageStats{perModel: map[string]*modelUsage{}},
 	}
 
-	rows, errored := runAll(r, questions, *topK, *conc)
+	rows, errored := runAll(os.Stdout, os.Stderr, questions, *conc, func(q Question) (resultRow, error) {
+		return r.runQuestion(q, *topK)
+	})
 
 	report(rows, errored, r.stats)
 
