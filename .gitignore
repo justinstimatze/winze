@@ -137,3 +137,6 @@ cmd/observatory/node_modules/
 
 # LongMemEval dataset (fetched via cmd/longmemeval/fetch-data.sh, not committed)
 /cmd/longmemeval/data/
+
+# stray binary from `go build ./cmd/longmemeval` without -o
+/longmemeval
