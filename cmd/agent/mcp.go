@@ -15,16 +15,21 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// runServe hosts the agentic-first MCP interface to winze-memory over stdio:
+// runServe hosts the agentic read/write MCP interface over stdio, against
+// whatever store storeRoot resolves:
 //
-//	winze_remember(note, role?)  — store a note as a typed memory (build-gated,
-//	                               auto-committed to the local-only repo)
-//	winze_recall(query, limit?)  — hybrid (BM25+semantic) associative recall
+//	winze_remember(note, role?, title?, force?)  — store a note as a typed
+//	                        memory (build-gated, auto-committed to the store)
+//	winze_recall(query, limit?, brief_chars?)    — hybrid BM25+semantic recall
+//	winze_update(var, note, title?)              — revise a Brief in place
+//	winze_link(from, to, rationale, relation?)   — a typed edge between two
+//	                        memories, written as winze's own Conjecture
 //
-// Both are thin wrappers over the built winze-add / winze-query binaries — the
-// tested logic — so this server never reimplements the corpus machinery.
+// All four are thin wrappers over the built winze-add / winze-query /
+// winze-edit binaries — the tested logic — so this server never reimplements
+// the corpus machinery.
 func runServe() {
-	s := server.NewMCPServer("winze-memory", "0.1.0",
+	s := server.NewMCPServer("winze-agent", "0.1.0",
 		server.WithToolCapabilities(true),
 	)
 
@@ -91,22 +96,7 @@ func handleRecall(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	}
 	res, ok := runQueryJSON("--hybrid", query)
 	if !ok {
-		// Name the resolved store first. The overwhelmingly common cause is that
-		// this directory never opted in, so storeRoot fell through to a default
-		// that does not exist — and the old message sent the reader to check the
-		// binary and the embedder, which are almost always both fine. Reported
-		// by the wanigan session, which lost a detour to exactly that.
-		root := storeRoot()
-		hint := "the store is not readable"
-		if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
-			hint = "no store at that path — this directory has not opted in; " +
-				"set one with `git config winze.store <path>` or $WINZE_STORE"
-		} else if !storeRootConfigured() {
-			hint = "that is the fallback default, not a configured store"
-		}
-		return mcp.NewToolResultError(fmt.Sprintf(
-			"recall failed: store %q — %s. (If the path is right, check winze-query is built and ollama is up for --hybrid.)",
-			root, hint)), nil
+		return mcp.NewToolResultError(recallFailureMessage()), nil
 	}
 	if len(res.Hits) == 0 {
 		return mcp.NewToolResultText("no memories matched — nothing recalled."), nil
@@ -459,3 +449,33 @@ func gitCommitMemory(note string) (string, error) {
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// recallFailureMessage explains a failed recall by naming the resolved store
+// first.
+//
+// The message this replaced blamed the binary and the embedder. Those are
+// almost always both fine: the overwhelmingly common cause is that the calling
+// directory never opted in, so storeRoot fell through to ~/winze-memory and
+// nothing is there. The wanigan session lost a detour to exactly that — it
+// verified winze-query was built and ollama was up, because the text told it
+// to, and neither was the problem.
+func recallFailureMessage() string {
+	root := storeRoot()
+	return fmt.Sprintf("recall failed: store %q — %s. "+
+		"(If the path is right, check winze-query is built and ollama is up for --hybrid.)",
+		root, storeHint(root))
+}
+
+// storeHint names which of the three failure shapes a store path is in.
+func storeHint(root string) string {
+	fi, err := os.Stat(root)
+	switch {
+	case err != nil || !fi.IsDir():
+		return "no store at that path — this directory has not opted in; " +
+			"set one with `git config winze.store <path>` or $WINZE_STORE"
+	case !storeRootConfigured():
+		return "that is the fallback default, not a configured store"
+	default:
+		return "the store is not readable"
+	}
+}
