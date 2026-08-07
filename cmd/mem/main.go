@@ -16,7 +16,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: winze-mem <recall-hook|serve>")
+		fmt.Fprintln(os.Stderr, "usage: winze-mem <recall-hook|serve|capture-guard|call>")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -26,8 +26,10 @@ func main() {
 		runServe()
 	case "capture-guard":
 		runCaptureGuard()
+	case "call":
+		runCall(os.Args[2:])
 	default:
-		fmt.Fprintf(os.Stderr, "winze-mem: unknown subcommand %q (want recall-hook|serve|capture-guard)\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "winze-mem: unknown subcommand %q (want recall-hook|serve|capture-guard|call)\n", os.Args[1])
 		os.Exit(2)
 	}
 }
