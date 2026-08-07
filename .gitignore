@@ -178,3 +178,7 @@ cmd/observatory/node_modules/
 /cmd/sensor/sensor
 /topology
 /cmd/topology/topology
+
+# The Gas Town integration is gone; this is a CodeScene installer artifact.
+# The gate that actually runs is the tracked githooks/ (see `make hooks`).
+.beads/
