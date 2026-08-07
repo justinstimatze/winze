@@ -50,7 +50,7 @@ func dirExists(path string) bool {
 }
 
 // metabolismBin resolves the winze-metabolism binary: under WINZE_BIN when set,
-// else the bare name via PATH (after `make install`). Matches cmd/mem's convention.
+// else the bare name via PATH (after `make install`). Matches cmd/agent's convention.
 func metabolismBin() string {
 	if v := os.Getenv("WINZE_BIN"); v != "" {
 		return filepath.Join(v, "winze-metabolism")

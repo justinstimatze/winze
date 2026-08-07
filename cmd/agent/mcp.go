@@ -59,9 +59,9 @@ func runServe() {
 		mcp.WithString("name", mcp.Description("Optional claim var name; auto-derived from the relation and endpoints if omitted. Re-linking the same pair fails the gate, giving free dedup.")),
 	), handleLink)
 
-	fmt.Fprintf(os.Stderr, "winze-memory MCP: serving (store: %s)\n", memRoot())
+	fmt.Fprintf(os.Stderr, "winze-agent MCP: serving (store: %s)\n", storeRoot())
 	if err := server.ServeStdio(s); err != nil {
-		fmt.Fprintf(os.Stderr, "winze-memory MCP error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "winze-agent MCP error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -263,7 +263,7 @@ func handleUpdate(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 // execSetBrief runs winze-edit set-brief to revise a memory's Brief (and
 // optionally Name) through the same gate every mutation uses.
 func execSetBrief(varName, brief, title string) (string, error) {
-	args := []string{"set-brief", "--var", varName, "--brief", brief, "--root", memRoot()}
+	args := []string{"set-brief", "--var", varName, "--brief", brief, "--root", storeRoot()}
 	if title != "" {
 		args = append(args, "--name", title)
 	}
@@ -313,7 +313,7 @@ func handleLink(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult
 // it has no external source, so it carries a Rationale and no Quote.
 func execLink(from, to, relation, rationale, name string) (string, error) {
 	args := []string{
-		"--to", "memory.go", "--root", memRoot(),
+		"--to", "memory.go", "--root", storeRoot(),
 		"--name", name, "--predicate", relation,
 		"--subject", from, "--object", to,
 		"--conjecture", "--rationale", rationale, "--generated-by", "winze-link",
@@ -390,7 +390,7 @@ func envFloat(key string, def float64) float64 {
 // Returns combined output (winze-add reports the created var + gate result).
 func execAdd(note, role, title string) (string, error) {
 	args := []string{"--entity", "--role", role, "--brief", note,
-		"--to", "memory.go", "--root", memRoot()}
+		"--to", "memory.go", "--root", storeRoot()}
 	if title != "" {
 		args = append(args, "--name", title)
 	}
@@ -413,7 +413,7 @@ func execAdd(note, role, title string) (string, error) {
 // git errors rather than corrupts, but the write fails for no good reason.
 // Acquiring here is not nested: the child has already released.
 func gitCommitMemory(note string) (string, error) {
-	unlock, err := corpuslock.Acquire(memRoot())
+	unlock, err := corpuslock.Acquire(storeRoot())
 	if err != nil {
 		return "", fmt.Errorf("corpus lock: %w", err)
 	}
@@ -429,7 +429,7 @@ func gitCommitMemory(note string) (string, error) {
 	}
 	var out strings.Builder
 	for _, args := range steps {
-		full := append([]string{"-C", memRoot()}, args...)
+		full := append([]string{"-C", storeRoot()}, args...)
 		cmd := exec.Command("git", full...)
 		var buf bytes.Buffer
 		cmd.Stdout = &buf

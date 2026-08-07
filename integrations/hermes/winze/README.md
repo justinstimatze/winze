@@ -13,14 +13,15 @@ make build
 export WINZE_BIN=$PWD/bin
 ```
 
-The store resolves the way it does everywhere else — `$WINZE_MEMORY`, then
-`git config --get winze.memory`, then `~/winze-memory` — so a repo that already
-has a winze memory needs no further configuration.
+The store resolves the way it does everywhere else — `$WINZE_STORE`, then
+`git config --get winze.store`, then `~/winze-memory` — so a repo that already
+names a winze store needs no further configuration. The older `$WINZE_MEMORY`
+and `winze.memory` are still honoured.
 
 ## What it exposes
 
 The same four tools the MCP server registers: `winze_remember`, `winze_recall`,
-`winze_update`, `winze_link`. Everything goes through `winze-mem call`, which
+`winze_update`, `winze_link`. Everything goes through `winze-agent call`, which
 dispatches to those same handlers, so the dedup check and the corpus build gate
 apply here exactly as they do to an editor session.
 

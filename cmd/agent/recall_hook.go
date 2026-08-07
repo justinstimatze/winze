@@ -138,11 +138,11 @@ func runQueryJSON(mode, arg string) (queryResult, bool) {
 	return res, true
 }
 
-// runQueryRaw execs winze-query <mode> [arg] [flags...] <memRoot> and returns
+// runQueryRaw execs winze-query <mode> [arg] [flags...] <storeRoot> and returns
 // stdout. The memory root is always the final positional arg.
 func runQueryRaw(args ...string) (string, error) {
 	full := append([]string{}, args...)
-	full = append(full, memRoot())
+	full = append(full, storeRoot())
 	cmd := exec.Command(queryBin(), full...)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout

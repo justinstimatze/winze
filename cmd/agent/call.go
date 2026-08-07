@@ -20,7 +20,7 @@ import (
 // second place for the dedup check and the build gate to drift out of, and
 // those two are the whole reason the tools are safe to expose.
 //
-//	winze-mem call winze_recall '{"query":"the trip critic","limit":3}'
+//	winze-agent call winze_recall '{"query":"the trip critic","limit":3}'
 //
 // Exits non-zero when the tool reports an error, so a caller can branch on the
 // status instead of parsing prose.
@@ -37,7 +37,7 @@ func runCall(args []string) {
 			names = append(names, n)
 		}
 		sort.Strings(names)
-		fmt.Fprintf(os.Stderr, "usage: winze-mem call <tool> ['<json-args>']\n  tools: %s\n", strings.Join(names, ", "))
+		fmt.Fprintf(os.Stderr, "usage: winze-agent call <tool> ['<json-args>']\n  tools: %s\n", strings.Join(names, ", "))
 		os.Exit(2)
 	}
 	h, ok := handlers[args[0]]

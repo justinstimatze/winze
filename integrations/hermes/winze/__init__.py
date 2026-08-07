@@ -1,7 +1,7 @@
 """winze as a Hermes memory provider.
 
 Drop-in for NousResearch/hermes-agent's MemoryProvider ABC. Everything reaches
-winze through `winze-mem call`, which dispatches to the same handlers the MCP
+winze through `winze-agent call`, which dispatches to the same handlers the MCP
 server registers — so the dedup check and the corpus build gate apply here
 exactly as they do to an editor session.
 
@@ -18,9 +18,9 @@ a side effect of talking.
 Install
 -------
 Point HERMES at this file and set WINZE_BIN to the directory holding the winze
-binaries (or put winze-mem on PATH). The memory store itself resolves the way
-it does everywhere: $WINZE_MEMORY, then `git config --get winze.memory`, then
-~/winze-memory.
+binaries (or put winze-agent on PATH). The store itself resolves the way it
+does everywhere: $WINZE_STORE, then `git config --get winze.store`, then
+~/winze-memory. The older $WINZE_MEMORY and winze.memory are still honoured.
 """
 
 from __future__ import annotations
@@ -242,25 +242,34 @@ class WinzeMemoryProvider(MemoryProvider):
 
     # -- Subprocess --------------------------------------------------------
 
+    # winze-agent was the old name for this binary. It is still accepted so a
+    # host with an older winze checkout keeps working instead of reporting the
+    # store as simply unavailable.
+    _BINARY_NAMES = ("winze-agent", "winze-mem")
+
     def _binary(self) -> Optional[str]:
         bindir = os.environ.get("WINZE_BIN")
-        if bindir:
-            candidate = os.path.join(bindir, "winze-mem")
-            if os.access(candidate, os.X_OK):
-                return candidate
-        return shutil.which("winze-mem")
+        for name in self._BINARY_NAMES:
+            if bindir:
+                candidate = os.path.join(bindir, name)
+                if os.access(candidate, os.X_OK):
+                    return candidate
+            found = shutil.which(name)
+            if found:
+                return found
+        return None
 
     def _call(self, tool: str, args: Dict[str, Any], *, timeout: int) -> str:
         binary = self._binary()
         if binary is None:
-            return json.dumps({"error": "winze-mem not found (set WINZE_BIN or put it on PATH)"})
+            return json.dumps({"error": "winze-agent not found (set WINZE_BIN or put it on PATH)"})
         try:
             proc = subprocess.run(
                 [binary, "call", tool, json.dumps(args)],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                # WINZE_BIN is inherited: winze-mem shells out to winze-query
+                # WINZE_BIN is inherited: winze-agent shells out to winze-query
                 # and winze-add, and finds them the same way this does.
                 env=os.environ.copy(),
             )
@@ -269,7 +278,7 @@ class WinzeMemoryProvider(MemoryProvider):
         except OSError as exc:
             return json.dumps({"error": f"{tool} failed to start: {exc}"})
         if proc.returncode != 0:
-            # winze-mem exits non-zero on a tool error and puts the reason on
+            # winze-agent exits non-zero on a tool error and puts the reason on
             # stdout, so the body is the useful part either way.
             return json.dumps({"error": (proc.stdout or proc.stderr).strip()})
         return proc.stdout.strip()

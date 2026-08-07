@@ -60,7 +60,7 @@ func runCaptureGuard() {
 	// the memory could go and point at nothing. Deliberately last — it shells
 	// out to git, so it runs only on the writes already about to be blocked,
 	// not on every Write and Edit in the session.
-	if !memRootConfigured() {
+	if !storeRootConfigured() {
 		os.Exit(0)
 	}
 

@@ -7,7 +7,16 @@ import (
 	"testing"
 )
 
-// TestMemRootResolutionOrder pins the three-step lookup in memRoot, and in
+// clearStoreEnv unsets every name storeRoot reads. Clearing only the current
+// one would leave each test's result depending on whether the deprecated alias
+// happened to be set in the ambient environment.
+func clearStoreEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("WINZE_STORE", "")
+	t.Setenv("WINZE_MEMORY", "")
+}
+
+// TestStoreRootResolutionOrder pins the three-step lookup in storeRoot, and in
 // particular that a repo's git config reaches every worktree of that repo.
 //
 // The worktree leg is the whole point of the git step: a linked worktree has
@@ -15,7 +24,7 @@ import (
 // it must resolve to the same store as the main checkout without any
 // per-worktree setup. That is the property native auto-memory keys on the
 // repository for, and the one a cwd-derived store would lose.
-func TestMemRootResolutionOrder(t *testing.T) {
+func TestStoreRootResolutionOrder(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
@@ -37,7 +46,7 @@ func TestMemRootResolutionOrder(t *testing.T) {
 	run(repo, "add", "f")
 	run(repo, "commit", "-qm", "init")
 
-	// chdir is what memRoot actually reads, since git config resolves from the
+	// chdir is what storeRoot actually reads, since git config resolves from the
 	// process working directory.
 	chdir := func(dir string) {
 		t.Helper()
@@ -51,42 +60,58 @@ func TestMemRootResolutionOrder(t *testing.T) {
 		t.Cleanup(func() { _ = os.Chdir(prev) })
 	}
 
-	t.Setenv("WINZE_MEMORY", "")
+	clearStoreEnv(t)
 	chdir(repo)
 
 	// No key set: falls through to the historical default, not to "".
-	if got, want := memRoot(), filepath.Join(home(), "winze-memory"); got != want {
-		t.Errorf("unset: memRoot() = %q, want the %q default", got, want)
+	if got, want := storeRoot(), filepath.Join(home(), "winze-memory"); got != want {
+		t.Errorf("unset: storeRoot() = %q, want the %q default", got, want)
 	}
 
+	// The deprecated key still resolves on its own: it is set in installed
+	// hooks and other repos' wiring, and dropping it would disable capture
+	// silently rather than fail loudly.
 	run(repo, "config", "winze.memory", "/srv/shared-store")
-	if got := memRoot(); got != "/srv/shared-store" {
-		t.Errorf("main checkout: memRoot() = %q, want /srv/shared-store", got)
+	if got := storeRoot(); got != "/srv/shared-store" {
+		t.Errorf("main checkout: storeRoot() = %q, want /srv/shared-store", got)
 	}
+
+	// ...and the current key outranks it when both are set.
+	run(repo, "config", "winze.store", "/srv/current-key")
+	if got := storeRoot(); got != "/srv/current-key" {
+		t.Errorf("both git keys set: storeRoot() = %q, want winze.store to win", got)
+	}
+	run(repo, "config", "--unset", "winze.store")
 
 	// A linked worktree: different working directory, same common dir, so the
 	// key set above must reach it with no setup of its own.
 	wt := filepath.Join(t.TempDir(), "wt")
 	run(repo, "worktree", "add", "-q", "-b", "side", wt)
 	chdir(wt)
-	if got := memRoot(); got != "/srv/shared-store" {
-		t.Errorf("linked worktree: memRoot() = %q, want /srv/shared-store — "+
+	if got := storeRoot(); got != "/srv/shared-store" {
+		t.Errorf("linked worktree: storeRoot() = %q, want /srv/shared-store — "+
 			"the worktree is not seeing the repo's config", got)
 	}
 
 	// The env var is the explicit override and outranks git config.
 	t.Setenv("WINZE_MEMORY", "/srv/override")
-	if got := memRoot(); got != "/srv/override" {
-		t.Errorf("with WINZE_MEMORY set: memRoot() = %q, want /srv/override", got)
+	if got := storeRoot(); got != "/srv/override" {
+		t.Errorf("with WINZE_MEMORY set: storeRoot() = %q, want /srv/override", got)
+	}
+
+	// And between the two env names, the current one wins.
+	t.Setenv("WINZE_STORE", "/srv/current-env")
+	if got := storeRoot(); got != "/srv/current-env" {
+		t.Errorf("both env vars set: storeRoot() = %q, want WINZE_STORE to win", got)
 	}
 }
 
-// TestMemRootConfigured covers the distinction memRoot itself cannot make:
+// TestStoreRootConfigured covers the distinction storeRoot itself cannot make:
 // an opted-in store versus the last-resort default. The capture guard is
 // installed user-wide on the strength of this, so the case that matters most
 // is the negative one — a directory outside any repo, with no env var and no
 // ~/winze-memory, must report false and let the native write through.
-func TestMemRootConfigured(t *testing.T) {
+func TestStoreRootConfigured(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
@@ -105,8 +130,8 @@ func TestMemRootConfigured(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(prev) })
 
-	t.Setenv("WINZE_MEMORY", "")
-	if memRootConfigured() {
+	clearStoreEnv(t)
+	if storeRootConfigured() {
 		t.Error("no env, no repo, no ~/winze-memory: want false — the guard would " +
 			"block a native write and have nowhere to redirect it")
 	}
@@ -115,7 +140,7 @@ func TestMemRootConfigured(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(fakeHome, "winze-memory"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if !memRootConfigured() {
+	if !storeRootConfigured() {
 		t.Error("~/winze-memory exists: want true")
 	}
 	if err := os.Remove(filepath.Join(fakeHome, "winze-memory")); err != nil {
@@ -126,7 +151,7 @@ func TestMemRootConfigured(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fakeHome, "winze-memory"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if memRootConfigured() {
+	if storeRootConfigured() {
 		t.Error("~/winze-memory is a regular file: want false")
 	}
 	if err := os.Remove(filepath.Join(fakeHome, "winze-memory")); err != nil {
@@ -144,14 +169,14 @@ func TestMemRootConfigured(t *testing.T) {
 	}
 	run("init", "-q", "-b", "main")
 	run("config", "winze.memory", "/srv/shared-store")
-	if !memRootConfigured() {
+	if !storeRootConfigured() {
 		t.Error("winze.memory set in git config: want true")
 	}
 
 	// The env var alone is enough, in any directory.
 	run("config", "--unset", "winze.memory")
 	t.Setenv("WINZE_MEMORY", "/srv/explicit")
-	if !memRootConfigured() {
+	if !storeRootConfigured() {
 		t.Error("WINZE_MEMORY set: want true")
 	}
 }

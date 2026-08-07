@@ -1,7 +1,7 @@
 name: winze
 version: 1.0.0
-description: "winze — a typed knowledge base that compiles, via the winze-mem CLI. Writes are gated on `go build`; recall is hybrid BM25 + semantic."
+description: "winze — a typed knowledge base that compiles, via the winze-agent CLI. Writes are gated on `go build`; recall is hybrid BM25 + semantic."
 external_dependencies:
-  - name: winze-mem
+  - name: winze-agent
     install: "git clone https://github.com/justinstimatze/winze && cd winze && make build && export WINZE_BIN=$PWD/bin"
-    check: "winze-mem call winze_recall '{\"query\":\"test\",\"limit\":1}'"
+    check: "winze-agent call winze_recall '{\"query\":\"test\",\"limit\":1}'"
