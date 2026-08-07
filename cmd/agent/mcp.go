@@ -507,11 +507,20 @@ func writeFailure(verb, out string, err error, gateNote ...string) *mcp.CallTool
 	// store earns a mention only when it is a plausible cause — naming it
 	// otherwise sends the reader after a healthy path.
 	root := storeRoot()
-	if fi, serr := os.Stat(root); serr != nil || !fi.IsDir() || !storeRootConfigured() {
+	if storeSuspect(root) {
 		return mcp.NewToolResultError(fmt.Sprintf(
 			"%s failed before the build gate ran (not committed): %v. Store %q — %s.",
 			verb, err, root, storeHint(root)))
 	}
 	return mcp.NewToolResultError(fmt.Sprintf(
 		"%s failed before the build gate ran (not committed): %v", verb, err))
+}
+
+// storeSuspect reports whether the resolved store is a plausible cause of a
+// failure: missing, not a directory, or the unconfigured fallback. storeHint
+// says which one; this only decides whether that explanation is worth printing
+// at all, since naming a healthy store sends the reader down a dead path.
+func storeSuspect(root string) bool {
+	fi, err := os.Stat(root)
+	return err != nil || !fi.IsDir() || !storeRootConfigured()
 }
