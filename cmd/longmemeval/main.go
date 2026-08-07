@@ -13,6 +13,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -48,6 +49,7 @@ func main() {
 		topK       = flag.Int("k", 60, "retrieval top-k facts fed to the answerer. Was 15, with no recorded rationale; the 2026-08-06 sweep scored 44/45/47 of 60 at k=15/30/60, monotone and concentrated in multi-session (7->8->9), the type with the most facts competing for the window. 27 of 60 questions produce more facts than 15 slots admit, so 15 was binding on nearly half the set. Not swept past 60 — no ceiling was found, so a larger value may still pay. Costs answerer input tokens only; retrieval searches the whole store either way.")
 		dryRun     = flag.Bool("dry-run", false, "select subset and report shape only; no API calls")
 		probe      = flag.Bool("probe", false, "report whether gold answer turns survive renderSession truncation; no API calls")
+		batch      = flag.Bool("batch", false, "extract through the Message Batches API at 50% off before running. Asynchronous — the batch may take minutes to hours — so this is for large unattended runs, not the interactive loop. Extraction is 97% of a run's spend and every call is independent, so the discount is a straight halving with no effect on the model, the prompts or the sampling. Fills the same content-keyed cache the live path uses, then the run proceeds warm.")
 		raw        = flag.Bool("raw", false, "CONTROL: skip the lens, the typed store, defn and ranking entirely — hand the answerer the chat history verbatim. Same answerer, same judge, same temperature. If this matches the pipeline's score, the pipeline is not earning its keep on this dataset, which is the one comparison every number here has been missing.")
 		conc       = flag.Int("concurrency", 8, "questions run at once. The loop is ~99% blocked on the API — 12.5s extract + 2.5s answer + 1.1s judge against 0.9s of winze machinery per question — so this is close to a linear speedup until the API rate limit or the per-question `go build` becomes the constraint. 1 restores the old serial behaviour, which is what a concurrency bug should be diffed against.")
 		only       = flag.String("only", "", "comma-separated question ids (prefixes ok) to run instead of the per-type quota. For testing a hypothesis about specific failures without paying for the whole subset — a lensVersion bump makes every question cold, so a six-question check costs six extractions rather than sixty.")
@@ -141,6 +143,13 @@ func main() {
 		cacheDir: cache,
 		workDir:  *workDir,
 		stats:    &usageStats{perModel: map[string]*modelUsage{}},
+	}
+
+	if *batch && !*raw {
+		if err := warmCacheByBatch(context.Background(), r.client, cache, questions); err != nil {
+			fmt.Fprintf(os.Stderr, "batch extraction: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	work := func(q Question) (resultRow, error) { return r.runQuestion(q, *topK) }
