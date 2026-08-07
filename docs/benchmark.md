@@ -82,6 +82,37 @@ it. The run log stays out of git: its lessons belong in this file, and its
 timing columns are contaminated (see below). The diff recipe is in
 `cmd/longmemeval/baselines/README.md`.
 
+### Read this before quoting any number below
+
+**A control that skips winze entirely scores higher than winze on the oracle
+set.** Measured over all 500 questions, same answerer, same judge, same model,
+same temperature, `--raw` handing the chat history straight to the answerer:
+
+| | total | knowledge | temporal | single-user | preference | multi | assistant |
+|---|---|---|---|---|---|---|---|
+| winze | 423/500 · 85% | **71/78** | **118/133** | 68/70 | 26/30 | 102/133 | 38/56 |
+| raw control | 443/500 · 89% | 67/78 | 115/133 | 68/70 | 26/30 | **114/133** | **53/56** |
+
+On the oracle set that result is close to a tautology, and the tautology is the
+finding. The haystack has already been filtered to the answer-bearing sessions,
+a mean of 1.9 per question — there is nothing to retrieve, so extraction can
+only lose information. Figure 3(b) of the paper (Wu et al., ICLR 2025) says the
+same from the other direction: GPT-4o scores **0.870 on oracle and 0.606 on
+longmemeval_s**, a 30.3% drop, and Llama 3.1 8B drops 0.710 → 0.286. That drop
+is the entire problem a memory system exists to solve. **The oracle set is the
+ceiling the real test is measured against, not the test.**
+
+So: no oracle number on this page is evidence that winze works. They are
+evidence about extraction fidelity, which is worth having and is not the claim.
+
+The per-type split is what to build on. Typed facts win where dates and
+supersession matter (knowledge-update +4, temporal +3) and lose badly where the
+answer is a verbatim string somebody said (assistant −15, multi-session −12).
+That is a statement about representation, not about prompts:
+`Fact{Attribute, Value, Kind, Date, Session, Quote}` is a good shape for "what
+replaced what" and a lossy one for "what exactly did you say". Nothing requires
+the facts to *replace* the source — every fact already carries its `Quote`.
+
 ### What these numbers are not
 
 **Every score on this page is on the oracle set, which is the benchmark with
@@ -304,6 +335,30 @@ retrieve 2.2 ms. The rest of the table scales those two measurements.
 The money was never the obstacle. 67 hours was, and it is why every result
 above is on sixty questions with the distractors removed. That constraint is
 gone.
+
+Three levers cut it further, in order of size:
+
+- **`--batch`** extracts through the Message Batches API at 50% off. Extraction
+  is 97% of a run and every call is independent, so the discount is a straight
+  halving with no effect on model, prompts or sampling. It runs as a pre-pass
+  filling the same content-keyed cache, then the run proceeds warm.
+  Asynchronous, so it suits an unattended run and not the interactive loop.
+- **One shared extraction cache.** `--cache` used to default under `--work`, so
+  a new workdir silently re-extracted everything; one evening left eleven
+  directories holding 1,903 entries for ~950 distinct sessions. The default is
+  now a stable per-user path, and because the key is
+  `sha256(lensVersion + model + body)` it also hits *across datasets* — the
+  oracle set's evidence sessions are byte-identical inside the haystack, so
+  they are free once extracted.
+- **Session dedup before submission.** 23,867 haystack session slots collapse
+  to 18,464 distinct bodies; submitting per question buys 23% more extraction
+  than exists.
+
+Measured on the haystack, still open: `k=60` admits **60 of ~650** extracted
+facts per question, 9%. On the oracle set `k` barely bound; here the
+term-overlap ranker decides the entire result. Sweep it before reading any
+haystack score — extraction caches and is `k`-independent, so one cold run
+buys as many `k` points as you want at answer+judge cost.
 
 ### Timings from a busy machine are ceilings, not measurements
 
