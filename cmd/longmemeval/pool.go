@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // runAll runs every question, up to n at a time, and returns the rows in
@@ -42,6 +43,7 @@ func runAll(r *runner, questions []Question, k, n int) ([]resultRow, int) {
 	results := make([]outcome, len(questions))
 	sem := make(chan struct{}, n)
 	var wg sync.WaitGroup
+	var done int64
 
 	for i, q := range questions {
 		wg.Add(1)
@@ -55,6 +57,7 @@ func runAll(r *runner, questions []Question, k, n int) ([]resultRow, int) {
 			row, err := r.runQuestion(q, k)
 			if err != nil {
 				results[i] = outcome{out: b.String(), err: err}
+				progress(&done, len(questions), q.QuestionID, "ERROR")
 				return
 			}
 			mark := "✗"
@@ -63,6 +66,7 @@ func runAll(r *runner, questions []Question, k, n int) ([]resultRow, int) {
 			}
 			fmt.Fprintf(&b, "  gold: %q\n  ans:  %q  %s\n", q.Answer, row.answer, mark)
 			results[i] = outcome{row: row, out: b.String()}
+			progress(&done, len(questions), q.QuestionID, mark)
 		}(i, q)
 	}
 	wg.Wait()
@@ -79,4 +83,19 @@ func runAll(r *runner, questions []Question, k, n int) ([]resultRow, int) {
 		rows = append(rows, res.row)
 	}
 	return rows, errored
+}
+
+// progress emits one line per finished question to stderr, in completion order.
+//
+// stdout stays ordered so a concurrent log diffs against a serial one, which
+// means nothing appears there until the last question lands. That was fine
+// while a run took 25 minutes; on the full haystack it is seven hours of an
+// empty file, and the only way to tell a live run from a hung one is to count
+// cache entries on disk. Which is what I ended up doing.
+//
+// stderr is the right home for a heartbeat: unordered is fine, and redirecting
+// stdout to a log leaves progress on the terminal.
+func progress(done *int64, total int, qid, mark string) {
+	n := atomic.AddInt64(done, 1)
+	fmt.Fprintf(os.Stderr, "  [%d/%d] %s %s\n", n, total, qid, mark)
 }
