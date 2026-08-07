@@ -162,7 +162,13 @@ func commitDecl(repoRoot, target, decl string) error {
 		revert()
 		return fmt.Errorf("append failed (reverted): %w", err)
 	}
-	if out, err := runCmd(repoRoot, "gofmt", "-w", targetPath); err != nil {
+	// gofmt gets `target`, not `targetPath`: runCmd's cwd is already repoRoot,
+	// so passing the joined path resolves to repoRoot/repoRoot/target. That
+	// only misfires when --root is relative, which is why the systemd unit
+	// (absolute %f) never hit it and `winze-add -root corpus` from the repo
+	// root failed every write with "no such file or directory" after the
+	// corpus move.
+	if out, err := runCmd(repoRoot, "gofmt", "-w", target); err != nil {
 		revert()
 		return fmt.Errorf("gofmt failed (reverted):\n%s", out)
 	}
