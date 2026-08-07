@@ -91,7 +91,22 @@ func handleRecall(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	}
 	res, ok := runQueryJSON("--hybrid", query)
 	if !ok {
-		return mcp.NewToolResultError("recall failed (is winze-query built and ollama running for --hybrid?)"), nil
+		// Name the resolved store first. The overwhelmingly common cause is that
+		// this directory never opted in, so storeRoot fell through to a default
+		// that does not exist — and the old message sent the reader to check the
+		// binary and the embedder, which are almost always both fine. Reported
+		// by the wanigan session, which lost a detour to exactly that.
+		root := storeRoot()
+		hint := "the store is not readable"
+		if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+			hint = "no store at that path — this directory has not opted in; " +
+				"set one with `git config winze.store <path>` or $WINZE_STORE"
+		} else if !storeRootConfigured() {
+			hint = "that is the fallback default, not a configured store"
+		}
+		return mcp.NewToolResultError(fmt.Sprintf(
+			"recall failed: store %q — %s. (If the path is right, check winze-query is built and ollama is up for --hybrid.)",
+			root, hint)), nil
 	}
 	if len(res.Hits) == 0 {
 		return mcp.NewToolResultText("no memories matched — nothing recalled."), nil
