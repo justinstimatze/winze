@@ -1,7 +1,9 @@
 // Command winze-agent is the agentic read/write interface to a winze store —
 // the door an agent remembers and recalls through, as against winze-mcp's
-// analytic read surface over a corpus. Four faces:
+// analytic read surface over a corpus. Five faces:
 //
+//	winze-agent init <dir>      # scaffold a new store: schema, go.mod, git,
+//	                            # and the build gate run before the first commit
 //	winze-agent serve           # MCP server: winze_remember / winze_recall /
 //	                            # winze_update / winze_link
 //	winze-agent recall-hook     # SessionStart / UserPromptSubmit hook: injects
@@ -26,10 +28,12 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: winze-agent <recall-hook|serve|capture-guard|call>")
+		fmt.Fprintln(os.Stderr, "usage: winze-agent <init|serve|recall-hook|capture-guard|call>")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
+	case "init":
+		runInit(os.Args[2:])
 	case "recall-hook":
 		runRecallHook()
 	case "serve":
@@ -39,7 +43,7 @@ func main() {
 	case "call":
 		runCall(os.Args[2:])
 	default:
-		fmt.Fprintf(os.Stderr, "winze-agent: unknown subcommand %q (want recall-hook|serve|capture-guard|call)\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "winze-agent: unknown subcommand %q (want init|serve|recall-hook|capture-guard|call)\n", os.Args[1])
 		os.Exit(2)
 	}
 }

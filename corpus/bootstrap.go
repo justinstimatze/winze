@@ -1,55 +1,10 @@
 // bootstrap.go: founding entities, decisions, failure modes, mitigations,
 // and open questions from the winze founding conversation.
+//
+// Content only. The type declarations these use live in schema.go, so a new
+// store can copy the schema without inheriting winze's own founding record.
 
 package winze
-
-// Entity is a named thing the KB tracks. Kind is an open string; current
-// values include "tool", "project", "concept", "paper", "person",
-// "character", "place", "organization", "event", "instrument". Aliases
-// holds surface-form variants an ingest worker resolved to this entity.
-type Entity struct {
-	ID      string
-	Name    string
-	Kind    string
-	Brief   string
-	Aliases []string
-}
-
-// Decision is a locked-in architectural choice. Decisions are load-bearing:
-// the rest of the KB assumes they hold. Changing one is a branch-level event.
-type Decision struct {
-	ID        string
-	Title     string
-	Rationale string
-}
-
-// FailureMode is a known way the architecture can break. Severity is 1 (low)
-// to 3 (dealbreaker).
-type FailureMode struct {
-	ID          string
-	Title       string
-	Severity    int
-	Description string
-}
-
-// Mitigation is a defense against a FailureMode. If Automated is true the
-// mitigation runs as a winze lint rule; otherwise it is a procedural discipline.
-type Mitigation struct {
-	ID        string
-	Addresses *FailureMode
-	Rule      string
-	Automated bool
-}
-
-// OpenQuestion is something not yet resolved. Blocking questions should be
-// answered before implementation work depends on their outcome. When resolved,
-// set Resolution to describe the outcome and Blocking to false.
-type OpenQuestion struct {
-	ID         string
-	Title      string
-	Blocking   bool
-	Resolution string // empty = still open; non-empty = resolved
-}
 
 // -----------------------------------------------------------------------------
 // Tools that winze depends on or coordinates with.

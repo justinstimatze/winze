@@ -18,6 +18,7 @@ an editor session.
 ## Four faces
 
 ```
+winze-agent init <dir>      # scaffold a new store, gate-checked before its first commit
 winze-agent serve           # MCP server — the four tools above
 winze-agent recall-hook     # SessionStart / UserPromptSubmit: injects associative recall
 winze-agent capture-guard   # PreToolUse: blocks native-memory writes where a store exists
@@ -43,6 +44,39 @@ implementation that drifts.
   typed claim (`RelatesTo`, `Supersedes`, …). The link is winze's own assertion,
   so it is written as a `Conjecture` and carries no source quote by
   construction. `winze-query --schema <store>` lists the predicates.
+
+## Creating one
+
+```
+winze-agent init <dir> [--private] [--link] [--from <winze-checkout>]
+```
+
+Copies the canonical schema (`schema.go`, `roles.go`, `predicates.go`,
+`external.go`), writes a `go.mod` and an empty `memory.go`, runs `go build .`
+to prove the result compiles, then `git init` and commits. `--private` installs
+a pre-push hook that blocks every push; `--link` points the current repo at the
+new store.
+
+Two details that are not arbitrary:
+
+**`bootstrap.go` is not copied.** It is winze's own founding record — 25
+entities about defn, Dolt and Cyc. It used to also hold the core record types
+(`Entity`, `Decision`, `FailureMode`, `Mitigation`, `OpenQuestion`), which is
+why every store copied it and inherited that content along with the schema.
+Those types now live in `schema.go`, so a store can take the schema without the
+history. An existing store that still has `bootstrap.go` should delete it after
+its next sync; the build gate will say immediately if anything referenced it.
+
+**The content file is `memory.go`, not `<store>.go`.** `winze_remember` and
+`winze_update` pass `--to memory.go`. The first version of `init` named it
+after the module and produced a store that compiled cleanly and then rejected
+its first write — which the compile-only test did not catch. There is now a
+test that performs a real write.
+
+The schema is copied from a winze checkout rather than embedded in the binary,
+because embedding would put a second copy of the schema in the tree and a
+second copy is the drift the build gate exists to prevent. The source resolves
+as `--from`, then `$WINZE_SRC`, then the `corpus/` beside the running binary.
 
 ## Which store it serves
 
