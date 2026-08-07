@@ -141,7 +141,7 @@ func handleRemember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 
 	addOut, err := execAdd(note, role, title)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("remember failed at the build gate (not committed):\n%s", addOut)), nil
+		return writeFailure("remember", addOut, err), nil
 	}
 	links := suggestLinks(createdVar(addOut), dd.related)
 	if _, cerr := gitCommitMemory(note); cerr != nil {
@@ -257,7 +257,7 @@ func handleUpdate(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 
 	out, err := execSetBrief(varName, note, title)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("update failed at the build gate (not committed):\n%s", out)), nil
+		return writeFailure("update", out, err), nil
 	}
 	if _, cerr := gitCommitMemory("update " + varName); cerr != nil {
 		return mcp.NewToolResultText(fmt.Sprintf("updated %s (gate passed) but NOT committed: %v", varName, cerr)), nil
@@ -276,7 +276,10 @@ func execSetBrief(varName, brief, title string) (string, error) {
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
-	return buf.String(), cmd.Run()
+	// Run before reading the buffer: `return buf.String(), cmd.Run()` evaluates
+	// left to right, so it snapshots an empty buffer before the child has run.
+	err := cmd.Run()
+	return buf.String(), err
 }
 
 func handleLink(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -305,7 +308,7 @@ func handleLink(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult
 
 	out, err := execLink(from, to, relation, rationale, name)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("link failed at the build gate (not committed) — a name collision here means the link already exists:\n%s", out)), nil
+		return writeFailure("link", out, err, "a name collision here means the link already exists"), nil
 	}
 	if _, cerr := gitCommitMemory("link " + from + " " + relation + " " + to); cerr != nil {
 		return mcp.NewToolResultText(fmt.Sprintf("linked %s %s %s (gate passed) but NOT committed: %v", from, relation, to, cerr)), nil
@@ -327,7 +330,9 @@ func execLink(from, to, relation, rationale, name string) (string, error) {
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
-	return buf.String(), cmd.Run()
+	// Run before reading the buffer — see execSetBrief.
+	err := cmd.Run()
+	return buf.String(), err
 }
 
 // deriveLinkName builds a deterministic claim var name from the relation and
@@ -478,4 +483,35 @@ func storeHint(root string) string {
 	default:
 		return "the store is not readable"
 	}
+}
+
+// writeFailure renders a failed mutation.
+//
+// The child's combined output carries the compiler's complaint when the build
+// gate rejected a write, so it is the whole story in the common case. But a
+// child that never started produces no output at all, and then err is the only
+// thing that says anything. Every handler used to drop err and print the output
+// unconditionally under an "at the build gate" header — which in that case was
+// an empty message asserting a gate had run when it had not. A store path that
+// does not exist takes exactly that branch, so a broken resolution reported
+// itself as a blank line.
+func writeFailure(verb, out string, err error, gateNote ...string) *mcp.CallToolResult {
+	if s := strings.TrimSpace(out); s != "" {
+		note := ""
+		if len(gateNote) > 0 && gateNote[0] != "" {
+			note = " — " + gateNote[0]
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("%s failed at the build gate (not committed)%s: %v\n%s", verb, note, err, s))
+	}
+	// No output means the child never ran, so err is the whole diagnosis. The
+	// store earns a mention only when it is a plausible cause — naming it
+	// otherwise sends the reader after a healthy path.
+	root := storeRoot()
+	if fi, serr := os.Stat(root); serr != nil || !fi.IsDir() || !storeRootConfigured() {
+		return mcp.NewToolResultError(fmt.Sprintf(
+			"%s failed before the build gate ran (not committed): %v. Store %q — %s.",
+			verb, err, root, storeHint(root)))
+	}
+	return mcp.NewToolResultError(fmt.Sprintf(
+		"%s failed before the build gate ran (not committed): %v", verb, err))
 }

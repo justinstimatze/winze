@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -91,5 +93,42 @@ func TestSuggestLinks(t *testing.T) {
 	}
 	if got := suggestLinks("NewMemory", nil); got != "" {
 		t.Errorf("no candidates should suppress the suggestion, got %q", got)
+	}
+}
+
+// TestExecCapturesChildOutputOnFailure pins the evaluation-order bug that made
+// every winze_update and winze_link failure print an empty message for months:
+// `return buf.String(), cmd.Run()` evaluates its operands left to right, so it
+// snapshots the buffer before the child has run and always returns "". The
+// symptom was a failure header with nothing under it, which reads as a tool
+// that broke rather than a write the gate refused.
+func TestExecCapturesChildOutputOnFailure(t *testing.T) {
+	bin := t.TempDir()
+	for _, name := range []string{"winze-edit", "winze-add"} {
+		script := "#!/bin/sh\necho 'child complaint' >&2\nexit 1\n"
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
+			t.Fatalf("stub %s: %v", name, err)
+		}
+	}
+	t.Setenv("WINZE_BIN", bin)
+	t.Setenv("WINZE_STORE", t.TempDir())
+
+	for _, tt := range []struct {
+		name string
+		run  func() (string, error)
+	}{
+		{"execSetBrief", func() (string, error) { return execSetBrief("Var", "brief", "") }},
+		{"execLink", func() (string, error) { return execLink("A", "B", "RelatesTo", "why", "N") }},
+		{"execAdd", func() (string, error) { return execAdd("note", "Concept", "") }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := tt.run()
+			if err == nil {
+				t.Fatal("want a failure from the stub child")
+			}
+			if !strings.Contains(out, "child complaint") {
+				t.Fatalf("child output lost: got %q", out)
+			}
+		})
 	}
 }
