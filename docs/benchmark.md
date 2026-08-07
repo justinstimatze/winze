@@ -96,13 +96,21 @@ scored of 60 attempted, no errors.
 | v4   | 30 | 45/60 75% | 9/10 | 8/10 | 10/10 | 8/10 | 5/10 | 5/10 |
 | v4   | 60 | 47/60 78% | 9/10 | 8/10 | 10/10 | 9/10 | 6/10 | 5/10 |
 
-**The noise floor is ±1 question.** Two runs of byte-identical input — same
-lens version, same `k`, all 102 sessions served from the extraction cache —
-scored 43/60 and 44/60. The lens, answerer and judge all sample at the API
-default because none of them sets `Temperature`, so the judge is stochastic.
-At n=60 that is ±1.7 points, which means a one- or two-question difference
-between configurations is not a result. Do not read the per-type columns above
-as trends unless a row moves by three or more.
+**The noise floor is ±2 questions, and pinning the sampler does not close it.**
+Two runs of byte-identical input — same lens version, same `k`, all 102
+sessions served from the extraction cache — scored 43/60 and 44/60 while all
+three hops sampled at the API default. `Temperature: 0` is now set on all
+three (`lens.go`, `answer.go`, `judge.go`) and the same experiment repeated
+scored **45/60 and 47/60**: 16 of 60 answers came back not byte-identical, and
+two of those differed enough to flip the judge. The residual is API-side, not
+sampler-side, so no client setting reaches it.
+
+The practical consequence: a one- or two-question difference between
+configurations is not a result, and a per-question diff is not automatically
+one either. To claim a specific question flipped because of a change, run the
+new configuration twice and trust only the questions that agree with
+themselves. Do not read the per-type columns above as trends unless a row
+moves by three or more.
 
 What survives that bar:
 

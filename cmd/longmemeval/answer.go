@@ -33,8 +33,9 @@ func (r *runner) answer(question, questionDate string, facts []Fact) (string, er
 	}
 
 	resp, err := r.client.Messages.New(context.Background(), anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaudeSonnet4_6,
-		MaxTokens: 512,
+		Model:       anthropic.ModelClaudeSonnet4_6,
+		MaxTokens:   512,
+		Temperature: anthropic.Float(0),
 		System: []anthropic.TextBlockParam{{
 			Text:         answerSystem,
 			CacheControl: anthropic.CacheControlEphemeralParam{TTL: anthropic.CacheControlEphemeralTTLTTL1h},

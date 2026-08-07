@@ -93,6 +93,13 @@ type ExtractedFact struct {
 // content hash so re-runs and sessions shared across questions cost nothing.
 func (r *runner) extractSession(sessionID string, turns []Turn) ([]ExtractedFact, error) {
 	body := renderSession(turns)
+	// The key covers prompt version, model and session body — not sampling
+	// parameters. That is deliberate rather than an oversight: adding
+	// Temperature to it would have discarded 102 warm entries to record a
+	// setting that contributes no variance to a run which never calls the
+	// lens. The residual is that entries written before temperature was
+	// pinned hold facts sampled at the API default; the next lensVersion bump
+	// clears them, and until then a warm cache is at least self-consistent.
 	h := sha256.Sum256([]byte(lensVersion + "\x00" + string(anthropic.ModelClaudeHaiku4_5) + "\x00" + body))
 	key := hex.EncodeToString(h[:])
 	cachePath := filepath.Join(r.cacheDir, key+".json")
@@ -167,8 +174,9 @@ func renderSession(turns []Turn) string {
 // per-session content is the only newly-billed input on a warm cache.
 func (r *runner) callLens(sessionBody string) ([]ExtractedFact, error) {
 	resp, err := r.client.Messages.New(context.Background(), anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaudeHaiku4_5,
-		MaxTokens: 1024,
+		Model:       anthropic.ModelClaudeHaiku4_5,
+		MaxTokens:   1024,
+		Temperature: anthropic.Float(0),
 		System: []anthropic.TextBlockParam{{
 			Text:         lensSystem,
 			CacheControl: anthropic.CacheControlEphemeralParam{TTL: anthropic.CacheControlEphemeralTTLTTL1h},

@@ -21,8 +21,9 @@ Respond with exactly one word on the first line: CORRECT or INCORRECT.`
 func (r *runner) judge(question, gold, hypothesis string) (bool, error) {
 	prompt := fmt.Sprintf("Question: %s\n\nGold answer: %s\n\nModel answer: %s", question, gold, hypothesis)
 	resp, err := r.client.Messages.New(context.Background(), anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaudeSonnet4_6,
-		MaxTokens: 16,
+		Model:       anthropic.ModelClaudeSonnet4_6,
+		MaxTokens:   16,
+		Temperature: anthropic.Float(0),
 		System: []anthropic.TextBlockParam{{
 			Text:         judgeSystem,
 			CacheControl: anthropic.CacheControlEphemeralParam{TTL: anthropic.CacheControlEphemeralTTLTTL1h},
