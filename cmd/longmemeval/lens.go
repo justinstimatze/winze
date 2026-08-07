@@ -92,7 +92,22 @@ import (
 //
 // The number this bump answers for is the RETRIED EXTRACTIONS count. If the
 // second pass recovers nothing, it is buying nothing and should come out.
-const lensVersion = "v8"
+// v9: give the retry pass back the temporal clause the primary prompt has.
+//
+// The v8 retry recovered all seven starved sessions, and 58ef2f1c still scored
+// wrong with 42 facts. Reading the cache entry: the facts hold
+// user_past_event_love_is_in_the_air and user_past_event_volunteered, and no
+// date anywhere, on a question that asks when the user volunteered. The user's
+// own words are "I volunteered at back on Valentine's Day"; the gold is
+// February 14th; the session date is April 2nd and therefore useless.
+//
+// lensSystem rule 1 carries a DATED EVENTS clause calling these out as
+// essential for questions about when things happened. lensRetrySystem was
+// written around assistant-output recall and its one user-facing rule listed
+// possessions, attempts and constraints with no temporal anchor at all — so a
+// session the retry rescued came back with a lossier schema than the pass it
+// replaced. Rule 3a restores it.
+const lensVersion = "v9"
 
 // lensSystem is the extraction rulebook — identical across every session call,
 // so it rides an ephemeral cache_control block (marked in callLens).
@@ -406,6 +421,7 @@ Rules:
    - Tables and schedules: one line per meaningful cell, coordinates in the ATTRIBUTE.
    Thirty meaningful elements is thirty lines. Splitting is right; compressing is wrong.
 3. If the user did state something about themselves while asking — what they own, what they already tried, what constrains them, what field they work in — capture that too. It was missed on the first pass.
+3a. KEEP THE WHEN. A specific one-time thing the user did — a visit, an outing, a purchase, a milestone, volunteering, attending or preparing for an event — is a fact, and the day it happened is part of the fact, not decoration. Put the time reference in the VALUE alongside the event, and keep the user's own wording for it: "on Valentine's Day", "last Tuesday", "the weekend before my birthday". Do not emit the event and drop the date; a question asking WHEN something happened cannot be answered from an event name alone. If the user named both an event and a time, that is one line carrying both, not one line carrying the event.
 4. Each fact is a single tab-separated line:
    ATTRIBUTE<TAB>VALUE<TAB>KIND<TAB>QUOTE
    - ATTRIBUTE: a short snake_case slug naming the fact.
