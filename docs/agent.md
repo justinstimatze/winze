@@ -102,12 +102,13 @@ because blocking a native-memory write is only sound advice where a store
 actually exists to redirect it to. That is what makes the hooks safe to install
 user-wide.
 
-### The older names
-
-`$WINZE_MEMORY` and `git config winze.memory` still resolve, and will keep
-resolving. They are set in installed hooks and in other repos' wiring, and
-dropping them would disable memory capture silently rather than fail loudly —
-hooks fail open by design, so a broken one looks exactly like a quiet one.
+There is no alias. `$WINZE_MEMORY` and `git config winze.memory` were honoured
+for one day and then removed: winze has a single user, so a deprecation window
+priced for strangers is cost with no beneficiary. Before the removal, every
+repo naming a store — `town/winze`, `publicai/aipotluck.org`,
+`publicai/agent-service` — was migrated to `winze.store` and the old key
+unset, because hooks fail open and a missed one would have looked like silence
+rather than an error.
 
 ## Naming
 

@@ -19,11 +19,6 @@ build:
 	@for c in $(CMDS); do \
 		go build -o $(BIN)/winze-$$c ./cmd/$$c || exit 1; \
 	done
-	@# winze-agent was called winze-mem. Installed hooks reference the binary by
-	@# absolute path and fail open, so a missed reference disables memory capture
-	@# silently instead of erroring. This shim makes that impossible; delete it
-	@# once nothing on the host names the old binary.
-	@ln -sfn winze-agent $(BIN)/winze-mem
 	@echo "built: $(BIN)/winze-{$(shell echo $(CMDS) | tr ' ' ',')}"
 
 ## install: compile every command into GOBIN (defaults to ~/go/bin)

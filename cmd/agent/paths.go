@@ -15,21 +15,18 @@ import (
 // "Store", not "memory": several stores are live at once (one per team or
 // project, shared across every repo that names it), so naming the variable
 // after any single store's directory would be reading one instance as the
-// category. WINZE_MEMORY and winze.memory stay honoured as aliases — they are
-// set in installed hooks and in other repos' wiring, and breaking those would
-// silently disable capture rather than fail loudly.
+// category.
 
 // storeRoot is the winze store this agent reads and writes (the dir holding
 // memory.go + the schema files).
 //
 // Resolution order, most explicit first:
 //
-//  1. $WINZE_STORE (or the older $WINZE_MEMORY) — a caller that names a store
-//     outright always wins.
-//  2. `git config --get winze.store` (or the older winze.memory) in the working
-//     directory. Git keeps config in the common dir, so every worktree of a repo
-//     reads the same value, and two different repos may name the same store
-//     deliberately. One `git config winze.store <path>` is the whole opt-in.
+//  1. $WINZE_STORE — a caller that names a store outright always wins.
+//  2. `git config --get winze.store` in the working directory. Git keeps config
+//     in the common dir, so every worktree of a repo reads the same value, and
+//     two different repos may name the same store deliberately. One
+//     `git config winze.store <path>` is the whole opt-in.
 //  3. ~/winze-memory, the historical default.
 //
 // The git step exists because the obvious alternative — deriving the store
@@ -37,22 +34,13 @@ import (
 // clone of a related repo another one, which is the fragmentation this is
 // meant to avoid.
 func storeRoot() string {
-	if v := envStore(); v != "" {
+	if v := os.Getenv("WINZE_STORE"); v != "" {
 		return v
 	}
 	if v := gitConfigStore(); v != "" {
 		return v
 	}
 	return filepath.Join(home(), "winze-memory")
-}
-
-// envStore reads the store path from the environment, preferring the current
-// name over the deprecated one.
-func envStore() string {
-	if v := os.Getenv("WINZE_STORE"); v != "" {
-		return v
-	}
-	return os.Getenv("WINZE_MEMORY")
 }
 
 // binName resolves a winze tool binary: joined under WINZE_BIN when set, else
@@ -76,10 +64,9 @@ func home() string {
 }
 
 // gitConfigStore reads `winze.store` from git config in the working directory,
-// falling back to the older `winze.memory`, or "" when there is no repo, no
-// key, or git is unavailable.
+// or "" when there is no repo, no key, or git is unavailable.
 //
-// The keys are read without a scope flag on purpose, so --local, --global and
+// The key is read without a scope flag on purpose, so --local, --global and
 // --system all resolve normally. Local is the interesting one: it lives in
 // .git/config, which git keeps in the common dir, so every worktree of a repo
 // sees it and no worktree can hold a different value unless
@@ -89,18 +76,13 @@ func home() string {
 // that is the ordinary case for a repo that never opted in — surfacing it
 // would make the common path noisy.
 func gitConfigStore() string {
-	for _, key := range []string{"winze.store", "winze.memory"} {
-		cmd := exec.Command("git", "config", "--get", key)
-		var buf bytes.Buffer
-		cmd.Stdout = &buf
-		if err := cmd.Run(); err != nil {
-			continue
-		}
-		if v := strings.TrimSpace(buf.String()); v != "" {
-			return v
-		}
+	cmd := exec.Command("git", "config", "--get", "winze.store")
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	if err := cmd.Run(); err != nil {
+		return ""
 	}
-	return ""
+	return strings.TrimSpace(buf.String())
 }
 
 // storeRootConfigured reports whether this working directory has actually opted
@@ -119,7 +101,7 @@ func gitConfigStore() string {
 // pre-existing ~/winze-memory user working without requiring them to set
 // anything.
 func storeRootConfigured() bool {
-	if envStore() != "" || gitConfigStore() != "" {
+	if os.Getenv("WINZE_STORE") != "" || gitConfigStore() != "" {
 		return true
 	}
 	fi, err := os.Stat(filepath.Join(home(), "winze-memory"))

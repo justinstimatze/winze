@@ -15,8 +15,7 @@ export WINZE_BIN=$PWD/bin
 
 The store resolves the way it does everywhere else — `$WINZE_STORE`, then
 `git config --get winze.store`, then `~/winze-memory` — so a repo that already
-names a winze store needs no further configuration. The older `$WINZE_MEMORY`
-and `winze.memory` are still honoured.
+names a winze store needs no further configuration.
 
 ## What it exposes
 

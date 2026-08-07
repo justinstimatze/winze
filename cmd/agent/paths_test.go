@@ -7,13 +7,11 @@ import (
 	"testing"
 )
 
-// clearStoreEnv unsets every name storeRoot reads. Clearing only the current
-// one would leave each test's result depending on whether the deprecated alias
-// happened to be set in the ambient environment.
+// clearStoreEnv unsets what storeRoot reads, so a test's result never depends
+// on the ambient environment.
 func clearStoreEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("WINZE_STORE", "")
-	t.Setenv("WINZE_MEMORY", "")
 }
 
 // TestStoreRootResolutionOrder pins the three-step lookup in storeRoot, and in
@@ -68,20 +66,10 @@ func TestStoreRootResolutionOrder(t *testing.T) {
 		t.Errorf("unset: storeRoot() = %q, want the %q default", got, want)
 	}
 
-	// The deprecated key still resolves on its own: it is set in installed
-	// hooks and other repos' wiring, and dropping it would disable capture
-	// silently rather than fail loudly.
-	run(repo, "config", "winze.memory", "/srv/shared-store")
+	run(repo, "config", "winze.store", "/srv/shared-store")
 	if got := storeRoot(); got != "/srv/shared-store" {
 		t.Errorf("main checkout: storeRoot() = %q, want /srv/shared-store", got)
 	}
-
-	// ...and the current key outranks it when both are set.
-	run(repo, "config", "winze.store", "/srv/current-key")
-	if got := storeRoot(); got != "/srv/current-key" {
-		t.Errorf("both git keys set: storeRoot() = %q, want winze.store to win", got)
-	}
-	run(repo, "config", "--unset", "winze.store")
 
 	// A linked worktree: different working directory, same common dir, so the
 	// key set above must reach it with no setup of its own.
@@ -94,15 +82,9 @@ func TestStoreRootResolutionOrder(t *testing.T) {
 	}
 
 	// The env var is the explicit override and outranks git config.
-	t.Setenv("WINZE_MEMORY", "/srv/override")
+	t.Setenv("WINZE_STORE", "/srv/override")
 	if got := storeRoot(); got != "/srv/override" {
-		t.Errorf("with WINZE_MEMORY set: storeRoot() = %q, want /srv/override", got)
-	}
-
-	// And between the two env names, the current one wins.
-	t.Setenv("WINZE_STORE", "/srv/current-env")
-	if got := storeRoot(); got != "/srv/current-env" {
-		t.Errorf("both env vars set: storeRoot() = %q, want WINZE_STORE to win", got)
+		t.Errorf("with WINZE_STORE set: storeRoot() = %q, want /srv/override", got)
 	}
 }
 
@@ -168,15 +150,15 @@ func TestStoreRootConfigured(t *testing.T) {
 		}
 	}
 	run("init", "-q", "-b", "main")
-	run("config", "winze.memory", "/srv/shared-store")
+	run("config", "winze.store", "/srv/shared-store")
 	if !storeRootConfigured() {
-		t.Error("winze.memory set in git config: want true")
+		t.Error("winze.store set in git config: want true")
 	}
 
 	// The env var alone is enough, in any directory.
-	run("config", "--unset", "winze.memory")
-	t.Setenv("WINZE_MEMORY", "/srv/explicit")
+	run("config", "--unset", "winze.store")
+	t.Setenv("WINZE_STORE", "/srv/explicit")
 	if !storeRootConfigured() {
-		t.Error("WINZE_MEMORY set: want true")
+		t.Error("WINZE_STORE set: want true")
 	}
 }

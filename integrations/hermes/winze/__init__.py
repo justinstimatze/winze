@@ -20,7 +20,7 @@ Install
 Point HERMES at this file and set WINZE_BIN to the directory holding the winze
 binaries (or put winze-agent on PATH). The store itself resolves the way it
 does everywhere: $WINZE_STORE, then `git config --get winze.store`, then
-~/winze-memory. The older $WINZE_MEMORY and winze.memory are still honoured.
+~/winze-memory.
 """
 
 from __future__ import annotations
@@ -242,22 +242,13 @@ class WinzeMemoryProvider(MemoryProvider):
 
     # -- Subprocess --------------------------------------------------------
 
-    # winze-agent was the old name for this binary. It is still accepted so a
-    # host with an older winze checkout keeps working instead of reporting the
-    # store as simply unavailable.
-    _BINARY_NAMES = ("winze-agent", "winze-mem")
-
     def _binary(self) -> Optional[str]:
         bindir = os.environ.get("WINZE_BIN")
-        for name in self._BINARY_NAMES:
-            if bindir:
-                candidate = os.path.join(bindir, name)
-                if os.access(candidate, os.X_OK):
-                    return candidate
-            found = shutil.which(name)
-            if found:
-                return found
-        return None
+        if bindir:
+            candidate = os.path.join(bindir, "winze-agent")
+            if os.access(candidate, os.X_OK):
+                return candidate
+        return shutil.which("winze-agent")
 
     def _call(self, tool: str, args: Dict[str, Any], *, timeout: int) -> str:
         binary = self._binary()
