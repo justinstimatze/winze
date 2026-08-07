@@ -57,32 +57,47 @@ echo "pre-push BLOCKED: this winze store is local-only. Never push private worki
 exit 1
 `
 
-func runInit(args []string) {
-	var dir, from string
-	private, link := false, false
+// initArgs is what `init` was asked to do, separated from doing it so the
+// parsing is readable on its own and the orchestration below reads as a list of
+// steps rather than a switch wrapped around one.
+type initArgs struct {
+	dir     string
+	from    string
+	private bool
+	link    bool
+}
+
+func parseInitArgs(args []string) initArgs {
+	var a initArgs
 	for i := 0; i < len(args); i++ {
-		switch a := args[i]; {
-		case a == "--private":
-			private = true
-		case a == "--link":
-			link = true
-		case a == "--from" && i+1 < len(args):
+		switch arg := args[i]; {
+		case arg == "--private":
+			a.private = true
+		case arg == "--link":
+			a.link = true
+		case arg == "--from" && i+1 < len(args):
 			i++
-			from = args[i]
-		case strings.HasPrefix(a, "--from="):
-			from = strings.TrimPrefix(a, "--from=")
-		case strings.HasPrefix(a, "-"):
-			fatalf("init: unknown flag %q", a)
+			a.from = args[i]
+		case strings.HasPrefix(arg, "--from="):
+			a.from = strings.TrimPrefix(arg, "--from=")
+		case strings.HasPrefix(arg, "-"):
+			fatalf("init: unknown flag %q", arg)
 		default:
-			dir = a
+			a.dir = arg
 		}
 	}
-	if dir == "" {
+	if a.dir == "" {
 		fmt.Fprintln(os.Stderr, "usage: winze-agent init <dir> [--private] [--link] [--from <winze-checkout>]")
 		fmt.Fprintln(os.Stderr, "  --private  install a pre-push hook that blocks every push")
 		fmt.Fprintln(os.Stderr, "  --link     point the current repo at the new store (git config winze.store)")
 		os.Exit(2)
 	}
+	return a
+}
+
+func runInit(argv []string) {
+	opts := parseInitArgs(argv)
+	dir, from, private, link := opts.dir, opts.from, opts.private, opts.link
 
 	abs, err := filepath.Abs(dir)
 	if err != nil {
