@@ -214,7 +214,15 @@ func (r *runner) callLens(sessionBody string) ([]ExtractedFact, error) {
 // parseFacts turns the lens's tab-separated lines into ExtractedFacts.
 func parseFacts(text string) []ExtractedFact {
 	text = strings.TrimSpace(text)
-	if text == "" || strings.HasPrefix(text, "NO_FACTS") {
+	// An empty completion and a deliberate NO_FACTS both yield no facts, and
+	// folding them together hid which was happening. Keep them apart: one is
+	// the lens judging the session, the other is the call coming back with
+	// nothing, and only the second is a bug.
+	if text == "" {
+		fmt.Fprintln(os.Stderr, "  [lens] empty completion — not NO_FACTS, the call returned nothing")
+		return nil
+	}
+	if strings.HasPrefix(text, "NO_FACTS") {
 		return nil
 	}
 	var facts []ExtractedFact

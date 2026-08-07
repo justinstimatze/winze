@@ -118,6 +118,35 @@ func report(rows []resultRow, errored int, stats *usageStats) {
 		fmt.Printf("  %-22s %d/%d\n", t, c[0], c[1])
 	}
 
+	// A question whose extraction produced nothing is not a memory failure the
+	// score should quietly absorb — the answerer was handed an empty context
+	// and never had a chance. Seven of sixty went that way in the v4 baseline
+	// and all seven scored wrong, invisibly, while prompt tuning chased
+	// one-question effects on top of it.
+	var starved []resultRow
+	for _, r := range rows {
+		if r.facts == 0 {
+			starved = append(starved, r)
+		}
+	}
+	if len(starved) > 0 {
+		wrong := 0
+		for _, r := range starved {
+			if !r.correct {
+				wrong++
+			}
+		}
+		fmt.Printf("\nZERO-FACT EXTRACTIONS: %d of %d questions, %d scored wrong\n", len(starved), len(rows), wrong)
+		for _, r := range starved {
+			mark := "✓"
+			if !r.correct {
+				mark = "✗"
+			}
+			fmt.Printf("  %s %-14s %-26s %d session(s)\n", mark, r.qid, r.qtype, r.sessions)
+		}
+		fmt.Println("  (the lens returned NO_FACTS or nothing; the answerer got an empty context)")
+	}
+
 	fmt.Printf("\nper-question timings (ms):\n")
 	fmt.Printf("  %-9s %5s %5s %6s | %8s %6s %8s | %8s %7s %7s\n",
 		"qid", "sess", "facts", "retr", "extract", "build", "sync", "retrieve", "answer", "judge")
