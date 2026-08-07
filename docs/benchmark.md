@@ -95,6 +95,13 @@ scored of 60 attempted, no errors.
 | v4   | 15 | 44/60 73% | 8/10 | 8/10 | 10/10 | 7/10 | 6/10 | 5/10 |
 | v4   | 30 | 45/60 75% | 9/10 | 8/10 | 10/10 | 8/10 | 5/10 | 5/10 |
 | v4   | 60 | 47/60 78% | 9/10 | 8/10 | 10/10 | 9/10 | 6/10 | 5/10 |
+| v5   | 60 | 46/60 77% | 9/10 | 8/10 | 9/10 | 9/10 | 6/10 | 5/10 |
+| v6   | 60 | 49/60 82% | 10/10 | 9/10 | 9/10 | 8/10 | 7/10 | 6/10 |
+
+The v6 row is the mean of nothing — both runs scored 49/60 with identical
+per-type breakdowns and all sixty questions agreeing with themselves, which is
+the only reason it is quotable at all. Against v5 the stable per-question diff
+is five fixed and two broken.
 
 **The noise floor is ±2 questions, and pinning the sampler does not close it.**
 Two runs of byte-identical input — same lens version, same `k`, all 102
@@ -133,6 +140,15 @@ Two rows are flat across every `k`, which is its own finding:
   know", and no window recovers a fact that was never extracted. v4's
   enumeration rule is not firing on those cases.
 
+  *That last sentence was wrong, and the way it was wrong is worth keeping.*
+  A `WINZE_LENS_DEBUG=1` dump over the ten assistant sessions on a cold cache
+  found the enumeration rule firing hard enough to overrun the budget: three
+  sessions stopped at `max_tokens`, and `e9327a54` scored wrong because the
+  dessert shop it asked about sat in the discarded tail. The four failures
+  decompose as three refusals and one truncation, needing two different fixes.
+  Neither is "the rule is not firing". The claim was inferred from a fact count
+  and never checked against a completion.
+
 **Preference questions are graded against the wrong shape.** Their gold is not
 an answer, it is a rubric — "the user would prefer relaxing activities before
 9:30 pm" — while the model produces a response that *satisfies* the rubric.
@@ -141,6 +157,42 @@ it correctly reports that a list of activities is not a description of what a
 good list contains. A hand audit of all 15 failures at k=30 found exactly one
 clear mis-score of this kind; the other three preference failures answered "I
 don't know" and are genuine retrieval misses, not grading artifacts.
+
+### Two ways an extraction fails, and only one of them is visible
+
+The report prints two blocks after the score. They look similar and diagnose
+opposite things.
+
+**ZERO-FACT EXTRACTIONS** counts questions where the lens produced nothing and
+the answerer was handed an empty context. Seven of sixty went that way in the
+v4 baseline and all seven scored wrong while the report showed only 47/60.
+Four of them starve under every lens version tried — `75832dbd`, `89527b6b`,
+`1903aded`, `ceb54acb` — and the debug dump shows why: the lens returns the
+literal string `NO_FACTS` in seven output tokens. Three are assistant-recall
+questions where the user genuinely said nothing about themselves ("Brainstorm
+ideas for work from home jobs for seniors", then later "what was the 7th job in
+the list you provided?"). The answer lives entirely in the assistant's output,
+and a user-fact lens declines. Rule 3a names `wfh_job_7` and
+`plesiosaur_body_colour` as its worked examples — the exact two failures — so
+this is not an instruction the prompt is missing.
+
+**TRUNCATED EXTRACTIONS** counts questions where the lens was still talking
+when the token budget ran out. This one hides. A cut session reports a
+normal-looking fact count, because what was dropped was never counted, and it
+surfaces only as a wrong answer on a question whose evidence sat past the cut —
+which reads as a retrieval miss. `MaxTokens` was 1024 through v6 while rule 3a
+instructed the lens that thirty meaningful cells is thirty lines; v7 raises it
+to 4096 and widens the extraction cache so a warm entry carries the flag.
+
+Do not confuse either with render-side truncation. `--probe` reports whether
+gold-answer turns survive `renderSession`, costs nothing, and returned `cut=0`
+on all sixty — so the lens sees the whole session in every case above.
+
+The general lesson is cheaper than the runs that taught it: **a fact count
+cannot distinguish a model that declined, a model that errored, and a model
+that ran out of room.** Those need three different fixes and look identical
+from outside. The dump that separates them is ten API calls. Reach for it
+before spending a cold re-extraction on a hypothesis.
 
 ### Timings from a busy machine are ceilings, not measurements
 
