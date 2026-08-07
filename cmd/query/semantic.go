@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/justinstimatze/winze/internal/cliutil"
@@ -165,8 +166,8 @@ func semanticRank(kb *kbIndex, query, dir string) ([]semHit, error) {
 	cache := loadVecCache(dir)
 
 	type ev struct {
-		idx int
-		vec []float32
+		idx  int
+		segs [][]float32
 	}
 	var vecs []ev
 	built, hit := 0, 0
@@ -175,23 +176,17 @@ func semanticRank(kb *kbIndex, query, dir string) ([]semHit, error) {
 		if text == "" || text == "." {
 			continue
 		}
-		if v, ok := cache.m[embedKey(text)]; ok {
-			vecs = append(vecs, ev{i, v})
-			hit++
-			continue
-		}
-		v, err := embed(text)
+		segs, n, err := embedSegments(cache, text)
 		if err != nil {
 			return nil, err
 		}
-		cache.m[embedKey(text)] = v
-		cache.dirty = true
-		vecs = append(vecs, ev{i, v})
-		built++
+		built += n
+		hit += len(segs) - n
+		vecs = append(vecs, ev{i, segs})
 	}
 	cache.save()
 	if built > 0 {
-		fmt.Fprintf(os.Stderr, "embedded %d new entities, %d from cache\n", built, hit)
+		fmt.Fprintf(os.Stderr, "embedded %d new segments, %d from cache\n", built, hit)
 	}
 
 	qv, err := embed(query)
@@ -201,7 +196,7 @@ func semanticRank(kb *kbIndex, query, dir string) ([]semHit, error) {
 
 	hits := make([]semHit, 0, len(vecs))
 	for _, e := range vecs {
-		hits = append(hits, semHit{e.idx, dot(qv, e.vec)})
+		hits = append(hits, semHit{e.idx, bestCosine(qv, e.segs)})
 	}
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].score > hits[j].score })
 	return hits, nil
@@ -237,4 +232,101 @@ func runSemantic(kb *kbIndex, query, dir string, jsonOut bool) {
 			fmt.Printf("        %s\n", cliutil.Truncate(e.Brief, 200))
 		}
 	}
+}
+
+// segmentForEmbed splits text into pieces that each fit inside the embedder's
+// window, so content past maxEmbedChars is reachable instead of discarded.
+//
+// The obvious alternative — a longer-window model embedding the whole entry —
+// loses on its own terms. A vector over 1,500 characters is an average over
+// everything in them: measured against this shape, whole-document embedding
+// scored WORSE than head-only on head queries (MRR 0.810 against 0.908) even
+// while it won on tail queries. Segmenting and scoring by the best segment
+// (bestCosine) gets both, which is why this exists rather than a bigger cap or
+// a different model.
+//
+// Text at or under the cap comes back as a single unchanged segment. That is
+// load-bearing, not tidiness: its embedKey is then exactly what it was before
+// segmenting existed, so every short entry's cached vector survives this
+// change and only the entries that were being truncated re-embed.
+func segmentForEmbed(text string) []string {
+	if len(text) <= maxEmbedChars {
+		return []string{text}
+	}
+	var segs []string
+	for len(text) > maxEmbedChars {
+		cut := embedCut(text)
+		if s := strings.TrimSpace(text[:cut]); s != "" {
+			segs = append(segs, s)
+		}
+		text = strings.TrimLeftFunc(text[cut:], unicode.IsSpace)
+	}
+	if tail := strings.TrimSpace(text); tail != "" {
+		segs = append(segs, tail)
+	}
+	return segs
+}
+
+// embedCut picks where to break, preferring the last whitespace in the closing
+// sixth of the window so a segment does not begin mid-word.
+//
+// It always returns a positive, rune-aligned offset. Unbroken text — a long
+// path, a base64 blob, a wall of CJK — offers no whitespace to find, and a cut
+// of 0 would leave the input unchanged and loop forever.
+func embedCut(text string) int {
+	cut := maxEmbedChars
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	if cut == 0 {
+		return maxEmbedChars // pathological input; guarantee forward progress
+	}
+	if i := strings.LastIndexFunc(text[:cut], unicode.IsSpace); i > 0 && i > cut-maxEmbedChars/6 {
+		return i
+	}
+	return cut
+}
+
+// embedSegments returns one vector per segment of text, filling and reusing the
+// cache. The second return is how many were newly embedded, for the progress
+// line. Each segment is keyed on its own text, so segments never collide with
+// the whole-text keys written before this existed.
+func embedSegments(cache *vecCache, text string) ([][]float32, int, error) {
+	segs := segmentForEmbed(text)
+	out := make([][]float32, 0, len(segs))
+	built := 0
+	for _, s := range segs {
+		if v, ok := cache.m[embedKey(s)]; ok {
+			out = append(out, v)
+			continue
+		}
+		v, err := embed(s) // already normalized by embedRetry
+		if err != nil {
+			return nil, built, err
+		}
+		cache.m[embedKey(s)] = v
+		cache.dirty = true
+		out = append(out, v)
+		built++
+	}
+	return out, built, nil
+}
+
+// bestCosine scores a document by its single best-matching segment.
+//
+// Max, not mean. A long entry is usually about several things and a query is
+// about one of them, so averaging the segments reintroduces exactly the
+// dilution segmenting exists to remove. Vectors are unit length, so the dot
+// product is the cosine.
+func bestCosine(qv []float32, segs [][]float32) float64 {
+	if len(segs) == 0 {
+		return 0
+	}
+	best := math.Inf(-1)
+	for _, v := range segs {
+		if d := dot(qv, v); d > best {
+			best = d
+		}
+	}
+	return best
 }

@@ -225,27 +225,27 @@ func runDocsRecall(dir, query string, topN int, floor float64, jsonOut bool) {
 
 	cache := loadVecCache(dir)
 	type cv struct {
-		idx int
-		vec []float32
+		idx  int
+		segs [][]float32
 	}
 	var vecs []cv
 	for i, c := range chunks {
 		// Embed the prose, not the code. A chunk whose body is a bash block
-		// (authoring, query) would otherwise embed 512 chars of shell syntax and
-		// never reach the paragraph that explains it. The displayed chunk keeps
-		// its code; only the vector is prose-only.
+		// (authoring, query) would otherwise embed shell syntax and never reach
+		// the paragraph that explains it. The displayed chunk keeps its code;
+		// only the vector is prose-only.
+		//
+		// Segmented, because this is the worse-hit of the two embed callers:
+		// measured 2026-08-07, 89 of 120 H2 sections here exceed maxEmbedChars
+		// (median 789 bytes against a 512 cap, deepest 18,697), so before
+		// segmenting roughly three-quarters of the doc corpus was matchable
+		// only by its opening lines — on a hook that fires every prompt.
 		et := embedTextFor(c.Text)
-		if v, ok := cache.m[embedKey(et)]; ok {
-			vecs = append(vecs, cv{i, v})
-			continue
-		}
-		v, err := embed(et)
+		segs, _, err := embedSegments(cache, et)
 		if err != nil {
 			return // embedder unavailable — stay silent, never block the prompt
 		}
-		cache.m[embedKey(et)] = v
-		cache.dirty = true
-		vecs = append(vecs, cv{i, v})
+		vecs = append(vecs, cv{i, segs})
 	}
 	cache.save()
 
@@ -259,7 +259,7 @@ func runDocsRecall(dir, query string, topN int, floor float64, jsonOut bool) {
 	}
 	ranked := make([]scored, 0, len(vecs))
 	for _, e := range vecs {
-		ranked = append(ranked, scored{e.idx, dot(qv, e.vec)})
+		ranked = append(ranked, scored{e.idx, bestCosine(qv, e.segs)})
 	}
 	sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].score > ranked[j].score })
 
