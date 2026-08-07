@@ -82,6 +82,24 @@ it. The run log stays out of git: its lessons belong in this file, and its
 timing columns are contaminated (see below). The diff recipe is in
 `cmd/longmemeval/baselines/README.md`.
 
+### What these numbers are not
+
+**Every score on this page is on the oracle set, which is the benchmark with
+the distractors removed.** `cmd/longmemeval/data/` holds
+`longmemeval_oracle.json` and nothing else: only the answer-bearing sessions,
+a mean of 1.9 per question, min 1 and max 6, 948 sessions across all 500
+questions. The full `longmemeval_s` haystack is 265 MB against the oracle's
+15, and finding the needle in it is the thing LongMemEval was built to measure.
+
+So these runs measure extraction and answering. They do not measure retrieval
+among distractors, and a gain here is not evidence of one there. The single
+clearest example sits in the failure list below: `0edc2aef` retrieved a
+Seattle trip for a question about Miami, which is exactly the class of error
+the oracle set under-represents by construction.
+
+Fixing that means running the real haystack. See the cost table at the end —
+it is affordable and, before concurrency landed, it was not feasible.
+
 ### Results, 2026-08-06
 
 First scoring runs the harness has ever had. Balanced 60-question subset, ten
@@ -97,11 +115,39 @@ scored of 60 attempted, no errors.
 | v4   | 60 | 47/60 78% | 9/10 | 8/10 | 10/10 | 9/10 | 6/10 | 5/10 |
 | v5   | 60 | 46/60 77% | 9/10 | 8/10 | 9/10 | 9/10 | 6/10 | 5/10 |
 | v6   | 60 | 49/60 82% | 10/10 | 9/10 | 9/10 | 8/10 | 7/10 | 6/10 |
+| v7   | 60 | 49/60 82% | 10/10 | 9/10 | 9/10 | 8/10 | 6/10 | 7/10 |
+| v9   | 60 | 52/60 87% | 10/10 | 9/10 | 10/10 | 8/10 | 6/10 | 9/10 |
+| v9 + answerer | 60 | 54/60 90% | 10/10 | 9/10 | 10/10 | 8/10 | 8/10 | 9/10 |
 
 The v6 row is the mean of nothing — both runs scored 49/60 with identical
 per-type breakdowns and all sixty questions agreeing with themselves, which is
 the only reason it is quotable at all. Against v5 the stable per-question diff
 is five fixed and two broken.
+
+The last three rows are one evening's work and each was found by reading model
+output rather than by reasoning about prompts:
+
+- **v7 raised `MaxTokens` from 1024 to 4096.** Rule 3a had told the lens since
+  v4 that thirty meaningful cells is thirty lines and that compressing an
+  enumeration is wrong; the cap made that instruction unfollowable. Total facts
+  across the sixty questions went 1402 → 1784, so a quarter of every extraction
+  was being discarded. The score did not move — `e9327a54` went 21 facts → 54
+  and wrong → right, and one preference question went the other way on noise.
+  Correctness bought without a score is still worth having: the same cap sat on
+  `cmd/metabolism/ingest.go`, where a mid-quote cut would have written half a
+  sentence into the corpus presented as verbatim.
+- **v8 added a second extraction pass** for sessions the first pass returns
+  nothing on, and **v9 gave that pass the temporal clause** the primary prompt
+  has carried since v3. Starvation went 7 of 60 to 2. The assistant row, flat
+  at 5/10 across every `k` and every lens version through v6, went to 9/10.
+- **The answerer change scoped its "I don't know" rule** to questions about
+  stored facts. Preference 6/10 → 8/10 with knowledge-update and temporal
+  unmoved, on a warm cache, so the facts were held fixed and only the answerer
+  varied.
+
+A later cold run at concurrency 8 scored **55/60 with preference at 9/10 and
+all five retried questions right**, which is one question above the row above
+it and therefore inside the noise. The per-type shape is what repeats.
 
 **The noise floor is ±2 questions, and pinning the sampler does not close it.**
 Two runs of byte-identical input — same lens version, same `k`, all 102
@@ -158,6 +204,30 @@ good list contains. A hand audit of all 15 failures at k=30 found exactly one
 clear mis-score of this kind; the other three preference failures answered "I
 don't know" and are genuine retrieval misses, not grading artifacts.
 
+**The last clause was wrong, and this one was expensive.** Those "I don't
+know" answers were not retrieval misses. `answerSystem` had a single escape
+hatch — *if the facts do not contain the answer, say exactly: I don't know* —
+which is right for a question about a stored fact and fires by construction on
+a preference question, because "suggest a hotel for my Miami trip" asks the
+model to act on what it remembers and the specific hotel is never stored and
+never could be. On `0edc2aef` the answerer held the preferences (great views,
+rooftop pool, balcony hot tub) and replied that the trip was actually to
+Seattle. With the rule scoped to stored-fact questions it recommends a
+specific Miami hotel on exactly those preferences and flags the Seattle
+discrepancy rather than hiding behind it.
+
+Measured on a warm cache so the facts were identical and only the answerer
+varied: preference 6/10 → 8/10 and 7/10 over two runs, knowledge-update 9/10
+and temporal 10/10 unchanged in both. The stable diff is exactly two
+questions, both preference, both wrong → right. The feared trade — buying
+preference points by fabricating where refusal is correct — did not appear.
+
+The grading artifact above is real and the rubric mismatch stands. What was
+wrong was attributing the *other* failures to retrieval on the strength of
+their surface form. "I don't know" is what a refusal and a retrieval miss both
+look like from the outside, which is the same mistake as reading a fact count
+and calling it an extraction failure.
+
 ### Two ways an extraction fails, and only one of them is visible
 
 The report prints two blocks after the score. They look similar and diagnose
@@ -193,6 +263,47 @@ cannot distinguish a model that declined, a model that errored, and a model
 that ran out of room.** Those need three different fixes and look identical
 from outside. The dump that separates them is ten API calls. Reach for it
 before spending a cold re-extraction on a hypothesis.
+
+### A third block: what the retry recovered
+
+**RETRIED EXTRACTIONS** names sessions the first pass returned nothing on and
+`lensRetrySystem` rescued. It is the entire case for the second call existing:
+empty means the retry is buying nothing and should come out.
+
+The retry is itself a sampled decision, not a deterministic rescue. On a
+seven-question probe it recovered 7 of 7; on the full sixty it recovered 5 of
+7, with `75832dbd` and `ceb54acb` returning `NO_FACTS` from *both* passes. So
+the honest claim is that it fixes most starvation most of the time, and a
+third pass would presumably shave the remainder with diminishing returns.
+
+Rows here that still score wrong are informative in the other direction: the
+facts arrived and the answer did not, which moves the failure downstream. That
+is how the answerer bug above was found — `58ef2f1c` came back with 42 facts
+and still scored wrong, and reading its cache entry showed an event with no
+date on a question asking when.
+
+### What a run costs
+
+Measured off the v9 cold run's own token counters — 109 Haiku calls, 120
+Sonnet, nothing served from cache — at list pricing. Extraction scales with
+sessions; answer and judge scale with questions.
+
+| run | cost | wall (serial) | wall (`--concurrency 8`) |
+|-----|------|---------------|--------------------------|
+| 60-question subset, cold | $1.34 | 25 min | **2.3 min** |
+| 60-question subset, warm | $0.51 | 4.9 min | 1.1 min |
+| full oracle, 500 q / 948 sessions | ~$12 | 3.9 h | ~21 min |
+| full `longmemeval_s` haystack | ~$138 | 67 h | ~5.6 h |
+
+The cold subset numbers are measured, not projected: 1514 s serial against
+138 s at concurrency 8, an 11× speedup on a run that is ~99% blocked on the
+API. Per question the split is extract 12.5 s, answer 2.5 s, judge 1.1 s
+against 0.9 s for the whole winze machinery — build 128 ms, defn sync 795 ms,
+retrieve 2.2 ms. The rest of the table scales those two measurements.
+
+The money was never the obstacle. 67 hours was, and it is why every result
+above is on sixty questions with the distractors removed. That constraint is
+gone.
 
 ### Timings from a busy machine are ceilings, not measurements
 
