@@ -164,7 +164,10 @@ func (r *runner) runQuestion(q Question, k int) (resultRow, error) {
 		if err != nil {
 			return row, err
 		}
-		for _, f := range ex {
+		if ex.Truncated {
+			row.truncated++
+		}
+		for _, f := range ex.Facts {
 			facts = append(facts, Fact{
 				Attribute: f.Attribute, Value: f.Value, Kind: f.Kind,
 				Date: dateOf[sid], Session: sid, Quote: f.Quote,

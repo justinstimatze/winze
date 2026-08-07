@@ -8,10 +8,15 @@ import (
 
 // resultRow is the outcome of one question, with per-hop nanosecond timings.
 type resultRow struct {
-	qid        string
-	qtype      string
-	sessions   int
-	facts      int
+	qid      string
+	qtype    string
+	sessions int
+	facts    int
+	// truncated counts this question's sessions whose extraction stopped at
+	// MaxTokens rather than finishing. A cut session still reports a healthy
+	// fact count, so this is the only column separating a complete extraction
+	// from the first N tokens of one.
+	truncated  int
 	retrieved  int
 	correct    bool
 	answer     string
@@ -119,6 +124,7 @@ func report(rows []resultRow, errored int, stats *usageStats) {
 	}
 
 	reportStarved(rows)
+	reportTruncated(rows)
 
 	fmt.Printf("\nper-question timings (ms):\n")
 	fmt.Printf("  %-9s %5s %5s %6s | %8s %6s %8s | %8s %7s %7s\n",
@@ -183,4 +189,43 @@ func reportStarved(rows []resultRow) {
 		fmt.Printf("  %s %-14s %-26s %d session(s)\n", mark, r.qid, r.qtype, r.sessions)
 	}
 	fmt.Println("  (the lens returned NO_FACTS or nothing; the answerer got an empty context)")
+}
+
+// reportTruncated names the questions whose extraction hit the token ceiling.
+//
+// This is the failure that hides best. A starved question reports zero facts
+// and is obvious once looked for; a truncated one reports twenty and looks
+// exactly like a healthy extraction, because the tail that was thrown away is
+// not counted anywhere. It only surfaces as a wrong answer on a question whose
+// evidence happened to sit past the cut — which reads as a retrieval miss.
+//
+// Measured on the ten-question assistant slice under the old 1024-token cap:
+// three sessions stopped at max_tokens, and one of those questions scored
+// wrong because the dessert shop it asked about was in the discarded tail.
+// Every published fact-count table before v7 was blind to this.
+func reportTruncated(rows []resultRow) {
+	var cut []resultRow
+	wrong := 0
+	for _, r := range rows {
+		if r.truncated == 0 {
+			continue
+		}
+		cut = append(cut, r)
+		if !r.correct {
+			wrong++
+		}
+	}
+	if len(cut) == 0 {
+		return
+	}
+	fmt.Printf("\nTRUNCATED EXTRACTIONS: %d of %d questions, %d scored wrong\n", len(cut), len(rows), wrong)
+	for _, r := range cut {
+		mark := "✓"
+		if !r.correct {
+			mark = "✗"
+		}
+		fmt.Printf("  %s %-14s %-26s %d of %d session(s) cut, %d facts kept\n",
+			mark, r.qid, r.qtype, r.truncated, r.sessions, r.facts)
+	}
+	fmt.Println("  (the lens stopped at MaxTokens mid-enumeration; the facts after the cut were never emitted)")
 }

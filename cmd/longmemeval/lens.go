@@ -58,7 +58,23 @@ import (
 // which rule 1 already listed, in a session the lens judged factless. The gold
 // answer requires exactly that fact. Rule 5's escape was easy to take on any
 // request for advice, so it now says what does not qualify as factless.
-const lensVersion = "v6"
+// v7: raise MaxTokens 1024 -> 4096 and record truncation in the cache.
+//
+// Rule 3a has told the lens since v4 that thirty meaningful cells is thirty
+// lines and that compressing an enumeration is wrong. The token cap made that
+// instruction impossible to obey on the sessions it was written for, and
+// nothing in the pipeline said so: a cut extraction reports a normal-looking
+// fact count, because what is missing was never counted. Measured on the
+// assistant slice, 3 of 10 sessions stopped at max_tokens and one of the three
+// scored wrong on evidence that sat past the cut. The cached value widens from
+// a bare fact array to lensResult so a warm entry can carry the flag; the
+// report gains a TRUNCATED EXTRACTIONS block next to the zero-fact one.
+//
+// The number this bump answers for is that truncation count, not the score.
+// The risk it takes is the other direction: more facts at a fixed k means more
+// competition in the retrieval window, so multi-session could get worse even
+// as extraction gets more complete.
+const lensVersion = "v7"
 
 // lensSystem is the extraction rulebook — identical across every session call,
 // so it rides an ephemeral cache_control block (marked in callLens).
@@ -111,7 +127,7 @@ type ExtractedFact struct {
 
 // extractSession runs the lens over one session, caching the result on disk by
 // content hash so re-runs and sessions shared across questions cost nothing.
-func (r *runner) extractSession(sessionID string, turns []Turn) ([]ExtractedFact, error) {
+func (r *runner) extractSession(sessionID string, turns []Turn) (lensResult, error) {
 	body := renderSession(turns)
 	// The key covers prompt version, model and session body — not sampling
 	// parameters. That is deliberate rather than an oversight: adding
@@ -125,21 +141,32 @@ func (r *runner) extractSession(sessionID string, turns []Turn) ([]ExtractedFact
 	cachePath := filepath.Join(r.cacheDir, key+".json")
 
 	if b, err := os.ReadFile(cachePath); err == nil {
-		var facts []ExtractedFact
-		if json.Unmarshal(b, &facts) == nil {
+		// v7 widened the cached value from a bare fact array to a struct
+		// carrying the truncation flag. A pre-v7 file fails this unmarshal
+		// and falls through to a fresh call, which is correct — its facts
+		// cannot say whether they were cut. In practice the lensVersion bump
+		// changes the key anyway, so this path only matters if someone points
+		// a new binary at an old cache without bumping.
+		// The unmarshal itself is the format check: a pre-v7 file holds a JSON
+		// array, which fails to decode into a struct and falls through to a
+		// fresh call. Do not additionally require Facts to be non-nil — a
+		// NO_FACTS session legitimately caches as null, and gating on it would
+		// re-extract every starved session on every warm run.
+		var res lensResult
+		if json.Unmarshal(b, &res) == nil {
 			r.stats.lensCacheHits++
-			return facts, nil
+			return res, nil
 		}
 	}
 
-	facts, err := r.callLens(body)
+	res, err := r.callLens(body)
 	if err != nil {
-		return nil, err
+		return lensResult{}, err
 	}
-	if b, err := json.Marshal(facts); err == nil {
+	if b, err := json.Marshal(res); err == nil {
 		_ = os.WriteFile(cachePath, b, 0o644)
 	}
-	return facts, nil
+	return res, nil
 }
 
 // renderSession flattens a session's turns into the text the lens reads. Long
@@ -192,10 +219,24 @@ func renderSession(turns []Turn) string {
 
 // callLens issues one extraction call. The system block is cache_control'd; the
 // per-session content is the only newly-billed input on a warm cache.
-func (r *runner) callLens(sessionBody string) ([]ExtractedFact, error) {
+//
+// Set WINZE_LENS_DEBUG=1 to dump the raw completion per call. The parsed-fact
+// cache stores only the parsed result, so a session that extracts nothing is
+// indistinguishable from one that returned NO_FACTS, refused, or ran out of
+// MaxTokens mid-enumeration — three failures needing three different fixes.
+// The dump is the only place the completion text is visible.
+func (r *runner) callLens(sessionBody string) (lensResult, error) {
 	resp, err := r.client.Messages.New(context.Background(), anthropic.MessageNewParams{
-		Model:       anthropic.ModelClaudeHaiku4_5,
-		MaxTokens:   1024,
+		Model: anthropic.ModelClaudeHaiku4_5,
+		// 4096, not 1024. Rule 3a tells the lens that thirty meaningful cells
+		// is thirty lines of output and to never compress an enumeration; the
+		// old cap made that instruction impossible to obey on exactly the
+		// sessions it was written for. Measured on the assistant slice before
+		// the raise: 3 of 10 sessions stopped at max_tokens, and one of the
+		// three scored wrong because the shop it was asked about sat past the
+		// cut. Raising a ceiling cannot shrink an extraction, so the only cost
+		// is output tokens on sessions that genuinely have more to say.
+		MaxTokens:   4096,
 		Temperature: anthropic.Float(0),
 		System: []anthropic.TextBlockParam{{
 			Text:         lensSystem,
@@ -206,7 +247,7 @@ func (r *runner) callLens(sessionBody string) ([]ExtractedFact, error) {
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("lens API error: %w", err)
+		return lensResult{}, fmt.Errorf("lens API error: %w", err)
 	}
 	r.stats.record(string(anthropic.ModelClaudeHaiku4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
 
@@ -217,7 +258,17 @@ func (r *runner) callLens(sessionBody string) ([]ExtractedFact, error) {
 			break
 		}
 	}
-	return parseFacts(text), nil
+	if os.Getenv("WINZE_LENS_DEBUG") != "" {
+		// stop_reason matters as much as the text: "max_tokens" means the
+		// enumeration was cut, not that the model chose to stop.
+		fmt.Fprintf(os.Stderr, "  [lens-debug] stop=%s out=%d in=%d\n    %s\n",
+			resp.StopReason, resp.Usage.OutputTokens, resp.Usage.InputTokens,
+			strings.ReplaceAll(text, "\n", "\n    "))
+	}
+	return lensResult{
+		Facts:     parseFacts(text),
+		Truncated: resp.StopReason == "max_tokens",
+	}, nil
 }
 
 // parseFacts turns the lens's tab-separated lines into ExtractedFacts.
@@ -267,4 +318,18 @@ func parseFacts(text string) []ExtractedFact {
 		facts = append(facts, ExtractedFact{Attribute: attr, Value: val, Kind: kind, Quote: quote})
 	}
 	return facts
+}
+
+// lensResult is one session's extraction plus whether the model was still
+// talking when the token budget ran out.
+//
+// Truncation has to ride in the cache, not just the live call. The cache
+// stored a bare []ExtractedFact until v7, so a warm entry could not say
+// whether its facts were the whole extraction or the first 1024 tokens of
+// one — and a cut enumeration looks healthy from the outside, since 20 facts
+// is a normal-looking count whether or not 20 more were dropped. The only
+// visible symptom was a question whose answer lived in the missing tail.
+type lensResult struct {
+	Facts     []ExtractedFact
+	Truncated bool
 }

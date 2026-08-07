@@ -34,6 +34,7 @@ func writeBaseline(path string, questions []Question, rows []resultRow) error {
 			Sessions:  r.sessions,
 			Facts:     r.facts,
 			Retrieved: r.retrieved,
+			Truncated: r.truncated,
 		}); err != nil {
 			return err
 		}
@@ -62,4 +63,9 @@ type baselineRow struct {
 	Sessions  int    `json:"sessions"`
 	Facts     int    `json:"facts"`
 	Retrieved int    `json:"retrieved"`
+	// Truncated belongs in the baseline for the same reason Facts does: it is
+	// a property of the extraction that a later diff needs in order to read a
+	// flip. A question that goes from wrong to right while Truncated goes 1
+	// to 0 has an explanation; the same flip with Truncated flat does not.
+	Truncated int `json:"truncated"`
 }
