@@ -21,14 +21,15 @@ import inspect
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "winze"))
 
 try:
     from agent.memory_provider import MemoryProvider
 except ImportError:
     sys.exit("hermes not importable — set PYTHONPATH to a hermes-agent checkout")
 
-import winze_provider as wp
+import importlib
+wp = importlib.import_module("__init__")
 
 failures: list[str] = []
 

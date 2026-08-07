@@ -273,3 +273,12 @@ class WinzeMemoryProvider(MemoryProvider):
             # stdout, so the body is the useful part either way.
             return json.dumps({"error": (proc.stdout or proc.stderr).strip()})
         return proc.stdout.strip()
+
+
+# ---------------------------------------------------------------------------
+# Plugin entry point
+# ---------------------------------------------------------------------------
+
+def register(ctx) -> None:
+    """Register winze as a memory provider plugin."""
+    ctx.register_memory_provider(WinzeMemoryProvider())
