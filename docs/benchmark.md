@@ -355,10 +355,85 @@ Three levers cut it further, in order of size:
   than exists.
 
 Measured on the haystack, still open: `k=60` admits **60 of ~650** extracted
-facts per question, 9%. On the oracle set `k` barely bound; here the
-term-overlap ranker decides the entire result. Sweep it before reading any
-haystack score — extraction caches and is `k`-independent, so one cold run
-buys as many `k` points as you want at answer+judge cost.
+facts per question, 9%. The term-overlap ranker decides the entire result there.
+Sweep it before reading any haystack score — extraction caches and is
+`k`-independent, so one cold run buys as many `k` points as you want at
+answer+judge cost.
+
+## The `k` sweep: the window was not the constraint
+
+Swept on all 500 oracle questions, 2026-08-07, warm cache. `lens cache hits:
+948 sessions` was identical at every point, so extraction was genuinely held
+fixed and this is a clean `k`-only comparison.
+
+| `k` | total | knowledge | multi-session | assistant | preference | user | temporal |
+|---|---|---|---|---|---|---|---|
+| 60 | 421/500 | 70/78 | 102/133 | 38/56 | 26/30 | 68/70 | 117/133 |
+| **120** | **431/500** | 71/78 | **107/133** | 39/56 | 25/30 | 68/70 | **121/133** |
+| 250 | 424/500 | 69/78 | 105/133 | 38/56 | 24/30 | 68/70 | 120/133 |
+| 500 | 427/500 | 69/78 | 107/133 | 38/56 | 25/30 | 68/70 | 120/133 |
+
+### Read the noise floor first
+
+`k=60` was re-run rather than reused, and it scored **421** against the earlier
+run's **423** — but the *net* hides the churn. Question by question, **10 of 500
+flipped** between two runs at identical `k` and identical extraction (4 to
+correct, 6 to wrong). `Temperature: 0` does not make the API deterministic.
+
+So ±2 is the noise floor on the *total* and ~10 is the floor on *any
+per-question claim*. Every number below is read against that.
+
+### The two halves of the multi-session failures
+
+Of the 31 multi-session failures at baseline, 15 extracted more than 60 facts
+(so `k=60` truncated them) and 16 extracted 60 or fewer (so the answerer already
+had everything). Tracking those two sets across the sweep separates capacity
+from ranking:
+
+| `k` | of the 15 that overflowed | of the 16 that fit |
+|---|---|---|
+| 60 | 1/15 | 0/16 |
+| 120 | 7/15 | 1/16 |
+| 250 | 4/15 | 0/16 |
+| 500 | 5/15 | 1/16 |
+
+Two things fall out, and the second is the finding.
+
+**The 16 that already fit never recover — at any `k`.** Zero, one, zero, one,
+which is indistinguishable from the churn above. Half the multi-session failures
+had their entire extraction in the answerer's context and still lost to raw
+chat text. No window fixes those; they are an extraction-quality problem, not a
+retrieval one.
+
+**Recovery on the other 15 is not monotone in `k`.** A larger window can only
+admit *more* facts, so if capacity were the binding constraint, 7 recovered at
+`k=120` could not drop to 4 at `k=250`. It does. More slots past ~120 recovers
+nothing further and costs elsewhere — knowledge-update goes 71 → 69 and
+preference 25 → 24 as the context fills with lower-ranked facts. That is the
+signature of ordering and distraction, not capacity.
+
+### What to do with it
+
+`k=120` is worth taking: +10 net over `k=60`, which is 5× the total's noise
+floor. But the multi-session component of that gain is **8 gained against 3
+lost** — 11 flips to net +5, on a floor of ~10 flips. Take the total, don't
+tell a story about the type.
+
+And it does not close the gap that matters. The raw control — same answerer,
+same judge, chat sessions handed over verbatim, no winze at all — scores
+**443/500**. The best `k` here reaches 431. Widening the window recovers about
+a third of the deficit and then stops, because the deficit is not in the window.
+
+Next lever is the ranker or the lens, not `k`. The 16-question set above is the
+cleanest available test bed: every fact the answerer needed was already in its
+context, so anything that fixes them is a genuine extraction or ranking
+improvement and cannot be a retrieval artifact.
+
+Reproduce: `scripts/`-free, the sweep and its analysis are two scratch scripts
+(`k-sweep-500.sh`, `ksweep-analyze.sh`). Note the first version of the analysis
+used `join` on unsorted input, which drops rows silently; the recovery column
+was recomputed in `jq` and agreed, but do not trust a `join` here without the
+check.
 
 ### Timings from a busy machine are ceilings, not measurements
 
