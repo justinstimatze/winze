@@ -294,6 +294,9 @@ func main() {
 	bias := flag.Bool("bias", false, "run cognitive bias self-audit on KB structure (standalone or with --dream)")
 	cycle := flag.Bool("cycle", false, "full sleep cycle: sense → evaluate → ingest → dream → trip → calibrate (alias: --evolve)")
 	evolve := flag.Bool("evolve", false, "full evolution cycle — same as --cycle")
+	replayLog := flag.String("replay-isolated", "", "re-critique a trip-isolated JSONL under an asserted predicate and print the survival rate. Asks whether NONE-predicate rows stranded by a missing emit-menu entry were any good, without regenerating them.")
+	replayPred := flag.String("replay-predicate", "StructurallyAnalogousTo", "with --replay-isolated: the predicate to assert on each row")
+	replayN := flag.Int("replay-n", 0, "with --replay-isolated: stop after N rows (0 = all)")
 	trip := flag.Bool("trip", false, "speculative cross-cluster connection generation (needs ANTHROPIC_API_KEY)")
 	tripTemp := flag.Float64("temperature", 1.0, "LLM temperature for --trip (0.0-1.5; higher = wilder connections)")
 	tripPrompt := flag.String("prompt-type", "analogy", "connection type for --trip: analogy, contradiction, genealogy, prediction")
@@ -422,6 +425,14 @@ func main() {
 			os.Exit(1)
 		}
 		runIngest(dir, *zimPath, *zimIndex)
+		return
+	}
+
+	if *replayLog != "" {
+		if err := replayIsolated(dir, *replayLog, *replayPred, *replayN); err != nil {
+			fmt.Fprintf(os.Stderr, "replay-isolated: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
