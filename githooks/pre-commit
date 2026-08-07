@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# winze pre-commit. Install with `make hooks`, which points core.hooksPath here.
+#
+# Tracked on purpose: this gate used to live in an untracked .beads/hooks/ (a
+# leftover directory from the dropped Gas Town integration) reached through a
+# --local core.hooksPath. Neither an untracked file nor --local config survives
+# a clone, so every checkout but this one had no gate and no way to notice.
+#
+# The CodeScene block below was copied from CodeScene's own installer output and
+# carries its managed markers. If `cs` rewrites .beads/hooks/pre-commit later,
+# this copy is what actually runs and will need re-syncing.
+#
+# Everything here is advisory: no path exits non-zero, so a commit is never
+# blocked. A checkout without `cs` on PATH skips the block entirely.
+
+# >>> codescene-precommit (managed) >>>
+# CodeScene delta on staged changes. Non-blocking and bounded.
+#
+# The test below has to be an attempted open, not [ -w ]. With
+# fs.protected_regular=2 the kernel refuses to open another uid's file for
+# write inside sticky /tmp even when the group bits allow it, so the
+# permission bits say yes and the syscall says no. The timeout is the
+# backstop for every other way cs can wedge.
+__cs_lck=/tmp/codescene-cli.log.lck
+__cs_ok=1
+if [ -e "$__cs_lck" ]; then
+  if ! ( : >> "$__cs_lck" ) 2>/dev/null; then __cs_ok=0; fi
+fi
+if [ "$__cs_ok" = 1 ] && command -v cs >/dev/null 2>&1; then
+  timeout 30 cs delta --staged --error-on-warnings && __cs_rc=0 || __cs_rc=$?
+  if [ "${__cs_rc}" -eq 124 ]; then
+    echo "CodeScene timed out after 30s — skipped, commit proceeds."
+  elif [ "${__cs_rc}" -ne 0 ]; then
+    echo "CodeScene flagged code-health findings above — warning only, commit proceeds."
+  fi
+  unset __cs_rc
+  # Remove our own lock on the way out. Neither account can delete the
+  # other's (sticky /tmp) or chmod it (owner-only), so a lock left behind is a
+  # permanent lockout of whoever did not create it — decided by nothing more
+  # than who ran last. Cleaning up after ourselves is the only move available
+  # from inside, and it is enough: if both accounts do it, no stale file ever
+  # exists and the only remaining collision is genuine concurrency.
+  [ -O /tmp/codescene-cli.log.lck ] && rm -f /tmp/codescene-cli.log.lck 2>/dev/null
+  [ -O /tmp/codescene-cli.log.jsonl ] && rm -f /tmp/codescene-cli.log.jsonl 2>/dev/null
+fi
+unset __cs_lck __cs_ok
+# <<< codescene-precommit (managed) <<<
+
+exit 0

@@ -9,7 +9,7 @@
 CMDS := query lint topology metabolism add edit sensor rot-probe predicates-suggest benchmark mcp agent meld metabolize observatory okf
 BIN  := bin
 
-.PHONY: all build install clean test gate jscheck docs-coverage defn-latest
+.PHONY: all build install clean test gate hooks jscheck docs-coverage defn-latest
 
 all: build
 
@@ -35,6 +35,15 @@ gate:
 ## test: full test suite
 test:
 	go test ./...
+
+## hooks: point git at the tracked githooks/ (run once per clone)
+##
+## core.hooksPath is --local config, so it does not clone either — tracking the
+## hook is only half the fix and this target is the other half. Relative, so it
+## resolves per checkout rather than pinning one machine's path.
+hooks:
+	@git config core.hooksPath githooks
+	@echo "core.hooksPath -> githooks ($(shell ls githooks | tr '\n' ' '))"
 
 ## jscheck: typecheck (tsc checkJs) + lint (biome) the observatory frontend.
 ## Run `npm --prefix cmd/observatory ci` once to install the tooling.
