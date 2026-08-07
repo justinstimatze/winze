@@ -140,3 +140,41 @@ cmd/observatory/node_modules/
 
 # stray binary from `go build ./cmd/longmemeval` without -o
 /longmemeval
+
+# `go build ./cmd/<name>` drops the binary in cwd, and `go build` inside a
+# cmd package drops it alongside the source. Neither lands in bin/, so neither
+# was covered by the bin/ rule above.
+/add
+/cmd/add/add
+/agent
+/cmd/agent/agent
+/benchmark
+/cmd/benchmark/benchmark
+/edit
+/cmd/edit/edit
+/lint
+/cmd/lint/lint
+/longmemeval
+/cmd/longmemeval/longmemeval
+/mcp
+/cmd/mcp/mcp
+/meld
+/cmd/meld/meld
+/metabolism
+/cmd/metabolism/metabolism
+/metabolize
+/cmd/metabolize/metabolize
+/observatory
+/cmd/observatory/observatory
+/okf
+/cmd/okf/okf
+/predicates-suggest
+/cmd/predicates-suggest/predicates-suggest
+/query
+/cmd/query/query
+/rot-probe
+/cmd/rot-probe/rot-probe
+/sensor
+/cmd/sensor/sensor
+/topology
+/cmd/topology/topology
