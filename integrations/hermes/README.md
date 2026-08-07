@@ -49,3 +49,29 @@ a decision, and the `system_prompt_block` tells the model what clears that bar.
 Writes are refused outside `agent_context="primary"`. A cron or subagent
 context writing into the user's memory fills it with machinery talking to
 itself.
+
+## Conformance
+
+`winze_provider.py` falls back to `MemoryProvider = object` when Hermes is not
+importable, so it loads and smoke-tests on a machine with no Hermes at all.
+That fallback means nothing in this repo enforces the contract — abstractness
+is not checked and neither are signatures.
+
+`conformance.py` does, wherever Hermes actually is:
+
+```bash
+PYTHONPATH=/path/to/hermes-agent python3 integrations/hermes/conformance.py
+```
+
+Exits non-zero on failure and refuses to pass silently when Hermes is absent.
+
+Verified 2026-08-06 against `agent/memory_provider.py` from the upstream main
+branch: the real ABC binds, no abstract method is left unimplemented, and every
+override is call-compatible. Two differences are ignored by design —
+`initialize` and `handle_tool_call` annotate `**kwargs: Any` where the base
+leaves it bare, which changes nothing about how the host calls them.
+
+**Not verified:** that Hermes's own provider discovery finds and loads the
+class. That needs a running agent, and there is no Hermes install on the
+machine this was written on. Treat the provider as contract-correct and
+end-to-end untested until someone runs it under a real one.
