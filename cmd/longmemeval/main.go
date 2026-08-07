@@ -48,6 +48,7 @@ func main() {
 		topK       = flag.Int("k", 60, "retrieval top-k facts fed to the answerer. Was 15, with no recorded rationale; the 2026-08-06 sweep scored 44/45/47 of 60 at k=15/30/60, monotone and concentrated in multi-session (7->8->9), the type with the most facts competing for the window. 27 of 60 questions produce more facts than 15 slots admit, so 15 was binding on nearly half the set. Not swept past 60 — no ceiling was found, so a larger value may still pay. Costs answerer input tokens only; retrieval searches the whole store either way.")
 		dryRun     = flag.Bool("dry-run", false, "select subset and report shape only; no API calls")
 		probe      = flag.Bool("probe", false, "report whether gold answer turns survive renderSession truncation; no API calls")
+		raw        = flag.Bool("raw", false, "CONTROL: skip the lens, the typed store, defn and ranking entirely — hand the answerer the chat history verbatim. Same answerer, same judge, same temperature. If this matches the pipeline's score, the pipeline is not earning its keep on this dataset, which is the one comparison every number here has been missing.")
 		conc       = flag.Int("concurrency", 8, "questions run at once. The loop is ~99% blocked on the API — 12.5s extract + 2.5s answer + 1.1s judge against 0.9s of winze machinery per question — so this is close to a linear speedup until the API rate limit or the per-question `go build` becomes the constraint. 1 restores the old serial behaviour, which is what a concurrency bug should be diffed against.")
 		only       = flag.String("only", "", "comma-separated question ids (prefixes ok) to run instead of the per-type quota. For testing a hypothesis about specific failures without paying for the whole subset — a lensVersion bump makes every question cold, so a six-question check costs six extractions rather than sixty.")
 		baseline   = flag.String("baseline", "", "write per-question outcomes (qid, gold, answer, verdict) as JSONL to this path, for diffing the next configuration against this one question by question. Omits timings on purpose — they churn every row on every run.")
@@ -58,9 +59,25 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: longmemeval --dataset <path> --work <dir> [flags]")
 		os.Exit(2)
 	}
+	// The extraction cache defaults to a stable per-user location, NOT a
+	// subdirectory of --work. It used to live under the workdir, which meant a
+	// new workdir silently re-extracted everything: one evening of experiments
+	// left eleven cache directories holding 1,903 entries for at most ~950
+	// distinct sessions, with the same 102 sessions paid for three times over.
+	//
+	// Sharing one directory across every run is safe by construction, because
+	// the key is sha256(lensVersion + model + session body). Two runs with
+	// different prompts cannot collide, and two runs with the same prompt
+	// SHOULD hit — including across datasets, since the oracle set's evidence
+	// sessions also appear inside the longmemeval_s haystack and are
+	// byte-identical there.
 	cache := *cacheDir
 	if cache == "" {
-		cache = filepath.Join(*workDir, "cache")
+		if base, err := os.UserCacheDir(); err == nil {
+			cache = filepath.Join(base, "winze-longmemeval", "extractions")
+		} else {
+			cache = filepath.Join(*workDir, "cache")
+		}
 	}
 	if err := os.MkdirAll(cache, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "mkdir cache: %v\n", err)
@@ -126,9 +143,12 @@ func main() {
 		stats:    &usageStats{perModel: map[string]*modelUsage{}},
 	}
 
-	rows, errored := runAll(os.Stdout, os.Stderr, questions, *conc, func(q Question) (resultRow, error) {
-		return r.runQuestion(q, *topK)
-	})
+	work := func(q Question) (resultRow, error) { return r.runQuestion(q, *topK) }
+	if *raw {
+		fmt.Println("RAW CONTROL: no extraction, no store, no defn, no retrieval — chat history straight to the answerer")
+		work = r.runQuestionRaw
+	}
+	rows, errored := runAll(os.Stdout, os.Stderr, questions, *conc, work)
 
 	report(rows, errored, r.stats)
 
