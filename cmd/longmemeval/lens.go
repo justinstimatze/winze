@@ -187,7 +187,7 @@ func (r *runner) extractSession(sessionID string, turns []Turn) (lensResult, err
 		// re-extract every starved session on every warm run.
 		var res lensResult
 		if json.Unmarshal(b, &res) == nil {
-			r.stats.lensCacheHits++
+			r.stats.noteCacheHit()
 			return res, nil
 		}
 	}
@@ -213,7 +213,22 @@ func (r *runner) extractSession(sessionID string, turns []Turn) (lensResult, err
 		}
 	}
 	if b, err := json.Marshal(res); err == nil {
-		_ = os.WriteFile(cachePath, b, 0o644)
+		// Write through a temp file and rename. Sessions are shared between
+		// questions in the haystack, so with a concurrent question loop two
+		// workers can miss the same key and write the same path at once. The
+		// bytes are identical, which is exactly what makes a torn write nasty:
+		// the result is a truncated JSON file that fails to decode forever
+		// after, so the session silently re-extracts on every later run and the
+		// cache quietly stops working. rename(2) within a directory is atomic.
+		if tmp, terr := os.CreateTemp(r.cacheDir, key+".*.tmp"); terr == nil {
+			_, werr := tmp.Write(b)
+			cerr := tmp.Close()
+			if werr == nil && cerr == nil {
+				_ = os.Rename(tmp.Name(), cachePath)
+			} else {
+				_ = os.Remove(tmp.Name())
+			}
+		}
 	}
 	return res, nil
 }

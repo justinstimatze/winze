@@ -48,6 +48,7 @@ func main() {
 		topK       = flag.Int("k", 60, "retrieval top-k facts fed to the answerer. Was 15, with no recorded rationale; the 2026-08-06 sweep scored 44/45/47 of 60 at k=15/30/60, monotone and concentrated in multi-session (7->8->9), the type with the most facts competing for the window. 27 of 60 questions produce more facts than 15 slots admit, so 15 was binding on nearly half the set. Not swept past 60 — no ceiling was found, so a larger value may still pay. Costs answerer input tokens only; retrieval searches the whole store either way.")
 		dryRun     = flag.Bool("dry-run", false, "select subset and report shape only; no API calls")
 		probe      = flag.Bool("probe", false, "report whether gold answer turns survive renderSession truncation; no API calls")
+		conc       = flag.Int("concurrency", 8, "questions run at once. The loop is ~99% blocked on the API — 12.5s extract + 2.5s answer + 1.1s judge against 0.9s of winze machinery per question — so this is close to a linear speedup until the API rate limit or the per-question `go build` becomes the constraint. 1 restores the old serial behaviour, which is what a concurrency bug should be diffed against.")
 		only       = flag.String("only", "", "comma-separated question ids (prefixes ok) to run instead of the per-type quota. For testing a hypothesis about specific failures without paying for the whole subset — a lensVersion bump makes every question cold, so a six-question check costs six extractions rather than sixty.")
 		baseline   = flag.String("baseline", "", "write per-question outcomes (qid, gold, answer, verdict) as JSONL to this path, for diffing the next configuration against this one question by question. Omits timings on purpose — they churn every row on every run.")
 	)
@@ -125,23 +126,7 @@ func main() {
 		stats:    &usageStats{perModel: map[string]*modelUsage{}},
 	}
 
-	var rows []resultRow
-	errored := 0
-	for i, q := range questions {
-		fmt.Printf("\n[%d/%d] %s [%s]\n  Q: %s\n", i+1, len(questions), q.QuestionID, q.QuestionType, q.Question)
-		row, err := r.runQuestion(q, *topK)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
-			errored++
-			continue
-		}
-		mark := "✗"
-		if row.correct {
-			mark = "✓"
-		}
-		fmt.Printf("  gold: %q\n  ans:  %q  %s\n", q.Answer, row.answer, mark)
-		rows = append(rows, row)
-	}
+	rows, errored := runAll(r, questions, *topK, *conc)
 
 	report(rows, errored, r.stats)
 

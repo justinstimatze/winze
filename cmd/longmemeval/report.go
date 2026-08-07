@@ -270,3 +270,16 @@ func reportRetried(rows []resultRow) {
 	}
 	fmt.Println("  (the first pass returned NO_FACTS; lensRetrySystem asked for assistant output instead)")
 }
+
+// noteCacheHit records one session served from disk.
+//
+// This existed as a bare lensCacheHits++ on the shared struct, which was
+// correct only while the question loop was serial. usageStats has carried a
+// mutex since it was written, with a comment saying it was there "in case the
+// loop is parallelised later" — and then the one counter outside record()
+// bypassed it.
+func (s *usageStats) noteCacheHit() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lensCacheHits++
+}
