@@ -920,10 +920,31 @@ func generateClaimCode(hypName, claimType string, article PaperSummary, result *
 }
 
 // callIngestLLM calls the Anthropic API for claim extraction.
+//
+// A truncated response is an error here, not a partial success. The prompt
+// tells the model to extract ALL in-domain claims and to quote 1-3 complete
+// sentences verbatim without truncating; parseIngestResponse then accepts any
+// block carrying a non-empty ENTITY_NAME and QUOTE, and QUOTE is second-to-last
+// in the field order. So a completion cut mid-quote yields a claim that passes
+// every check while holding a sentence chopped in half — written to the corpus
+// as exact source text. That is the one failure mirror-source-commitments
+// exists to prevent, and it would arrive from our own token budget rather than
+// from the model. A cut landing before QUOTE is milder but still silent: the
+// block is dropped with no error and no count.
+//
+// Refusing the whole response costs one re-ingest. Accepting it costs a
+// fabricated quote that no later lint can detect, because the text looks like
+// ordinary prose that happens to end early.
 func callIngestLLM(client anthropic.Client, prompt string) (string, error) {
 	resp, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaudeHaiku4_5,
-		MaxTokens: 1024,
+		Model: anthropic.ModelClaudeHaiku4_5,
+		// 4096, not 1024. One claim block is a delimiter, six short fields, a
+		// multi-sentence verbatim quote and an explanation — roughly 110-150
+		// tokens. The old cap held about seven claims against a rule that says
+		// extract all of them, so a source richer than that was silently
+		// truncated. Raising a ceiling cannot shrink an extraction; the only
+		// cost is output tokens on sources that genuinely have more to say.
+		MaxTokens: 4096,
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
 		},
@@ -932,6 +953,10 @@ func callIngestLLM(client anthropic.Client, prompt string) (string, error) {
 		return "", fmt.Errorf("API error: %w", err)
 	}
 	recordActualUsage(string(anthropic.ModelClaudeHaiku4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
+
+	if resp.StopReason == "max_tokens" {
+		return "", fmt.Errorf("ingest response truncated at %d output tokens: the tail claim would carry a quote cut mid-sentence, so the whole response is discarded rather than partially trusted", resp.Usage.OutputTokens)
+	}
 
 	for _, block := range resp.Content {
 		if block.Type == "text" {
