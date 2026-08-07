@@ -25,8 +25,8 @@ func TestCriticPromptIsOrderInvariantForSymmetricPredicates(t *testing.T) {
 	reverse := forward
 	reverse.EntityA, reverse.EntityB = forward.EntityB, forward.EntityA
 
-	a := buildTripCriticPrompt(forward, nil)
-	b := buildTripCriticPrompt(reverse, nil)
+	a := buildTripCriticPrompt(forward, nil, nil)
+	b := buildTripCriticPrompt(reverse, nil, nil)
 	if a != b {
 		t.Errorf("the two orderings produce different prompts, so the critic can "+
 			"still return different verdicts for the same claim\n--- forward ---\n%s\n--- reverse ---\n%s", a, b)
@@ -55,7 +55,7 @@ func TestCriticPromptKeepsOrderForDirectionalPredicates(t *testing.T) {
 		EntityA: "ZebraHypothesis", EntityB: "Apophenia",
 		Predicate: "TheoryOf", Rationale: "explanans is the concept",
 	}
-	p := buildTripCriticPrompt(conn, nil)
+	p := buildTripCriticPrompt(conn, nil, nil)
 	if !strings.Contains(p, "Subject: ZebraHypothesis") {
 		t.Error("directional predicate lost its Subject label or its order")
 	}

@@ -159,7 +159,7 @@ func TestBuildTripCriticPrompt_ContainsRubricAndCandidate(t *testing.T) {
 		Predicate: "CommentaryOn",
 		Rationale: "Both reflect a structural pattern.",
 	}
-	prompt := buildTripCriticPrompt(conn, nil)
+	prompt := buildTripCriticPrompt(conn, nil, nil)
 	for _, want := range []string{
 		"SUBSTANTIVE-ISOMORPHISM",
 		"PREDICATE-PRECONDITIONS",

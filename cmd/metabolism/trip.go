@@ -713,7 +713,7 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 			critic := c // copy with possibly-swapped subj/obj reflected
 			critic.EntityA = subj
 			critic.EntityB = obj
-			verdict := critiqueTripConnection(*criticClient, critic, criticExemplars)
+			verdict := critiqueTripConnection(*criticClient, critic, criticExemplars, priorClaimsOfPredicate(dir, c.Predicate))
 			// Record every ruling, accepts included. A log of rejections
 			// alone cannot answer whether the bar is set right — that
 			// question needs the accepts as the other half of the

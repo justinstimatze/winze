@@ -270,8 +270,8 @@ func critiqueIngestClaim(client anthropic.Client, candidate *ingestResult, predi
 
 // critiqueTripConnection runs the critic on a single trip-promoted
 // speculative connection. Same accept-on-error semantics as ingest.
-func critiqueTripConnection(client anthropic.Client, conn TripConnection, exemplars []claimExemplar) criticVerdict {
-	prompt := buildTripCriticPrompt(conn, exemplars)
+func critiqueTripConnection(client anthropic.Client, conn TripConnection, exemplars []claimExemplar, priors []string) criticVerdict {
+	prompt := buildTripCriticPrompt(conn, exemplars, priors)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -386,7 +386,7 @@ REASON: <short phrase, e.g. "subject_not_named_in_quote", "predicate_misuse_acce
 	return b.String()
 }
 
-func buildTripCriticPrompt(conn TripConnection, exemplars []claimExemplar) string {
+func buildTripCriticPrompt(conn TripConnection, exemplars []claimExemplar, priors []string) string {
 	var b strings.Builder
 	b.WriteString(`You are a quality-bar enforcer for speculative cross-cluster trip connections in a typed knowledge base about the epistemology of minds. Trip connections are deliberately speculative — but they must still identify a SUBSTANTIVE structural isomorphism, not surface analogy or pattern-matching on shared vocabulary.
 
@@ -419,6 +419,20 @@ func buildTripCriticPrompt(conn TripConnection, exemplars []claimExemplar) strin
 	}
 	b.WriteString("\nLLM rationale (Quote): ")
 	b.WriteString(truncateQuote(conn.Rationale, 800))
+
+	// Everything the corpus already links with this predicate. Without it the
+	// critic judges each candidate alone and cannot see restatement, which is
+	// how one insight becomes a dozen claims.
+	if len(priors) > 0 {
+		b.WriteString("\n\n# Pairs already linked by ")
+		b.WriteString(conn.Predicate)
+		b.WriteString(" in this corpus\n\n")
+		for _, p := range priors {
+			b.WriteString("- ")
+			b.WriteString(p)
+			b.WriteString("\n")
+		}
+	}
 	b.WriteString(`
 
 # Rubric (REJECT if ANY of these fails)
@@ -435,6 +449,10 @@ func buildTripCriticPrompt(conn TripConnection, exemplars []claimExemplar) strin
 3. CATEGORY-FIT. The two entities aren't from category-incompatible domains where the connection is a category error. (E.g. "Searle's Chinese Room CommentaryOn Advaita nondualism" conflates syntax/semantics dualism with subject/object metaphysical dualism.)
 
 4. QUALITY-PARITY-WITH-EXEMPLARS. The connection's rationale is at least as substantive as the exemplars' Quote text — concrete mechanism, falsifiable claim, real domain insight.
+
+5. RATIONALE-DOES-NOT-REFUTE-ITSELF. The rationale is the generating model's own argument, and it sometimes argues against promoting the claim. Read it for that. "suitable for subsequent theorization rather than immediate knowledge-base encoding", "the domains are too distant", "the mechanisms too differently grounded", "conceptually too generic", "interesting but localized" are the generator conceding the claim does not clear the bar. Treat the concession as a REJECT rather than as candour to be rewarded — reason "rationale_concedes_below_bar". A rationale that merely notes no predicate fit is NOT a concession: the predicate is supplied here.
+
+6. NOVELTY-AGAINST-EXISTING-CLAIMS. If a "Pairs already linked" section is present, ask whether this candidate asserts the same underlying structure as one already there, with a different entity swapped onto a shared hub. Each restatement is defensible alone, which is exactly why they accumulate — you are the only gate that sees them together. Reject a candidate whose shared mechanism is one an existing pair already carries, unless this pair exhibits that mechanism through genuinely different parts. Reason "restates_existing_pair". An empty or absent section is not evidence of novelty either way.
 
 # Response
 

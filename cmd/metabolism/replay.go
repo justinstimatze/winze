@@ -35,6 +35,7 @@ func replayIsolated(dir, logPath, predicate string, limit int) error {
 
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
 	exemplars := sampleHighQualityClaims(dir, 5, 200)
+	priors := priorClaimsOfPredicate(dir, predicate)
 
 	accepted, total := 0, 0
 	sc := bufio.NewScanner(f)
@@ -53,7 +54,7 @@ func replayIsolated(dir, logPath, predicate string, limit int) error {
 		conn.Predicate = predicate
 		total++
 
-		verdict := critiqueTripConnection(client, conn, exemplars)
+		verdict := critiqueTripConnection(client, conn, exemplars, priors)
 		mark := "x"
 		if verdict.Accept {
 			mark = "+"

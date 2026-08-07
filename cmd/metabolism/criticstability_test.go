@@ -120,7 +120,7 @@ func TestCriticStability(t *testing.T) {
 	for _, tc := range cases {
 		accepts, reasons := 0, map[string]int{}
 		for i := 0; i < trials; i++ {
-			v := critiqueTripConnection(client, tc.conn, exemplars)
+			v := critiqueTripConnection(client, tc.conn, exemplars, nil)
 			if v.Accept {
 				accepts++
 			} else {
