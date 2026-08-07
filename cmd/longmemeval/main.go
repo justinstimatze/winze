@@ -13,6 +13,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -47,6 +48,7 @@ func main() {
 		topK       = flag.Int("k", 60, "retrieval top-k facts fed to the answerer. Was 15, with no recorded rationale; the 2026-08-06 sweep scored 44/45/47 of 60 at k=15/30/60, monotone and concentrated in multi-session (7->8->9), the type with the most facts competing for the window. 27 of 60 questions produce more facts than 15 slots admit, so 15 was binding on nearly half the set. Not swept past 60 — no ceiling was found, so a larger value may still pay. Costs answerer input tokens only; retrieval searches the whole store either way.")
 		dryRun     = flag.Bool("dry-run", false, "select subset and report shape only; no API calls")
 		probe      = flag.Bool("probe", false, "report whether gold answer turns survive renderSession truncation; no API calls")
+		only       = flag.String("only", "", "comma-separated question ids (prefixes ok) to run instead of the per-type quota. For testing a hypothesis about specific failures without paying for the whole subset — a lensVersion bump makes every question cold, so a six-question check costs six extractions rather than sixty.")
 		baseline   = flag.String("baseline", "", "write per-question outcomes (qid, gold, answer, verdict) as JSONL to this path, for diffing the next configuration against this one question by question. Omits timings on purpose — they churn every row on every run.")
 	)
 	flag.Parse()
@@ -76,7 +78,19 @@ func main() {
 		"single-session-assistant":  *nAsst,
 		"single-session-preference": *nPref,
 	}
-	questions, err := selectSubset(*dataset, quota)
+	var questions []Question
+	var err error
+	if *only != "" {
+		var ids []string
+		for _, id := range strings.Split(*only, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				ids = append(ids, id)
+			}
+		}
+		questions, err = selectByID(*dataset, ids)
+	} else {
+		questions, err = selectSubset(*dataset, quota)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "select subset: %v\n", err)
 		os.Exit(1)
@@ -167,6 +181,9 @@ func (r *runner) runQuestion(q Question, k int) (resultRow, error) {
 		if ex.Truncated {
 			row.truncated++
 		}
+		if ex.Retried {
+			row.retried++
+		}
 		for _, f := range ex.Facts {
 			facts = append(facts, Fact{
 				Attribute: f.Attribute, Value: f.Value, Kind: f.Kind,
@@ -243,4 +260,62 @@ func loadEnvKey(key string) string {
 		}
 	}
 	return ""
+}
+
+// selectByID streams the dataset and returns exactly the named questions, in
+// dataset order, ignoring the per-type quota entirely.
+//
+// This exists so a hypothesis about six failing questions can be tested by
+// running six questions. The quota path cannot express that: it selects the
+// first N of each type in file order, so reaching one specific failure means
+// paying for every question ahead of it. A lensVersion bump then makes the
+// whole thing cold. Two of today's measurements spent a full sixty-question
+// re-extraction to learn something four questions would have shown.
+//
+// IDs may be given as prefixes, matching how the report and baselines print
+// them.
+func selectByID(path string, ids []string) ([]Question, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	dec := json.NewDecoder(f)
+	if _, err := dec.Token(); err != nil {
+		return nil, fmt.Errorf("read opening token: %w", err)
+	}
+
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	var out []Question
+	seen := map[string]bool{}
+	for dec.More() && len(out) < len(ids) {
+		var q Question
+		if err := dec.Decode(&q); err != nil {
+			return nil, fmt.Errorf("decode record: %w", err)
+		}
+		for id := range want {
+			if seen[id] || !strings.HasPrefix(q.QuestionID, id) {
+				continue
+			}
+			seen[id] = true
+			out = append(out, q)
+			break
+		}
+	}
+	// A typo in an id is silent otherwise — the run just comes up short and
+	// looks like a smaller subset was intended.
+	var missing []string
+	for _, id := range ids {
+		if !seen[id] {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("--only: no question matched %s", strings.Join(missing, ", "))
+	}
+	return out, nil
 }

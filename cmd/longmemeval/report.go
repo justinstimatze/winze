@@ -16,7 +16,12 @@ type resultRow struct {
 	// MaxTokens rather than finishing. A cut session still reports a healthy
 	// fact count, so this is the only column separating a complete extraction
 	// from the first N tokens of one.
-	truncated  int
+	truncated int
+	// retried counts this question's sessions the first lens pass came back
+	// empty on and the retry framing recovered. It is the retry's whole
+	// justification: if this stays at zero while starvation stays flat, the
+	// second call is buying nothing and should come out.
+	retried    int
 	retrieved  int
 	correct    bool
 	answer     string
@@ -125,6 +130,7 @@ func report(rows []resultRow, errored int, stats *usageStats) {
 
 	reportStarved(rows)
 	reportTruncated(rows)
+	reportRetried(rows)
 
 	fmt.Printf("\nper-question timings (ms):\n")
 	fmt.Printf("  %-9s %5s %5s %6s | %8s %6s %8s | %8s %7s %7s\n",
@@ -228,4 +234,39 @@ func reportTruncated(rows []resultRow) {
 			mark, r.qid, r.qtype, r.truncated, r.sessions, r.facts)
 	}
 	fmt.Println("  (the lens stopped at MaxTokens mid-enumeration; the facts after the cut were never emitted)")
+}
+
+// reportRetried names the questions the second lens pass rescued.
+//
+// The retry fires only when the first pass returns nothing, so this block is
+// the whole case for its existence. Empty means the second framing recovered
+// no session the first one missed, and the extra call should come out. Rows
+// here that still score wrong are also informative in the other direction: the
+// facts arrived and the answer still did not, which moves the problem
+// downstream to retrieval or the answerer.
+func reportRetried(rows []resultRow) {
+	var saved []resultRow
+	right := 0
+	for _, r := range rows {
+		if r.retried == 0 {
+			continue
+		}
+		saved = append(saved, r)
+		if r.correct {
+			right++
+		}
+	}
+	if len(saved) == 0 {
+		return
+	}
+	fmt.Printf("\nRETRIED EXTRACTIONS: %d of %d questions recovered by the second pass, %d scored right\n", len(saved), len(rows), right)
+	for _, r := range saved {
+		mark := "✓"
+		if !r.correct {
+			mark = "✗"
+		}
+		fmt.Printf("  %s %-14s %-26s %d of %d session(s) retried, %d facts\n",
+			mark, r.qid, r.qtype, r.retried, r.sessions, r.facts)
+	}
+	fmt.Println("  (the first pass returned NO_FACTS; lensRetrySystem asked for assistant output instead)")
 }
