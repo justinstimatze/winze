@@ -38,7 +38,18 @@ import (
 // form. mem0 packs context into 15-80 word sentences partly because it has no
 // schema to put it in; winze has typed slots, so the same rule lands as one
 // typed row per element instead of longer text.
-const lensVersion = "v4"
+// v5: let assistant_stated survive the parser. The prompt has offered it as a
+// KIND since v3; parseFacts never listed it, so every assistant fact was
+// rewritten to stated_fact and the answerer was told the user said things the
+// assistant said — on the one question type that asks which was which.
+// single-session-assistant sat at 5/10 across k=15, 30 and 60. Flat under more
+// window is the signature of a fact that arrives and is mis-labelled, not one
+// that is missing, and I read that as missing extraction for a whole day.
+//
+// The bump is for the cache, not the prompt: entries hold parsed facts, so
+// cached sessions would keep serving the mangled KIND without it. That costs a
+// cold re-extraction of all 102 sessions.
+const lensVersion = "v5"
 
 // lensSystem is the extraction rulebook — identical across every session call,
 // so it rides an ephemeral cache_control block (marked in callLens).
@@ -223,7 +234,17 @@ func parseFacts(text string) []ExtractedFact {
 		if attr == "" || val == "" {
 			continue
 		}
-		if kind != "stated_fact" && kind != "preference" && kind != "update" {
+		// assistant_stated belongs here: v3 added it to the prompt as the KIND
+		// for what winze said rather than what the user said, and this whitelist
+		// was never widened to match. Every assistant fact has been arriving as
+		// stated_fact since, so the answerer has been told the user said things
+		// the assistant said — on exactly the question type that asks which was
+		// which. single-session-assistant sat at 5/10 across k=15/30/60, flat,
+		// which is the signature of a fact that is present and mis-labelled
+		// rather than missing.
+		switch kind {
+		case "stated_fact", "preference", "update", "assistant_stated":
+		default:
 			kind = "stated_fact"
 		}
 		facts = append(facts, ExtractedFact{Attribute: attr, Value: val, Kind: kind, Quote: quote})
