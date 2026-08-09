@@ -18,7 +18,7 @@ Route on the first argument:
 
 Show current KB health dashboard:
 ```bash
-go run ./cmd/lint . 2>&1
+go run ./cmd/lint corpus 2>&1
 echo "---"
 git log --oneline -5
 echo "---"
@@ -37,7 +37,7 @@ Steps:
 2. Identify extractable entities and claims
 3. Check schema fitness (do existing predicates suffice?)
 4. Write the .go file with Provenance, entities, claims
-5. Run quality gates: `go build ./...`, `go vet ./...`, `go run ./cmd/lint .`
+5. Run quality gates: `go build ./...`, `go vet ./...`, `go run ./cmd/lint corpus`
 6. Report findings and ask user to review before committing
 
 Follow mirror-source-commitments: only encode what the source commits to.
@@ -54,8 +54,8 @@ For a specific entity:
 
 For whole KB:
 ```bash
-go run ./cmd/lint .
-go run ./cmd/lint . --llm --llm-max-calls=10
+go run ./cmd/lint corpus
+go run ./cmd/lint --llm --llm-max-calls=10 corpus
 ```
 
 ## `/curate predict`

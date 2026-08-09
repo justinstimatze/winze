@@ -80,7 +80,7 @@ git clone https://github.com/justinstimatze/winze.git && cd winze
 go build ./...                   # type-check the seed corpus
 go test ./...                    # invariant tests
 go run ./cmd/query --stats .     # what's in the KB
-go run ./cmd/lint .              # structural health
+go run ./cmd/lint corpus              # structural health
 go run ./cmd/metabolism --bias . # bias self-audit
 go run ./cmd/metabolism --evolve . # full autonomous cycle
 ```
@@ -160,7 +160,7 @@ go run ./cmd/metabolism --dream --bias .         # contradictions + blind spots
 | Dream | `go run ./cmd/metabolism --dream .` | No |
 | Bias audit | `go run ./cmd/metabolism --bias .` | No |
 | Calibrate | `go run ./cmd/metabolism --calibrate .` | No |
-| Lint | `go run ./cmd/lint .` | No (`--llm` opt-in) |
+| Lint | `go run ./cmd/lint corpus` | No (`--llm` opt-in) |
 | Topology | `go run ./cmd/topology .` | No |
 | Trip | `go run ./cmd/metabolism --trip .` | Yes |
 | Fix | `go run ./cmd/metabolism --dream --fix .` | Yes |

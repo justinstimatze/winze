@@ -22,8 +22,10 @@ model. (The corpus lives in `corpus/` so defn ingest scopes to it, excluding the
 make build                                  # build the tools first (18x faster than `go run` interactively)
 go build ./...                              # type-checks references
 go vet ./...                                # static analysis
-go run ./cmd/lint .                         # deterministic lint rules
-go run ./cmd/lint . --llm --llm-max-calls=5 # + LLM contradiction check
+go run ./cmd/lint corpus                          # deterministic lint rules
+go run ./cmd/lint --llm --llm-max-calls=5 corpus  # + LLM contradiction check
+# Flags MUST precede the dir: Go's flag package stops parsing at the first
+# positional, so `lint corpus --llm` silently skips the LLM check and exits 0.
 ```
 
 The build gate (`gofmt -w && go build . && go vet .`, revert on failure) is the

@@ -1,6 +1,6 @@
 # Lint rules
 
-`go run ./cmd/lint .` runs the deterministic rules; add `--llm --llm-max-calls=5`
+`go run ./cmd/lint corpus` runs the deterministic rules; add `--llm --llm-max-calls=5`
 for the LLM contradiction check.
 
 The rules: naming-oracle, orphan-report, value-conflict, contested-concept,

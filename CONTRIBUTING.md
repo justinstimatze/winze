@@ -14,7 +14,7 @@ Every PR must pass:
 go build ./...              # type-checks all entity references
 go vet ./...                # standard static analysis
 go test ./...               # corpus invariant tests
-go run ./cmd/lint .         # 7 deterministic lint rules
+go run ./cmd/lint corpus         # 7 deterministic lint rules
 ```
 
 CI runs these automatically. If the compiler rejects your claim, the claim is wrong.

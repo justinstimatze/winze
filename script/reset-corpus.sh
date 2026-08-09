@@ -8,7 +8,7 @@ set -euo pipefail
 # After running:
 #   1. Edit starter.go or create new .go files with your own entities
 #   2. go build ./...
-#   3. go run ./cmd/lint .
+#   3. go run ./cmd/lint corpus
 
 cd "$(dirname "$0")/../corpus"
 

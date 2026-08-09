@@ -19,7 +19,7 @@ echo "=== golangci-lint ==="
 golangci-lint run ./...
 
 echo "=== winze lint (deterministic) ==="
-go run ./cmd/lint .
+go run ./cmd/lint corpus
 
 echo ""
 echo "All checks passed."
