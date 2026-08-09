@@ -829,12 +829,12 @@ func generateClaimCode(hypName, claimType string, article PaperSummary, result *
 	quote := cleanLLMString(result.quote)
 	brief := cleanLLMString(result.entityBrief)
 
-	b.WriteString(fmt.Sprintf("// ---------------------------------------------------------------------------\n"))
+	b.WriteString("// ---------------------------------------------------------------------------\n")
 	b.WriteString(fmt.Sprintf("// %s: %s %s %s\n", sanitizeCommentText(article.Title), result.entityName, predType, targetName))
 	if result.explanation != "" {
 		b.WriteString(fmt.Sprintf("// %s\n", sanitizeCommentText(result.explanation)))
 	}
-	b.WriteString(fmt.Sprintf("// ---------------------------------------------------------------------------\n\n"))
+	b.WriteString("// ---------------------------------------------------------------------------\n\n")
 
 	// Provenance — skip if already declared. Origin and IngestedBy vary
 	// by backend so downstream tooling (calibrate's origin HHI, lint's
@@ -1070,16 +1070,7 @@ func collectKBMetadata(dir string) kbMetadata {
 
 // Convenience accessors for callers that only need one piece.
 func collectKBVars(dir string) map[string]kbVarInfo { return collectKBMetadata(dir).Vars }
-func collectKBVarNames(dir string) map[string]bool {
-	vars := collectKBMetadata(dir).Vars
-	names := make(map[string]bool, len(vars))
-	for k := range vars {
-		names[k] = true
-	}
-	return names
-}
-func collectKBBriefs(dir string) map[string]string       { return collectKBMetadata(dir).Briefs }
-func collectClaimContext(dir string) map[string][]string { return collectKBMetadata(dir).Claims }
+func collectKBBriefs(dir string) map[string]string  { return collectKBMetadata(dir).Briefs }
 
 // collectPredicateSlots parses predicates.go to extract type constraints for
 // each predicate. Returns map: predicate name → [SubjectType, ObjectType].
@@ -1191,7 +1182,6 @@ func extractSubjectObject(cl *ast.CompositeLit) (string, string) {
 	return astutil.ExtractSubjectObject(cl)
 }
 func resolveStringExpr(e ast.Expr) string { return astutil.ResolveStringExpr(e) }
-func unquote(e ast.Expr) string           { return astutil.Unquote(e) }
 
 func toPascalCase(name string) string {
 	words := strings.Fields(name)

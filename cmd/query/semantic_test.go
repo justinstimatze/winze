@@ -33,8 +33,15 @@ func TestDotOfNormalizedIsCosine(t *testing.T) {
 }
 
 func TestEmbedKeyDeterministicAndDistinct(t *testing.T) {
-	if embedKey("hello") != embedKey("hello") {
-		t.Fatal("embedKey not deterministic")
+	// Pinned rather than compared to itself: embedKey is a pure hash, so
+	// embedKey(x) == embedKey(x) inside one process holds by construction and
+	// asserts nothing. What the on-disk vector cache actually depends on is
+	// the key surviving across processes and across builds — change embedModel
+	// or the hash and every cached vector is silently orphaned, which only a
+	// pinned value catches.
+	const wantHello = "f6b8ec7a02f7ddfb352fad534dce3f44"
+	if got := embedKey("hello"); got != wantHello {
+		t.Fatalf("embedKey(%q) = %s, want %s — a changed key format orphans every cached embedding", "hello", got, wantHello)
 	}
 	if embedKey("hello") == embedKey("world") {
 		t.Fatal("embedKey collision on distinct text")

@@ -92,7 +92,19 @@ Only encode claims the source EXPLICITLY commits to. Do not infer, extrapolate, 
 - DUPLICATE-OF-CANONICAL: coining a surface-variant of an existing entity instead of reusing the canonical var.
 - SHALLOW-ANALOGY: "both are about how minds work" / "both involve prediction" as a StructurallyAnalogousTo rationale. Require a specific shared mechanism or failure mode.
 `)
-	return b.String()
+
+	prefix := b.String()
+	// This block exists to be cached, and a cache_control marker below
+	// Anthropic's minimum prefix is silently a no-op — every call pays full
+	// input price with nothing to show for it. The corpus vocab is what gives
+	// the block its bulk, so a shrunken corpus or a thin extraction can walk
+	// it back under the line with no other symptom. ~4 chars/token is the
+	// usual rough estimate; the check only has to catch an order-of-magnitude
+	// shortfall, not measure precisely.
+	if est := len(prefix) / 4; est < sonnetCacheMinTokens {
+		fmt.Fprintf(os.Stderr, "[shared-prefix] ~%d tokens is under Sonnet's %d-token cache minimum — cache_control on this block is a no-op\n", est, sonnetCacheMinTokens)
+	}
+	return prefix
 }
 
 // extractPredicateSignatures parses predicates.go and returns sorted

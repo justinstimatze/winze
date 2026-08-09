@@ -365,10 +365,6 @@ func loadTrips(dir string, varOf map[string]int, remap map[int]int) [][3]int {
 	if err != nil {
 		return nil
 	}
-	type rec struct {
-		A, B, EA, EB string
-		Score        int
-	}
 	var out [][3]int
 	seen := map[[2]int]bool{}
 	for _, line := range strings.Split(string(data), "\n") {

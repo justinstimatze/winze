@@ -143,11 +143,6 @@ func slugify(s string) string {
 	return strings.Trim(string(result), "-")
 }
 
-func slugFromPath(relPath string) string {
-	base := filepath.Base(relPath)
-	return strings.TrimSuffix(base, ".md")
-}
-
 func noteDir(sourceNote string) string {
 	d := filepath.Dir(sourceNote)
 	if d == "." {
