@@ -352,7 +352,12 @@ func runReify(dir string) {
 		// "goal:Foo" LearningGoal hypName) so it can't leak into a Go
 		// identifier. No-op for the CamelCase thesis names that predate
 		// learning goals; the KB-internal loop below already does this.
-		varBase = sanitizeIdent(varBase)
+		// Exported: varBase is the leading segment of the SearchOutcome and
+		// SearchResolution var names, and a LearningGoal hypName ("goal:Foo")
+		// sanitizes to a lowercase-leading identifier. Unexported there means
+		// the claim compiles into the file but is unreachable from outside
+		// package winze — present in the corpus, absent from the KB.
+		varBase = exportedIdent(sanitizeIdent(varBase))
 		entityID := camelToKebab(hypName)
 
 		// Backends used (sorted for deterministic emit — map range order
@@ -667,4 +672,21 @@ func camelToWords(s string) string {
 		words = append(words, string(current))
 	}
 	return strings.Join(words, " ")
+}
+
+// exportedIdent upper-cases the first rune so a generated var name is
+// reachable from outside package winze.
+//
+// It matters because an unexported claim still compiles, still passes the
+// build gate, and still reads as present in the corpus file — it is simply
+// invisible to every consumer of the package. Two ResolvedAs claims shipped
+// that way before this existed, from a LearningGoal hypName ("goal:Foo")
+// whose sanitized form keeps its lowercase lead.
+func exportedIdent(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
 }

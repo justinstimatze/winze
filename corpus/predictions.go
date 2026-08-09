@@ -1729,14 +1729,14 @@ var TopologyPredictsgoalGoalPredictiveHallucinationSearch = Predicts{
 	Prov:    metabolismPredictionSource,
 }
 
-var goalGoalPredictiveHallucinationSearchOutcome = &ResolutionOutcome{
+var GoalGoalPredictiveHallucinationSearchOutcome = &ResolutionOutcome{
 	Result:   "confirmed",
 	Evidence: "81 cycles, 81 with signal. Corroborated: found 65 unique sources including The Predictive Coding Account of Psychosis - PMC - NIH; Deficits in Predictive Coding Underlie Hallucinations in Schizophrenia; Case Study: Predictive Coding and Information Bottleneck.",
 }
 
-var goalGoalPredictiveHallucinationSearchResolution = ResolvedAs{
+var GoalGoalPredictiveHallucinationSearchResolution = ResolvedAs{
 	Subject: EvidenceSearchgoalGoalPredictiveHallucination,
-	Object:  goalGoalPredictiveHallucinationSearchOutcome,
+	Object:  GoalGoalPredictiveHallucinationSearchOutcome,
 	Prov:    metabolismPredictionSource,
 }
 
