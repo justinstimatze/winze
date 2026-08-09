@@ -205,8 +205,7 @@ type mergePlan struct {
 // whole GenDecl when it is the group's only spec, else just its ValueSpec
 // lines) and rewrite every other reference to `from` into `into`.
 func planMerge(root, from, into string) (*mergePlan, error) {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, root, astutil.GoFileFilter, parser.ParseComments)
+	files, fset, err := astutil.ParseDir(root, astutil.GoFileFilter, parser.ParseComments)
 	if err != nil {
 		return nil, err
 	}
@@ -215,50 +214,48 @@ func planMerge(root, from, into string) (*mergePlan, error) {
 	var declStart, declEnd int // byte range of the declaration to delete, in declFile
 
 	// First pass: locate the declaration to delete and confirm `into` exists.
-	for _, pkg := range pkgs {
-		for path, file := range pkg.Files {
-			src, err := os.ReadFile(path)
-			if err != nil {
-				return nil, err
+	for path, file := range files {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		for _, decl := range file.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
 			}
-			for _, decl := range file.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok {
-						continue
-					}
-					for _, n := range vs.Names {
-						switch n.Name {
-						case into:
-							plan.intoDeclared = true
-							plan.intoFile = path
-						case from:
-							plan.fromDeclared = true
-							plan.declFile = path
-							// Capture the absorbed entity's identity for the
-							// audit record before its declaration is deleted.
-							if len(vs.Values) == 1 {
-								if cl, ok := vs.Values[0].(*ast.CompositeLit); ok {
-									plan.fromID = astutil.ExtractStringField(cl, "ID")
-									plan.fromName = astutil.ExtractStringField(cl, "Name")
-								}
+				for _, n := range vs.Names {
+					switch n.Name {
+					case into:
+						plan.intoDeclared = true
+						plan.intoFile = path
+					case from:
+						plan.fromDeclared = true
+						plan.declFile = path
+						// Capture the absorbed entity's identity for the
+						// audit record before its declaration is deleted.
+						if len(vs.Values) == 1 {
+							if cl, ok := vs.Values[0].(*ast.CompositeLit); ok {
+								plan.fromID = astutil.ExtractStringField(cl, "ID")
+								plan.fromName = astutil.ExtractStringField(cl, "Name")
 							}
-							// Delete the whole GenDecl when `from` is its only
-							// spec (covers standalone `var X = ...` and a group
-							// of one); otherwise delete just this spec's lines.
-							var startPos, endPos token.Pos
-							if len(gd.Specs) == 1 {
-								startPos, endPos = declBounds(gd, gd.Doc)
-							} else {
-								startPos, endPos = declBounds(vs, vs.Doc)
-							}
-							declStart = lineStart(src, fset.Position(startPos).Offset)
-							declEnd = lineEndAfterNewline(src, fset.Position(endPos).Offset)
 						}
+						// Delete the whole GenDecl when `from` is its only
+						// spec (covers standalone `var X = ...` and a group
+						// of one); otherwise delete just this spec's lines.
+						var startPos, endPos token.Pos
+						if len(gd.Specs) == 1 {
+							startPos, endPos = declBounds(gd, gd.Doc)
+						} else {
+							startPos, endPos = declBounds(vs, vs.Doc)
+						}
+						declStart = lineStart(src, fset.Position(startPos).Offset)
+						declEnd = lineEndAfterNewline(src, fset.Position(endPos).Offset)
 					}
 				}
 			}
@@ -272,27 +269,25 @@ func planMerge(root, from, into string) (*mergePlan, error) {
 	// Second pass: every identifier referring to `from` becomes `into`, except
 	// the ones inside the deleted declaration range (the defining ident and any
 	// idents in the removed RHS).
-	for _, pkg := range pkgs {
-		for path, file := range pkg.Files {
-			var es []edit
-			if path == plan.declFile {
-				es = append(es, edit{offset: declStart, length: declEnd - declStart, repl: ""})
-			}
-			ast.Inspect(file, func(n ast.Node) bool {
-				id, ok := n.(*ast.Ident)
-				if !ok || id.Name != from {
-					return true
-				}
-				off := fset.Position(id.Pos()).Offset
-				if path == plan.declFile && off >= declStart && off < declEnd {
-					return true // inside the removed declaration
-				}
-				es = append(es, edit{offset: off, length: len(from), repl: into})
+	for path, file := range files {
+		var es []edit
+		if path == plan.declFile {
+			es = append(es, edit{offset: declStart, length: declEnd - declStart, repl: ""})
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			id, ok := n.(*ast.Ident)
+			if !ok || id.Name != from {
 				return true
-			})
-			if len(es) > 0 {
-				plan.edits[path] = es
 			}
+			off := fset.Position(id.Pos()).Offset
+			if path == plan.declFile && off >= declStart && off < declEnd {
+				return true // inside the removed declaration
+			}
+			es = append(es, edit{offset: off, length: len(from), repl: into})
+			return true
+		})
+		if len(es) > 0 {
+			plan.edits[path] = es
 		}
 	}
 	return plan, nil

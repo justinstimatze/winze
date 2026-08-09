@@ -186,8 +186,7 @@ func cmdRename(args []string) int {
 // *ast.Ident nodes at all, which is exactly why this is safe and a textual
 // substitution would not be.
 func findRenameSites(root, from, to string) (map[string][]int, bool, bool, error) {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, root, astutil.GoFileFilter, parser.ParseComments)
+	files, fset, err := astutil.ParseDir(root, astutil.GoFileFilter, parser.ParseComments)
 	if err != nil {
 		return nil, false, false, err
 	}
@@ -195,38 +194,36 @@ func findRenameSites(root, from, to string) (map[string][]int, bool, bool, error
 	sites := map[string][]int{}
 	var declared, collides bool
 
-	for _, pkg := range pkgs {
-		for path, file := range pkg.Files {
-			for _, decl := range file.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+	for path, file := range files {
+		for _, decl := range file.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok {
-						continue
-					}
-					for _, n := range vs.Names {
-						switch n.Name {
-						case from:
-							declared = true
-						case to:
-							collides = true
-						}
+				for _, n := range vs.Names {
+					switch n.Name {
+					case from:
+						declared = true
+					case to:
+						collides = true
 					}
 				}
 			}
-			ast.Inspect(file, func(n ast.Node) bool {
-				id, ok := n.(*ast.Ident)
-				if !ok || id.Name != from {
-					return true
-				}
-				// A selector's field half (pkg.From) is not our var.
-				sites[path] = append(sites[path], fset.Position(id.Pos()).Offset)
-				return true
-			})
 		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			id, ok := n.(*ast.Ident)
+			if !ok || id.Name != from {
+				return true
+			}
+			// A selector's field half (pkg.From) is not our var.
+			sites[path] = append(sites[path], fset.Position(id.Pos()).Offset)
+			return true
+		})
 	}
 	return sites, declared, collides, nil
 }

@@ -29,6 +29,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/justinstimatze/winze/internal/astutil"
 )
 
 // exprIdent extracts the identifier name from various AST expression patterns.
@@ -375,14 +377,13 @@ func auditAnchoringBias(dir string) BiasAuditorResult {
 	}
 
 	// Count entity degree (claims as subject or object) per file
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	files, _, err := astutil.ParseDir(dir, goFileFilter, parser.ParseComments)
 	if err != nil {
 		result.Detail = "cannot parse Go files"
 		return result
 	}
 
-	roleTypes := collectDreamRoleTypes(pkgs)
+	roleTypes := collectDreamRoleTypes(files)
 
 	// Count entities and claims per file
 	type fileStat struct {
@@ -392,39 +393,37 @@ func auditAnchoringBias(dir string) BiasAuditorResult {
 	}
 	fileStats := map[string]*fileStat{}
 
-	for _, pkg := range pkgs {
-		for fname, f := range pkg.Files {
-			base := filepath.Base(fname)
-			if isInfraFile(base) {
-				continue
-			}
-			r, ok := fileOrder[base]
-			if !ok {
-				continue
-			}
-			fs := &fileStat{rank: r}
-			fileStats[base] = fs
+	for fname, f := range files {
+		base := filepath.Base(fname)
+		if isInfraFile(base) {
+			continue
+		}
+		r, ok := fileOrder[base]
+		if !ok {
+			continue
+		}
+		fs := &fileStat{rank: r}
+		fileStats[base] = fs
 
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeName := compositeTypeName(cl)
-					if roleTypes[typeName] {
-						fs.entities++
-					} else if typeName != "Provenance" && typeName != "" {
-						fs.claims++
-					}
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				typeName := compositeTypeName(cl)
+				if roleTypes[typeName] {
+					fs.entities++
+				} else if typeName != "Provenance" && typeName != "" {
+					fs.claims++
 				}
 			}
 		}
@@ -578,8 +577,7 @@ func auditAvailabilityHeuristic(dir string) BiasAuditorResult {
 		Threshold: 0.25, // HHI > 0.25 = moderately concentrated
 	}
 
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	files, _, err := astutil.ParseDir(dir, goFileFilter, parser.ParseComments)
 	if err != nil {
 		result.Detail = "cannot parse Go files"
 		return result
@@ -589,35 +587,33 @@ func auditAvailabilityHeuristic(dir string) BiasAuditorResult {
 	sourceTypes := map[string]int{} // source type -> count
 	total := 0
 
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					if compositeTypeName(cl) != "Provenance" {
-						continue
-					}
-					origin := extractStringField(cl, "Origin")
-					if origin == "" {
-						continue
-					}
-
-					// Classify by source type
-					stype := classifyOrigin(origin)
-					sourceTypes[stype]++
-					total++
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
 				}
+				if compositeTypeName(cl) != "Provenance" {
+					continue
+				}
+				origin := extractStringField(cl, "Origin")
+				if origin == "" {
+					continue
+				}
+
+				// Classify by source type
+				stype := classifyOrigin(origin)
+				sourceTypes[stype]++
+				total++
 			}
 		}
 	}
@@ -841,66 +837,87 @@ func auditFramingEffect(dir string) BiasAuditorResult {
 		"simplistic":    {"simplistic model", "simplistic view"},
 	}
 
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	files, _, err := astutil.ParseDir(dir, goFileFilter, parser.ParseComments)
 	if err != nil {
 		result.Detail = "cannot parse Go files"
 		return result
 	}
 
-	roleTypes := collectDreamRoleTypes(pkgs)
+	roleTypes := collectDreamRoleTypes(files)
 
 	totalBriefs := 0
 	positiveCount := 0
 	negativeCount := 0
 	var examples []string
 
-	for _, pkg := range pkgs {
-		for fname, f := range pkg.Files {
-			base := filepath.Base(fname)
-			if isInfraFile(base) {
+	for fname, f := range files {
+		base := filepath.Base(fname)
+		if isInfraFile(base) {
+			continue
+		}
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
 				continue
 			}
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeName := compositeTypeName(cl)
-					if !roleTypes[typeName] {
-						continue
-					}
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				typeName := compositeTypeName(cl)
+				if !roleTypes[typeName] {
+					continue
+				}
 
-					brief := extractEntityBrief(cl)
-					if brief == "" {
-						continue
+				brief := extractEntityBrief(cl)
+				if brief == "" {
+					continue
+				}
+
+				totalBriefs++
+				lower := strings.ToLower(brief)
+
+				// Role-type context: some terms are descriptive for
+				// certain entity types. "debunked" is factual for a
+				// misconception/concept but evaluative for a hypothesis.
+				entityType := typeName
+				roleAware := map[string][]string{
+					"debunked":    {"Concept"}, // factual for misconceptions
+					"discredited": {"Concept"}, // factual for misconceptions
+					"celebrated":  {"Person"},  // factual for notable people
+					"pioneering":  {"Person"},  // factual for notable people
+				}
+
+				matched := false
+				for _, term := range positiveFraming {
+					if containsWord(lower, term, technicalExclusions) {
+						if allowedTypes, ok := roleAware[term]; ok {
+							skip := false
+							for _, at := range allowedTypes {
+								if entityType == at {
+									skip = true
+									break
+								}
+							}
+							if skip {
+								continue
+							}
+						}
+						positiveCount++
+						matched = true
+						if len(examples) < 3 {
+							examples = append(examples, fmt.Sprintf("%s: +%q", vs.Names[0].Name, term))
+						}
+						break
 					}
-
-					totalBriefs++
-					lower := strings.ToLower(brief)
-
-					// Role-type context: some terms are descriptive for
-					// certain entity types. "debunked" is factual for a
-					// misconception/concept but evaluative for a hypothesis.
-					entityType := typeName
-					roleAware := map[string][]string{
-						"debunked":    {"Concept"}, // factual for misconceptions
-						"discredited": {"Concept"}, // factual for misconceptions
-						"celebrated":  {"Person"},  // factual for notable people
-						"pioneering":  {"Person"},  // factual for notable people
-					}
-
-					matched := false
-					for _, term := range positiveFraming {
+				}
+				if !matched {
+					for _, term := range negativeFraming {
 						if containsWord(lower, term, technicalExclusions) {
 							if allowedTypes, ok := roleAware[term]; ok {
 								skip := false
@@ -914,35 +931,11 @@ func auditFramingEffect(dir string) BiasAuditorResult {
 									continue
 								}
 							}
-							positiveCount++
-							matched = true
+							negativeCount++
 							if len(examples) < 3 {
-								examples = append(examples, fmt.Sprintf("%s: +%q", vs.Names[0].Name, term))
+								examples = append(examples, fmt.Sprintf("%s: -%q", vs.Names[0].Name, term))
 							}
 							break
-						}
-					}
-					if !matched {
-						for _, term := range negativeFraming {
-							if containsWord(lower, term, technicalExclusions) {
-								if allowedTypes, ok := roleAware[term]; ok {
-									skip := false
-									for _, at := range allowedTypes {
-										if entityType == at {
-											skip = true
-											break
-										}
-									}
-									if skip {
-										continue
-									}
-								}
-								negativeCount++
-								if len(examples) < 3 {
-									examples = append(examples, fmt.Sprintf("%s: -%q", vs.Names[0].Name, term))
-								}
-								break
-							}
 						}
 					}
 				}
@@ -1031,36 +1024,33 @@ func auditDunningKruger(dir string, topoReport *TopologyReport) BiasAuditorResul
 	}
 
 	// Get claim reference counts per entity from AST
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	files, _, err := astutil.ParseDir(dir, goFileFilter, parser.ParseComments)
 	if err != nil {
 		result.Detail = "cannot parse Go files"
 		return result
 	}
 
-	roleTypes := collectDreamRoleTypes(pkgs)
+	roleTypes := collectDreamRoleTypes(files)
 
 	// Collect entity names
 	entityNames := map[string]bool{}
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					if roleTypes[compositeTypeName(cl)] {
-						entityNames[vs.Names[0].Name] = true
-					}
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				if roleTypes[compositeTypeName(cl)] {
+					entityNames[vs.Names[0].Name] = true
 				}
 			}
 		}
@@ -1068,40 +1058,38 @@ func auditDunningKruger(dir string, topoReport *TopologyReport) BiasAuditorResul
 
 	// Count claims referencing each entity (as subject or object)
 	claimRefs := map[string]int{}
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				typeName := compositeTypeName(cl)
+				if roleTypes[typeName] || typeName == "Provenance" || typeName == "" {
+					continue
+				}
+				for _, elt := range cl.Elts {
+					kv, ok := elt.(*ast.KeyValueExpr)
 					if !ok {
 						continue
 					}
-					typeName := compositeTypeName(cl)
-					if roleTypes[typeName] || typeName == "Provenance" || typeName == "" {
+					key, ok := kv.Key.(*ast.Ident)
+					if !ok {
 						continue
 					}
-					for _, elt := range cl.Elts {
-						kv, ok := elt.(*ast.KeyValueExpr)
-						if !ok {
-							continue
-						}
-						key, ok := kv.Key.(*ast.Ident)
-						if !ok {
-							continue
-						}
-						if key.Name == "Subject" || key.Name == "Object" {
-							ref := exprIdent(kv.Value)
-							if ref != "" && entityNames[ref] {
-								claimRefs[ref]++
-							}
+					if key.Name == "Subject" || key.Name == "Object" {
+						ref := exprIdent(kv.Value)
+						if ref != "" && entityNames[ref] {
+							claimRefs[ref]++
 						}
 					}
 				}
@@ -1196,42 +1184,39 @@ func auditBaseRateNeglect(dir string) BiasAuditorResult {
 		Threshold: 3.0, // Shannon entropy below 3.0 bits = concentrated (max ~5 for this KB)
 	}
 
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	files, _, err := astutil.ParseDir(dir, goFileFilter, parser.ParseComments)
 	if err != nil {
 		result.Detail = "cannot parse Go files"
 		return result
 	}
 
-	roleTypes := collectDreamRoleTypes(pkgs)
+	roleTypes := collectDreamRoleTypes(files)
 
 	// Count predicate types (claim composite types that aren't roles or provenance)
 	predCounts := map[string]int{}
 	total := 0
 
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeName := compositeTypeName(cl)
-					if typeName == "" || typeName == "Provenance" || roleTypes[typeName] {
-						continue
-					}
-					predCounts[typeName]++
-					total++
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
 				}
+				typeName := compositeTypeName(cl)
+				if typeName == "" || typeName == "Provenance" || roleTypes[typeName] {
+					continue
+				}
+				predCounts[typeName]++
+				total++
 			}
 		}
 	}
@@ -1351,14 +1336,13 @@ func auditPrematureClosure(dir string) BiasAuditorResult {
 		"not universally", "despite", "although", "however",
 	}
 
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	files, _, err := astutil.ParseDir(dir, goFileFilter, parser.ParseComments)
 	if err != nil {
 		result.Detail = "cannot parse Go files"
 		return result
 	}
 
-	roleTypes := collectDreamRoleTypes(pkgs)
+	roleTypes := collectDreamRoleTypes(files)
 
 	// --- Pass 1: collect entities and Briefs ---
 	type entityInfo struct {
@@ -1369,32 +1353,30 @@ func auditPrematureClosure(dir string) BiasAuditorResult {
 	entities := map[string]*entityInfo{}
 	entityNames := map[string]bool{}
 
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				typeName := compositeTypeName(cl)
+				if roleTypes[typeName] {
+					name := vs.Names[0].Name
+					entities[name] = &entityInfo{
+						name:     name,
+						brief:    extractEntityBrief(cl),
+						roleType: typeName,
 					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeName := compositeTypeName(cl)
-					if roleTypes[typeName] {
-						name := vs.Names[0].Name
-						entities[name] = &entityInfo{
-							name:     name,
-							brief:    extractEntityBrief(cl),
-							roleType: typeName,
-						}
-						entityNames[name] = true
-					}
+					entityNames[name] = true
 				}
 			}
 		}
@@ -1419,66 +1401,64 @@ func auditPrematureClosure(dir string) BiasAuditorResult {
 		"BelongsTo": true, "IsFictional": true,
 	}
 
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				typeName := compositeTypeName(cl)
+				if typeName == "" || typeName == "Provenance" || roleTypes[typeName] {
+					continue
+				}
+
+				// Extract Subject and Object
+				var subj, obj string
+				for _, elt := range cl.Elts {
+					kv, ok := elt.(*ast.KeyValueExpr)
 					if !ok {
 						continue
 					}
-					typeName := compositeTypeName(cl)
-					if typeName == "" || typeName == "Provenance" || roleTypes[typeName] {
+					key, ok := kv.Key.(*ast.Ident)
+					if !ok {
 						continue
 					}
-
-					// Extract Subject and Object
-					var subj, obj string
-					for _, elt := range cl.Elts {
-						kv, ok := elt.(*ast.KeyValueExpr)
-						if !ok {
-							continue
-						}
-						key, ok := kv.Key.(*ast.Ident)
-						if !ok {
-							continue
-						}
-						ref := exprIdent(kv.Value)
-						if ref == "" || !entityNames[ref] {
-							continue
-						}
-						switch key.Name {
-						case "Subject":
-							subj = ref
-						case "Object":
-							obj = ref
-						}
-					}
-
-					if subj == "" || obj == "" {
+					ref := exprIdent(kv.Value)
+					if ref == "" || !entityNames[ref] {
 						continue
 					}
-
-					if subjectGrounds[typeName] {
-						// Subject grounds Object
-						supports[subj] = append(supports[subj], obj)
-						supportedBy[obj] = append(supportedBy[obj], subj)
-					} else if objectGrounds[typeName] {
-						// Object grounds Subject
-						supports[obj] = append(supports[obj], subj)
-						supportedBy[subj] = append(supportedBy[subj], obj)
+					switch key.Name {
+					case "Subject":
+						subj = ref
+					case "Object":
+						obj = ref
 					}
-					// Other predicates (Disputes, spatial, unary) don't
-					// contribute to the support DAG.
 				}
+
+				if subj == "" || obj == "" {
+					continue
+				}
+
+				if subjectGrounds[typeName] {
+					// Subject grounds Object
+					supports[subj] = append(supports[subj], obj)
+					supportedBy[obj] = append(supportedBy[obj], subj)
+				} else if objectGrounds[typeName] {
+					// Object grounds Subject
+					supports[obj] = append(supports[obj], subj)
+					supportedBy[subj] = append(supportedBy[subj], obj)
+				}
+				// Other predicates (Disputes, spatial, unary) don't
+				// contribute to the support DAG.
 			}
 		}
 	}
@@ -1495,40 +1475,38 @@ func auditPrematureClosure(dir string) BiasAuditorResult {
 	// An entity has "weak upstream" if any entity that supports it has
 	// thin provenance (appears in few claims — proxy for weak basis).
 	claimRefs := map[string]int{}
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				typeName := compositeTypeName(cl)
+				if typeName == "" || typeName == "Provenance" || roleTypes[typeName] {
+					continue
+				}
+				for _, elt := range cl.Elts {
+					kv, ok := elt.(*ast.KeyValueExpr)
 					if !ok {
 						continue
 					}
-					typeName := compositeTypeName(cl)
-					if typeName == "" || typeName == "Provenance" || roleTypes[typeName] {
+					key, ok := kv.Key.(*ast.Ident)
+					if !ok {
 						continue
 					}
-					for _, elt := range cl.Elts {
-						kv, ok := elt.(*ast.KeyValueExpr)
-						if !ok {
-							continue
-						}
-						key, ok := kv.Key.(*ast.Ident)
-						if !ok {
-							continue
-						}
-						if key.Name == "Subject" || key.Name == "Object" {
-							ref := exprIdent(kv.Value)
-							if ref != "" && entityNames[ref] {
-								claimRefs[ref]++
-							}
+					if key.Name == "Subject" || key.Name == "Object" {
+						ref := exprIdent(kv.Value)
+						if ref != "" && entityNames[ref] {
+							claimRefs[ref]++
 						}
 					}
 				}

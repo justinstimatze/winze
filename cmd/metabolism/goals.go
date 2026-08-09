@@ -26,12 +26,12 @@ type goalTarget struct {
 // nil (never an error) if the corpus has no goals or cannot be parsed —
 // self-directed learning is additive, so its absence must never break a cycle.
 func parseGoalSpecs(dir string) []goalTarget {
-	pkgs, _, err := astutil.ParseCorpus(dir)
+	files, _, err := astutil.ParseCorpus(dir)
 	if err != nil {
 		return nil
 	}
 	var goals []goalTarget
-	astutil.WalkVarDecls(pkgs, func(v astutil.VarDecl) {
+	astutil.WalkVarDecls(files, func(v astutil.VarDecl) {
 		if v.TypeName != "GoalSpec" {
 			return
 		}
@@ -78,12 +78,12 @@ func parseGoalSpecs(dir string) []goalTarget {
 // countGoalTagged counts the AdvancesGoal claims whose Object is the given
 // LearningGoal — the coverage measure that tells a goal when it is satisfied.
 func countGoalTagged(dir, goalVar string) int {
-	pkgs, _, err := astutil.ParseCorpus(dir)
+	files, _, err := astutil.ParseCorpus(dir)
 	if err != nil {
 		return 0
 	}
 	n := 0
-	astutil.WalkVarDecls(pkgs, func(v astutil.VarDecl) {
+	astutil.WalkVarDecls(files, func(v astutil.VarDecl) {
 		if v.TypeName != "AdvancesGoal" {
 			return
 		}

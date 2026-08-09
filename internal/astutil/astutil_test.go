@@ -2,8 +2,10 @@ package astutil
 
 import (
 	"go/ast"
+	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 )
@@ -327,5 +329,43 @@ func TestEmbedsEntityPointer(t *testing.T) {
 	}
 	if EmbedsEntityPointer(nil) {
 		t.Error("expected false for nil")
+	}
+}
+
+// TestParseDir pins the two behaviours the callers of the parser.ParseDir this
+// replaced were relying on: a flat map keyed by the path on disk, and a bad
+// file that reports an error without taking the good files down with it. The
+// old shape keyed by package name and every caller flattened it back out, so
+// the key being the path is load-bearing for the file-attribution the dream
+// and audit passes do.
+func TestParseDir(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, src string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	good := write("good.go", "package winze\n\n// Doc comment.\nvar X = 1\n")
+	write("bad.go", "package winze\n\nthis is not go\n")
+	write("skip.txt", "not a go file")
+
+	files, fset, err := ParseDir(dir, GoFileFilter, parser.ParseComments)
+	if err == nil {
+		t.Fatal("want an error naming the unparseable file")
+	}
+	if len(files) != 1 {
+		t.Fatalf("want the one good file back, got %d: %v", len(files), files)
+	}
+	f, ok := files[good]
+	if !ok {
+		t.Fatalf("files not keyed by path: got keys %v, want %q", files, good)
+	}
+	if len(f.Comments) == 0 {
+		t.Error("ParseComments dropped the doc comment; pragmas are corpus content")
+	}
+	if got := fset.Position(f.Pos()).Filename; got != good {
+		t.Errorf("position filename = %q, want %q", got, good)
 	}
 }

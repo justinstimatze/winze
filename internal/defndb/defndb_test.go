@@ -36,11 +36,11 @@ func TestConcordance_RoleTypes(t *testing.T) {
 	dir := rootDir(t)
 
 	// AST path
-	pkgs, _, err := astutil.ParseCorpus(dir)
+	files, _, err := astutil.ParseCorpus(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	astRoles := astutil.CollectRoleTypes(pkgs)
+	astRoles := astutil.CollectRoleTypes(files)
 
 	// defn path
 	defnRoles, err := client.RoleTypeSet()

@@ -189,8 +189,7 @@ func printDreamSection(title string, findings []DreamFinding) {
 // Files with very few entities are candidates for merging; files with many
 // are candidates for splitting.
 func analyzeFileBalance(dir string) []DreamFinding {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	files, _, err := astutil.ParseDir(dir, goFileFilter, parser.ParseComments)
 	if err != nil {
 		return nil
 	}
@@ -202,43 +201,41 @@ func analyzeFileBalance(dir string) []DreamFinding {
 	stats := map[string]*fileStats{}
 
 	// Collect role types for entity detection
-	roleTypes := collectDreamRoleTypes(pkgs)
+	roleTypes := collectDreamRoleTypes(files)
 
 	// Count entities and claims per file
-	for _, pkg := range pkgs {
-		for fname, f := range pkg.Files {
-			base := filepath.Base(fname)
-			// Skip non-corpus files
-			if isInfraFile(base) {
+	for fname, f := range files {
+		base := filepath.Base(fname)
+		// Skip non-corpus files
+		if isInfraFile(base) {
+			continue
+		}
+		s := &fileStats{}
+		stats[base] = s
+
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
 				continue
 			}
-			s := &fileStats{}
-			stats[base] = s
-
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					typeName := compositeTypeName(cl)
-					if typeName == "" {
-						continue
-					}
-					if roleTypes[typeName] {
-						s.entities++
-					} else if typeName != "Provenance" {
-						// Non-entity, non-provenance composites are claims
-						s.claims++
-					}
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				typeName := compositeTypeName(cl)
+				if typeName == "" {
+					continue
+				}
+				if roleTypes[typeName] {
+					s.entities++
+				} else if typeName != "Provenance" {
+					// Non-entity, non-provenance composites are claims
+					s.claims++
 				}
 			}
 		}
@@ -293,8 +290,7 @@ func analyzeFileBalance(dir string) []DreamFinding {
 // analyzeProvenanceSplits finds provenance variables that reference the same
 // origin but are declared in different files (or same file with different names).
 func analyzeProvenanceSplits(dir string) []DreamFinding {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, goFileFilter, parser.ParseComments)
+	files, _, err := astutil.ParseDir(dir, goFileFilter, parser.ParseComments)
 	if err != nil {
 		return nil
 	}
@@ -306,34 +302,32 @@ func analyzeProvenanceSplits(dir string) []DreamFinding {
 	}
 	var provs []provEntry
 
-	for _, pkg := range pkgs {
-		for fname, f := range pkg.Files {
-			base := filepath.Base(fname)
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+	for fname, f := range files {
+		base := filepath.Base(fname)
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Values) == 0 {
-						continue
-					}
-					cl, ok := vs.Values[0].(*ast.CompositeLit)
-					if !ok {
-						continue
-					}
-					if compositeTypeName(cl) != "Provenance" {
-						continue
-					}
-					origin := extractStringField(cl, "Origin")
-					if origin != "" {
-						provs = append(provs, provEntry{
-							varName: vs.Names[0].Name,
-							file:    base,
-							origin:  origin,
-						})
-					}
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				if compositeTypeName(cl) != "Provenance" {
+					continue
+				}
+				origin := extractStringField(cl, "Origin")
+				if origin != "" {
+					provs = append(provs, provEntry{
+						varName: vs.Names[0].Name,
+						file:    base,
+						origin:  origin,
+					})
 				}
 			}
 		}
@@ -526,8 +520,8 @@ func runAditScoring(dir string) []DreamFinding {
 func goFileFilter(info os.FileInfo) bool { return astutil.GoFileFilter(info) }
 func isInfraFile(name string) bool       { return astutil.IsInfraFile(name) }
 
-func collectDreamRoleTypes(pkgs map[string]*ast.Package) map[string]bool {
-	return astutil.CollectRoleTypes(pkgs)
+func collectDreamRoleTypes(files map[string]*ast.File) map[string]bool {
+	return astutil.CollectRoleTypes(files)
 }
 
 func extractStringField(cl *ast.CompositeLit, fieldName string) string {

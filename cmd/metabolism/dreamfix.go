@@ -25,6 +25,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/justinstimatze/winze/internal/astutil"
 )
 
 // briefTarget is an entity whose Brief needs fixing.
@@ -218,14 +219,16 @@ func collectBriefTargets(dir string, includeOverlong bool) []briefTarget {
 		return nil
 	}
 
-	// Collect role types
-	pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
+	// Collect role types. This parse only feeds collectDreamRoleTypes, which
+	// reads no positions, so it takes its own FileSet and leaves fset above as
+	// the one the byte-offset splicing below is measured against.
+	roleFiles, _, err := astutil.ParseDir(dir, func(fi os.FileInfo) bool {
 		return strings.HasSuffix(fi.Name(), ".go") && !strings.HasSuffix(fi.Name(), "_test.go")
 	}, parser.ParseComments)
 	if err != nil {
 		return nil
 	}
-	roleTypes := collectDreamRoleTypes(pkgs)
+	roleTypes := collectDreamRoleTypes(roleFiles)
 
 	var targets []briefTarget
 
@@ -392,9 +395,5 @@ func runDreamGate(dir string, name string, args ...string) bool {
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	if err != nil {
-		return false
-	}
-	return true
+	return cmd.Run() == nil
 }

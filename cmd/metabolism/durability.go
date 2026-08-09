@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"github.com/justinstimatze/winze/internal/cliutil"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/justinstimatze/winze/internal/cliutil"
 	"github.com/justinstimatze/winze/internal/defndb"
 )
 

@@ -94,41 +94,38 @@ func cmdSetBrief(args []string) int {
 // planSetBrief finds the target var's Brief (and optionally Name) string-literal
 // value nodes and returns the file plus the byte-offset edits to apply.
 func planSetBrief(root, varName, brief, name string) (string, []edit, error) {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, root, astutil.GoFileFilter, parser.ParseComments)
+	files, fset, err := astutil.ParseDir(root, astutil.GoFileFilter, parser.ParseComments)
 	if err != nil {
 		return "", nil, fmt.Errorf("parse %s: %w", root, err)
 	}
 
-	for _, pkg := range pkgs {
-		for path, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.VAR {
+	for path, f := range files {
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Names) == 0 || len(vs.Values) == 0 {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok || len(vs.Names) == 0 || len(vs.Values) == 0 {
-						continue
-					}
-					if vs.Names[0].Name != varName {
-						continue
-					}
-					fields := entityFields(vs.Values[0])
-					briefLit := fields["Brief"]
-					if briefLit == nil {
-						return "", nil, fmt.Errorf("%s has no Brief field", varName)
-					}
-					var edits []edit
-					edits = append(edits, litEdit(fset, briefLit, briefLiteral(brief)))
-					if name != "" {
-						if nameLit := fields["Name"]; nameLit != nil {
-							edits = append(edits, litEdit(fset, nameLit, strconv.Quote(name)))
-						}
-					}
-					return path, edits, nil
+				if vs.Names[0].Name != varName {
+					continue
 				}
+				fields := entityFields(vs.Values[0])
+				briefLit := fields["Brief"]
+				if briefLit == nil {
+					return "", nil, fmt.Errorf("%s has no Brief field", varName)
+				}
+				var edits []edit
+				edits = append(edits, litEdit(fset, briefLit, briefLiteral(brief)))
+				if name != "" {
+					if nameLit := fields["Name"]; nameLit != nil {
+						edits = append(edits, litEdit(fset, nameLit, strconv.Quote(name)))
+					}
+				}
+				return path, edits, nil
 			}
 		}
 	}

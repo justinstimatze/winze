@@ -17,8 +17,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
-	"go/parser"
-	"go/token"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -29,6 +27,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/justinstimatze/winze/internal/astutil"
 	"github.com/justinstimatze/winze/internal/defndb"
 )
 
@@ -752,10 +751,10 @@ func promoteConnections(dir string, connections []TripConnection, minScore int) 
 		claimVar := fmt.Sprintf("TripCycle%d%s%s%s", cycleNum, subj, c.Predicate, obj)
 
 		var b strings.Builder
-		b.WriteString(fmt.Sprintf("// ---------------------------------------------------------------------------\n"))
+		b.WriteString("// ---------------------------------------------------------------------------\n")
 		b.WriteString(fmt.Sprintf("// Trip connection: %s ↔ %s (score %d/5, %s)\n", subj, obj, c.Score, c.PromptType))
 		b.WriteString(fmt.Sprintf("// %s\n", c.Connection))
-		b.WriteString(fmt.Sprintf("// ---------------------------------------------------------------------------\n\n"))
+		b.WriteString("// ---------------------------------------------------------------------------\n\n")
 
 		// Winze GENERATED this connection — it is not sourced. Back it with a
 		// Conjecture, never a Provenance: a Conjecture has no Quote field, so
@@ -884,8 +883,7 @@ func collectEntityRoles(dir string) map[string]string {
 
 // collectEntityVarNames returns a set of all entity variable names in the KB.
 func collectEntityVarNames(dir string) map[string]bool {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
+	files, _, err := astutil.ParseDir(dir, func(fi os.FileInfo) bool {
 		return strings.HasSuffix(fi.Name(), ".go") && !strings.HasSuffix(fi.Name(), "_test.go")
 	}, 0)
 	if err != nil {
@@ -893,21 +891,19 @@ func collectEntityVarNames(dir string) map[string]bool {
 	}
 
 	vars := map[string]bool{}
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, d := range f.Decls {
-				gd, ok := d.(*ast.GenDecl)
+	for _, f := range files {
+		for _, d := range f.Decls {
+			gd, ok := d.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			for _, s := range gd.Specs {
+				vs, ok := s.(*ast.ValueSpec)
 				if !ok {
 					continue
 				}
-				for _, s := range gd.Specs {
-					vs, ok := s.(*ast.ValueSpec)
-					if !ok {
-						continue
-					}
-					for _, name := range vs.Names {
-						vars[name.Name] = true
-					}
+				for _, name := range vs.Names {
+					vars[name.Name] = true
 				}
 			}
 		}
