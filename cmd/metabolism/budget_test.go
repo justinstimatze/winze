@@ -277,8 +277,10 @@ func TestCostCents_CacheWritesCostDoubleAtOneHourTTL(t *testing.T) {
 		t.Errorf("a cache write must cost MORE than plain input, not less: write=%.2f plain=%.2f", write, plain)
 	}
 	// The whole economic argument for caching in one assertion: a write costs
-	// 2x, a read costs 0.1x, so the breakpoint only pays once a written block
-	// is read back more than about ten times.
+	// 2x and a read 0.1x, so against paying 1x every call the breakpoint is
+	// behind by one full prefix after the write and claws back 0.9 per read.
+	// Break-even lands just past two reads — three calls in a TTL window is
+	// already 27% cheaper, four is 43%.
 	if read >= plain {
 		t.Errorf("cache read should be far cheaper than plain input: read=%.2f plain=%.2f", read, plain)
 	}

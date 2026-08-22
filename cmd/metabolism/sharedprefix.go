@@ -202,6 +202,7 @@ func sharedSystemBlock(prefix string) []anthropic.TextBlockParam {
 // Called only at the two sites that carry a breakpoint, so it stays quiet
 // everywhere else rather than becoming noise on every Haiku call.
 func logCacheEffect(site string, u anthropic.Usage) {
+	noteCachedPrefixCall()
 	fmt.Fprintf(os.Stderr, "[cache] %s: written=%d read=%d fresh=%d\n",
 		site, u.CacheCreationInputTokens, u.CacheReadInputTokens, u.InputTokens)
 }

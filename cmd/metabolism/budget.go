@@ -66,14 +66,16 @@ type budgetState struct {
 	UnmeasuredCalls int `json:"unmeasured_calls,omitempty"`
 
 	// Cache-effectiveness telemetry (this month). CacheReadTokens is input
-	// served from the prompt cache (billed ~10%); FreshInputTokens is
-	// uncached input (full price). The hit ratio CacheRead/(CacheRead+Fresh)
-	// answers "is the shared cache_control'd prefix actually landing?" — a
-	// silent regression (prefix drift below the model's min-cacheable floor,
-	// a structure change, a TTL miss) shows up as the ratio collapsing.
-	// Note: cache_creation tokens (the one-time establishing write, +25%) are
-	// not captured here, so the ratio slightly overstates — it measures reads
-	// against fresh input, not against total prompt tokens.
+	// served from the prompt cache (billed ~10%); FreshInputTokens is uncached
+	// input (full price). The hit ratio is read/(read+write+fresh), so it asks
+	// what the cache saved against everything the prompts cost — not against
+	// the subset that missed, which would flatter a breakpoint being
+	// re-established forever and never read.
+	//
+	// Read alongside CachedPrefixCalls, which says whether any call carrying a
+	// breakpoint was made at all. A collapsed ratio with a non-zero call count
+	// is a regression worth chasing; a collapsed ratio with zero is simply a
+	// month in which those code paths never ran.
 	CacheReadTokens  int64 `json:"cache_read_tokens"`
 	FreshInputTokens int64 `json:"fresh_input_tokens"`
 	// CacheWriteTokens is the establishing write, billed at 2x base for the 1h
@@ -82,6 +84,15 @@ type budgetState struct {
 	// and with reads sitting at 0 for all of August, every marked call was
 	// paying that 2x premium and nothing was reading it back.
 	CacheWriteTokens int64 `json:"cache_write_tokens"`
+	// CachedPrefixCalls counts calls that actually carried a cache_control
+	// breakpoint. Without it a 0% hit rate has two readings that look
+	// identical — the breakpoint failed, or no call carrying one was ever
+	// made — and for all of August the true answer was the second: the prefix
+	// is attached to llmResolve and generateGroupConnection, and neither ran.
+	// The hot path (pair-trip and the critic, both through callToolUse) sends
+	// no System block at all. A metric that cannot tell "broken" from "not
+	// exercised" sent this investigation down the wrong road for an hour.
+	CachedPrefixCalls int64 `json:"cached_prefix_calls,omitempty"`
 }
 
 // budgetGuard wraps the persisted state plus the cap loaded from
@@ -135,6 +146,7 @@ func loadBudgetGuard(dir string) *budgetGuard {
 		g.state.UnmeasuredCalls = 0
 		g.state.CacheReadTokens = 0
 		g.state.CacheWriteTokens = 0
+		g.state.CachedPrefixCalls = 0
 		g.state.FreshInputTokens = 0
 		g.state.SchemaVersion = budgetSchema
 	}
@@ -244,13 +256,19 @@ func (g *budgetGuard) cacheHitPct() (float64, bool) {
 
 // cacheSuffix renders the hit-ratio clause for the budget line, or "" when
 // there is no usage data yet.
+//
+// When no call carried a breakpoint, it says so rather than printing 0%. Those
+// are different facts and only one of them is a problem.
 func (g *budgetGuard) cacheSuffix() string {
 	pct, ok := g.cacheHitPct()
 	if !ok {
 		return ""
 	}
-	return fmt.Sprintf(" | cache %.0f%% hit (%d read / %d written / %d fresh tok)",
-		pct, g.state.CacheReadTokens, g.state.CacheWriteTokens, g.state.FreshInputTokens)
+	if g.state.CachedPrefixCalls == 0 {
+		return fmt.Sprintf(" | cache n/a — no cached-prefix calls this month (%d fresh tok)", g.state.FreshInputTokens)
+	}
+	return fmt.Sprintf(" | cache %.0f%% hit over %d prefixed call(s) (%d read / %d written / %d fresh tok)",
+		pct, g.state.CachedPrefixCalls, g.state.CacheReadTokens, g.state.CacheWriteTokens, g.state.FreshInputTokens)
 }
 
 func currentMonth() string {
@@ -374,6 +392,16 @@ func recordActualUsage(model string, t tokenUsage) {
 		return
 	}
 	globalBudget.chargeActual(model, t)
+}
+
+// noteCachedPrefixCall records that a call carrying a cache_control breakpoint
+// was made, so a 0% hit rate can be told apart from no attempt at all.
+func noteCachedPrefixCall() {
+	if globalBudget == nil {
+		return
+	}
+	globalBudget.state.CachedPrefixCalls++
+	globalBudget.persist()
 }
 
 var unknownModelWarned = map[string]bool{}
