@@ -46,6 +46,23 @@ type CalibrationRow struct {
 	EstSpentCents    int     `json:"est_spent_cents,omitempty"`
 	ActualSpentCents float64 `json:"actual_spent_cents,omitempty"`
 	BudgetCapCents   int     `json:"budget_cap_cents,omitempty"`
+
+	// Vision metrics — the things the README's own criterion for a
+	// productive metabolism is about ("better answers the next time someone
+	// asks"), as distinct from useful_signal_pct/survivorship_ratio above,
+	// which measure the sensor's retrieval behavior rather than the corpus.
+	// See computeVisionMetrics. TotalClaims and ContestedConcepts/Disputes
+	// match `winze-query --stats` exactly (both exclude reify bookkeeping).
+	// ThinContestedConcepts/ThinContestedClaims are the depth-first check:
+	// CLAUDE.md's stated goal is deepening thin contested neighborhoods
+	// before expanding, and this is what lets a trend reader see whether
+	// that is actually happening rather than assume it from cheaper spend.
+	// Fields added 2026-08-22; older rows decode as zero values.
+	TotalClaims           int `json:"total_claims,omitempty"`
+	ContestedConcepts     int `json:"contested_concepts,omitempty"`
+	Disputes              int `json:"disputes,omitempty"`
+	ThinContestedConcepts int `json:"thin_contested_concepts,omitempty"`
+	ThinContestedClaims   int `json:"thin_contested_claims,omitempty"`
 }
 
 // appendCalibrationRow appends one JSONL line to .metabolism-calibration.jsonl.

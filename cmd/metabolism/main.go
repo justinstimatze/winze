@@ -1784,6 +1784,17 @@ func runCalibrate(dir string, jsonOut bool) {
 
 	writeCalibrationState(dir, scores, resolutions, gapCounts)
 
+	// Vision metrics: is the corpus itself getting deeper, not just cheaper
+	// to run. Computed here (not inside computeCalibrationRow, which is kept
+	// a pure function of the log) because it requires scanning the corpus
+	// directory. Fails open — a scan error logs and leaves the row's vision
+	// fields at zero rather than aborting the rest of calibration, matching
+	// how the budget snapshot below is stamped on a best-effort basis.
+	vm, vmErr := computeVisionMetrics(dir)
+	if vmErr != nil {
+		fmt.Fprintf(os.Stderr, "calibrate: vision metrics: %v\n", vmErr)
+	}
+
 	if jsonOut {
 		type VulnTypeScore struct {
 			VulnType   string  `json:"vuln_type"`
@@ -1817,28 +1828,39 @@ func runCalibrate(dir string, jsonOut bool) {
 			ChallengedTaut    int               `json:"challenged_tautological"`
 			ByVulnType        []VulnTypeScore   `json:"by_vuln_type"`
 			Scores            []hypothesisScore `json:"scores"`
+			// Vision metrics — see computeVisionMetrics.
+			TotalClaims           int `json:"total_claims"`
+			ContestedConcepts     int `json:"contested_concepts"`
+			Disputes              int `json:"disputes"`
+			ThinContestedConcepts int `json:"thin_contested_concepts"`
+			ThinContestedClaims   int `json:"thin_contested_claims"`
 		}
 		r := CalReport{
-			TotalCycles:       overall.total,
-			SignalRate:        pct(overall.withSignal, overall.total),
-			WithSignal:        overall.withSignal,
-			TotalPapers:       overall.totalPaper,
-			Earliest:          earliest.Format("2006-01-02"),
-			Latest:            latest.Format("2006-01-02"),
-			Hypotheses:        len(scores),
-			HitRate:           pct(hits, hits+misses),
-			Hits:              hits,
-			Misses:            misses,
-			Pending:           pending,
-			AvgCyclesToHit:    avg(totalCyclesToVerdict, hitsWithCycles),
-			GapConfirmed:      gapCounts["gap_confirmed"],
-			MixedOverlap:      gapCounts["mixed_overlap"],
-			NoGap:             gapCounts["no_gap"],
-			CorroboratedNovel: corrobNovel,
-			CorroboratedTaut:  corrobTaut,
-			ChallengedNovel:   challNovel,
-			ChallengedTaut:    challTaut,
-			Scores:            scores,
+			TotalCycles:           overall.total,
+			SignalRate:            pct(overall.withSignal, overall.total),
+			WithSignal:            overall.withSignal,
+			TotalPapers:           overall.totalPaper,
+			Earliest:              earliest.Format("2006-01-02"),
+			Latest:                latest.Format("2006-01-02"),
+			Hypotheses:            len(scores),
+			HitRate:               pct(hits, hits+misses),
+			Hits:                  hits,
+			Misses:                misses,
+			Pending:               pending,
+			AvgCyclesToHit:        avg(totalCyclesToVerdict, hitsWithCycles),
+			GapConfirmed:          gapCounts["gap_confirmed"],
+			MixedOverlap:          gapCounts["mixed_overlap"],
+			NoGap:                 gapCounts["no_gap"],
+			CorroboratedNovel:     corrobNovel,
+			CorroboratedTaut:      corrobTaut,
+			ChallengedNovel:       challNovel,
+			ChallengedTaut:        challTaut,
+			Scores:                scores,
+			TotalClaims:           vm.TotalClaims,
+			ContestedConcepts:     vm.ContestedConcepts,
+			Disputes:              vm.Disputes,
+			ThinContestedConcepts: vm.ThinContestedConcepts,
+			ThinContestedClaims:   vm.ThinContestedClaims,
 		}
 		for vt, a := range byVulnAcc {
 			r.ByVulnType = append(r.ByVulnType, VulnTypeScore{
@@ -1862,6 +1884,18 @@ func runCalibrate(dir string, jsonOut bool) {
 
 	fmt.Printf("[calibrate] %d cycles logged (%s to %s)\n\n",
 		len(mlog.Cycles), earliest.Format("2006-01-02"), latest.Format("2006-01-02"))
+
+	// Corpus depth (vision metrics) — printed first and separately from
+	// everything below, because it is the one section that answers "is the
+	// corpus itself better," as opposed to "how did the sensor behave this
+	// month." See computeVisionMetrics's doc comment for why it excludes
+	// predictions.go and what "thin contested" means.
+	fmt.Printf("  corpus depth (what the loop actually produced):\n")
+	fmt.Printf("    claims:              %d (excludes reify bookkeeping)\n", vm.TotalClaims)
+	fmt.Printf("    contested concepts:  %d (2+ theories)\n", vm.ContestedConcepts)
+	fmt.Printf("    disputes:            %d\n", vm.Disputes)
+	fmt.Printf("    thin contested:      %d (exactly 2 theories — the depth-first frontier)\n", vm.ThinContestedConcepts)
+	fmt.Printf("    claims near thin:    %d (deepening signal — compare across --calibrate-trend rows)\n\n", vm.ThinContestedClaims)
 
 	// Signal quantity (existing)
 	fmt.Printf("  signal quantity (per cycle):\n")
@@ -2051,6 +2085,11 @@ func runCalibrate(dir string, jsonOut bool) {
 	// Stamp month-to-date spend telemetry from .metabolism-budget.json so
 	// the trend reader can show $/week without a separate spend log.
 	row.EstSpentCents, row.BudgetCapCents, row.ActualSpentCents = loadBudgetSnapshot(dir)
+	row.TotalClaims = vm.TotalClaims
+	row.ContestedConcepts = vm.ContestedConcepts
+	row.Disputes = vm.Disputes
+	row.ThinContestedConcepts = vm.ThinContestedConcepts
+	row.ThinContestedClaims = vm.ThinContestedClaims
 	if err := appendCalibrationRow(dir, row); err != nil {
 		fmt.Fprintf(os.Stderr, "[calibrate] timeseries append: %v\n", err)
 	}

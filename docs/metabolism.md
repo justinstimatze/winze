@@ -85,6 +85,18 @@ wiring more gates belongs in cmd/metabolism/bias_gates.go.
 
 ## Calibration and durability
 
+`--calibrate` opens with a **corpus depth** section — claims, contested
+concepts (2+ theories), disputes, thin-contested concepts (exactly 2
+theories, the depth-first frontier CLAUDE.md names), and claims touching
+that frontier's neighborhood. These are deliberately separate from
+`useful_signal_pct`/`survivorship_ratio` below: those measure the sensor's
+retrieval behavior, not whether the corpus is actually getting deeper.
+Counts exclude `predictions.go` (reify's own bookkeeping — see
+`computeVisionMetrics` in `vision_metrics.go`) and match `winze-query
+--stats` exactly. `--calibrate-trend` carries the same five fields so a
+falling spend with a flat "claims near thin" column reads as cheaper, not
+better.
+
 `--calibrate` includes prediction accuracy scoring per hypothesis with
 hit rate, precision, and efficiency metrics, plus a post-hoc provenance-overlap
 scan (gap_confirmed / mixed_overlap / no_gap). A corroborated cycle whose

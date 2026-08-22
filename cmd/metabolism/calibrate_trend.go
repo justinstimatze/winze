@@ -9,12 +9,6 @@ import (
 	"strings"
 )
 
-// runCalibrateTrend reads .metabolism-calibration.jsonl and prints a
-// compact time series so the user (or a Gas Town formula) can see how
-// useful signal, provenance concentration, and bias triggers are
-// trending over time. JSON-lines parsing tolerates a trailing newline
-// and skips blank/malformed lines (logging them to stderr) so a single
-// corrupt row doesn't stop trend output.
 func runCalibrateTrend(dir string, jsonOut bool) {
 	path := filepath.Join(dir, ".metabolism-calibration.jsonl")
 	f, err := os.Open(path)
@@ -64,10 +58,14 @@ func runCalibrateTrend(dir string, jsonOut bool) {
 	// Header. Columns chosen to match what the brief calls out as worth
 	// trending: useful-signal trajectory, HHI trajectory, challenge count
 	// trajectory, survivorship and time-since-sense, plus month-to-date
-	// actual spend so unattended runs are observable.
-	fmt.Printf("%-19s  %-7s  %-5s  %-5s  %-7s  %-9s  %-7s  %-15s  %s\n",
-		"timestamp", "useful%", "hhi", "chall", "corrob", "actual$", "surv", "spend(est/cap)", "bias_triggers")
-	fmt.Println(strings.Repeat("-", 115))
+	// actual spend so unattended runs are observable. claims/contested/thin
+	// are the vision metrics (computeVisionMetrics) — corpus depth, not
+	// sensor activity; a rising claims column with a flat thin column means
+	// the loop is growing breadth without deepening the frontier it is
+	// supposed to be depth-first about.
+	fmt.Printf("%-19s  %-7s  %-5s  %-5s  %-7s  %-9s  %-7s  %-15s  %-6s  %-9s  %-4s  %s\n",
+		"timestamp", "useful%", "hhi", "chall", "corrob", "actual$", "surv", "spend(est/cap)", "claims", "contested", "thin", "bias_triggers")
+	fmt.Println(strings.Repeat("-", 145))
 	for _, r := range rows {
 		ts := r.Timestamp.Local().Format("2006-01-02 15:04")
 		triggers := strings.Join(shortenBiasNames(r.BiasTriggers), ",")
@@ -81,15 +79,19 @@ func runCalibrateTrend(dir string, jsonOut bool) {
 		} else if r.EstSpentCents > 0 {
 			spendEstCap = fmt.Sprintf("%d¢/—", r.EstSpentCents)
 		}
-		fmt.Printf("%-19s  %6.1f%%  %5.2f  %5d  %6d  $%8.4f  %6.1f  %-15s  %s\n",
+		fmt.Printf("%-19s  %6.1f%%  %5.2f  %5d  %6d  $%8.4f  %6.1f  %-15s  %6d  %9d  %4d  %s\n",
 			ts, r.UsefulSignalPct, r.HHI, r.ChallengedCount, r.CorroboratedCount,
-			actualDollars, r.SurvivorshipRatio, spendEstCap, triggers)
+			actualDollars, r.SurvivorshipRatio, spendEstCap,
+			r.TotalClaims, r.ContestedConcepts, r.ThinContestedConcepts, triggers)
 	}
 
 	// Delta line: useful%, HHI, survivorship, and actual-spend change
 	// between first and last row. The whole point of the trajectory is
 	// "is this improving and what did it cost?" so make both visible
-	// without math by hand.
+	// without math by hand. Claims/contested/thin/thin-claims are appended
+	// for the same reason computeVisionMetrics exists: a cheaper cycle
+	// (lower spend delta) that isn't also deepening thin-contested claims
+	// is cheaper, not better.
 	if len(rows) >= 2 {
 		first := rows[0]
 		last := rows[len(rows)-1]
@@ -101,6 +103,13 @@ func runCalibrateTrend(dir string, jsonOut bool) {
 			last.ChallengedCount-first.ChallengedCount,
 			last.CorroboratedCount-first.CorroboratedCount,
 			(last.ActualSpentCents-first.ActualSpentCents)/100.0,
+		)
+		fmt.Printf("[trend] delta first→last (corpus depth): claims %+d, contested %+d, disputes %+d, thin contested %+d, claims near thin %+d\n",
+			last.TotalClaims-first.TotalClaims,
+			last.ContestedConcepts-first.ContestedConcepts,
+			last.Disputes-first.Disputes,
+			last.ThinContestedConcepts-first.ThinContestedConcepts,
+			last.ThinContestedClaims-first.ThinContestedClaims,
 		)
 	}
 }
