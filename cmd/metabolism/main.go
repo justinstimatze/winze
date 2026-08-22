@@ -1333,7 +1333,8 @@ State your final classification: irrelevant, corroborated, or challenged.`,
 	if err != nil {
 		return "", err
 	}
-	recordActualUsage(string(anthropic.ModelClaudeSonnet4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
+	recordActualUsage(string(anthropic.ModelClaudeSonnet4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.CacheCreationInputTokens, resp.Usage.OutputTokens)
+	logCacheEffect("resolve", resp.Usage)
 
 	raw := ""
 	for _, block := range resp.Content {

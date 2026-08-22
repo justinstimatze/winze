@@ -258,7 +258,7 @@ func critiqueIngestClaim(client anthropic.Client, candidate *ingestResult, predi
 		fmt.Fprintf(os.Stderr, "[critic] ingest critic error: %v — defaulting to ACCEPT\n", err)
 		return criticVerdict{Accept: true}
 	}
-	recordActualUsage(string(anthropic.ModelClaudeHaiku4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
+	recordActualUsage(string(anthropic.ModelClaudeHaiku4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.CacheCreationInputTokens, resp.Usage.OutputTokens)
 
 	for _, block := range resp.Content {
 		if block.Type == "text" {
@@ -287,7 +287,7 @@ func critiqueTripConnection(client anthropic.Client, conn TripConnection, exempl
 		fmt.Fprintf(os.Stderr, "[critic] trip critic error: %v — defaulting to ACCEPT\n", err)
 		return criticVerdict{Accept: true}
 	}
-	recordActualUsage(string(anthropic.ModelClaudeHaiku4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
+	recordActualUsage(string(anthropic.ModelClaudeHaiku4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.CacheCreationInputTokens, resp.Usage.OutputTokens)
 
 	for _, block := range resp.Content {
 		if block.Type == "text" {

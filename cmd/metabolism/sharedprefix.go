@@ -162,3 +162,20 @@ func sharedSystemBlock(prefix string) []anthropic.TextBlockParam {
 		CacheControl: anthropic.CacheControlEphemeralParam{TTL: anthropic.CacheControlEphemeralTTLTTL1h},
 	}}
 }
+
+// logCacheEffect prints what the cache_control breakpoint actually did on one
+// call. It exists because the monthly counters could not distinguish the two
+// ways caching fails, and for all of August they read 0 reads against 6,818,678
+// fresh tokens without saying which:
+//
+//   - writes > 0, reads 0 — the breakpoint is being established on every call
+//     and never read back, so the prefix is not byte-identical at runtime. Costs
+//     2x base per call for nothing.
+//   - writes 0, reads 0 — the System block is not reaching the API at all.
+//
+// Called only at the two sites that carry a breakpoint, so it stays quiet
+// everywhere else rather than becoming noise on every Haiku call.
+func logCacheEffect(site string, u anthropic.Usage) {
+	fmt.Fprintf(os.Stderr, "[cache] %s: written=%d read=%d fresh=%d\n",
+		site, u.CacheCreationInputTokens, u.CacheReadInputTokens, u.InputTokens)
+}

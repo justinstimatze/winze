@@ -227,7 +227,7 @@ State your final classification: irrelevant, corroborated, or challenged.`,
 	if err != nil {
 		return "", err
 	}
-	recordActualUsage(string(model), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
+	recordActualUsage(string(model), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.CacheCreationInputTokens, resp.Usage.OutputTokens)
 	raw := ""
 	for _, block := range resp.Content {
 		if block.Type == "text" {

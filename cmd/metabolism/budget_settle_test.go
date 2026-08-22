@@ -32,11 +32,23 @@ func TestSettleEstimateToActual(t *testing.T) {
 			wantSpent: 12, wantMoved: true,
 		},
 		{
-			// The estimator was optimistic. Keeping the larger number is the
-			// safe direction, so this must not settle upward.
-			name:      "never settles upward",
+			// Settles UP, which this used to refuse to do.
+			//
+			// The doc on settleEstimateToActual always said the larger number
+			// is the safe one to keep when measurement lands above the
+			// estimate — and with an estimate of 10 against 90 measured, the
+			// larger is 90. The code kept 10: it returned early on
+			// `settled >= SpentCents`, so the stated property was never
+			// implemented. Harmless while the per-phase constants genuinely
+			// upper-bounded cost, which is why nothing caught it.
+			//
+			// Pricing 1h cache writes at 2x base ended that: a phase that
+			// establishes a breakpoint can measure above its own estimate. Left
+			// refusing, allow() would enforce the monthly cap against a number
+			// already known to be too low — the cap silently stops capping.
+			name:      "settles upward when measurement exceeds the estimate",
 			in:        budgetState{SpentCents: 10, ActualSpentCents: 90},
-			wantSpent: 10, wantMoved: false,
+			wantSpent: 90, wantMoved: true,
 		},
 		{
 			// One unpriced model makes ActualSpentCents a floor. Settling to

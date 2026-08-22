@@ -74,6 +74,12 @@ type budgetState struct {
 	// against fresh input, not against total prompt tokens.
 	CacheReadTokens  int64 `json:"cache_read_tokens"`
 	FreshInputTokens int64 `json:"fresh_input_tokens"`
+	// CacheWriteTokens is the establishing write, billed at 2x base for the 1h
+	// TTL this repo uses. Until 2026-08-22 it was neither recorded nor priced,
+	// so ActualSpentCents understated by the full cost of every cache write —
+	// and with reads sitting at 0 for all of August, every marked call was
+	// paying that 2x premium and nothing was reading it back.
+	CacheWriteTokens int64 `json:"cache_write_tokens"`
 }
 
 // budgetGuard wraps the persisted state plus the cap loaded from
@@ -126,6 +132,7 @@ func loadBudgetGuard(dir string) *budgetGuard {
 		g.state.ActualSpentCents = 0
 		g.state.UnmeasuredCalls = 0
 		g.state.CacheReadTokens = 0
+		g.state.CacheWriteTokens = 0
 		g.state.FreshInputTokens = 0
 		g.state.SchemaVersion = budgetSchema
 	}
@@ -215,12 +222,18 @@ func (g *budgetGuard) summary() string {
 	return fmt.Sprintf("budget: %d¢ est / %.2f¢ actual / %d¢ cap this month (%s)%s", g.state.SpentCents, g.state.ActualSpentCents, g.capCents, g.state.Month, g.cacheSuffix())
 }
 
-// cacheHitPct reports the share of input tokens served from the prompt
-// cache this month, as read/(read+fresh). Returns (0, false) before any
-// LLM call has been billed, so the caller can omit the stat rather than
-// print a meaningless 0%.
+// cacheHitPct reports the share of input tokens served from the prompt cache
+// this month, as read/(read+write+fresh). Returns (0, false) before any LLM
+// call has been billed, so the caller can omit the stat rather than print a
+// meaningless 0%.
+//
+// Writes belong in the denominator. Leaving them out asks "of the tokens we
+// paid full price for, how many came from cache" — which flatters a breakpoint
+// that is being established over and over and never read, because the write
+// tokens simply vanish from the accounting. Including them asks the question
+// worth asking: of everything this prompt cost, how much did the cache save.
 func (g *budgetGuard) cacheHitPct() (float64, bool) {
-	total := g.state.CacheReadTokens + g.state.FreshInputTokens
+	total := g.state.CacheReadTokens + g.state.CacheWriteTokens + g.state.FreshInputTokens
 	if total == 0 {
 		return 0, false
 	}
@@ -234,7 +247,8 @@ func (g *budgetGuard) cacheSuffix() string {
 	if !ok {
 		return ""
 	}
-	return fmt.Sprintf(" | cache %.0f%% hit (%d read / %d fresh tok)", pct, g.state.CacheReadTokens, g.state.FreshInputTokens)
+	return fmt.Sprintf(" | cache %.0f%% hit (%d read / %d written / %d fresh tok)",
+		pct, g.state.CacheReadTokens, g.state.CacheWriteTokens, g.state.FreshInputTokens)
 }
 
 func currentMonth() string {
@@ -255,26 +269,33 @@ type modelPricing struct {
 	inputPerMTok     float64
 	outputPerMTok    float64
 	cacheReadPerMTok float64 // 10% of input price for Sonnet/Haiku 4.x
+	// cacheWritePerMTok is the one-time establishing write. Anthropic bills it
+	// by TTL: 1.25x base for the 5-minute breakpoint, 2x for the 1-hour one.
+	// This is the 1h rate, because every cache_control in this repo — all eight
+	// of them — uses CacheControlEphemeralTTLTTL1h. A 5m breakpoint added later
+	// would need its own rate rather than reusing this one.
+	cacheWritePerMTok float64
 }
 
 var pricingByModel = map[string]modelPricing{
-	"claude-sonnet-4-5":            {inputPerMTok: 3.00, outputPerMTok: 15.00, cacheReadPerMTok: 0.30},
-	"claude-sonnet-4-5-2025-09-29": {inputPerMTok: 3.00, outputPerMTok: 15.00, cacheReadPerMTok: 0.30},
-	"claude-sonnet-4-6":            {inputPerMTok: 3.00, outputPerMTok: 15.00, cacheReadPerMTok: 0.30},
-	"claude-haiku-4-5":             {inputPerMTok: 1.00, outputPerMTok: 5.00, cacheReadPerMTok: 0.10},
-	"claude-haiku-4-5-20251001":    {inputPerMTok: 1.00, outputPerMTok: 5.00, cacheReadPerMTok: 0.10},
+	"claude-sonnet-4-5":            {inputPerMTok: 3.00, outputPerMTok: 15.00, cacheReadPerMTok: 0.30, cacheWritePerMTok: 6.00},
+	"claude-sonnet-4-5-2025-09-29": {inputPerMTok: 3.00, outputPerMTok: 15.00, cacheReadPerMTok: 0.30, cacheWritePerMTok: 6.00},
+	"claude-sonnet-4-6":            {inputPerMTok: 3.00, outputPerMTok: 15.00, cacheReadPerMTok: 0.30, cacheWritePerMTok: 6.00},
+	"claude-haiku-4-5":             {inputPerMTok: 1.00, outputPerMTok: 5.00, cacheReadPerMTok: 0.10, cacheWritePerMTok: 2.00},
+	"claude-haiku-4-5-20251001":    {inputPerMTok: 1.00, outputPerMTok: 5.00, cacheReadPerMTok: 0.10, cacheWritePerMTok: 2.00},
 }
 
 // costCents converts measured tokens to a fractional-cent cost.
 // Returns (cents, true) on hit, (0, false) on unknown model — caller
 // decides whether to log the miss.
-func costCents(model string, inputTokens, cachedReadTokens, outputTokens int64) (float64, bool) {
+func costCents(model string, inputTokens, cachedReadTokens, cacheWriteTokens, outputTokens int64) (float64, bool) {
 	p, ok := pricingByModel[model]
 	if !ok {
 		return 0, false
 	}
 	dollars := (float64(inputTokens)/1e6)*p.inputPerMTok +
 		(float64(cachedReadTokens)/1e6)*p.cacheReadPerMTok +
+		(float64(cacheWriteTokens)/1e6)*p.cacheWritePerMTok +
 		(float64(outputTokens)/1e6)*p.outputPerMTok
 	return dollars * 100, true
 }
@@ -288,8 +309,8 @@ func costCents(model string, inputTokens, cachedReadTokens, outputTokens int64) 
 // the estimate down to them, an uncounted call would settle away real
 // money. UnmeasuredCalls is how the settle step knows to keep its hands
 // off.
-func (g *budgetGuard) chargeActual(model string, inputTokens, cachedReadTokens, outputTokens int64) {
-	cents, ok := costCents(model, inputTokens, cachedReadTokens, outputTokens)
+func (g *budgetGuard) chargeActual(model string, inputTokens, cachedReadTokens, cacheWriteTokens, outputTokens int64) {
+	cents, ok := costCents(model, inputTokens, cachedReadTokens, cacheWriteTokens, outputTokens)
 	if !ok {
 		warnUnknownModel(model)
 		g.state.UnmeasuredCalls++
@@ -298,6 +319,7 @@ func (g *budgetGuard) chargeActual(model string, inputTokens, cachedReadTokens, 
 	}
 	g.state.ActualSpentCents += cents
 	g.state.CacheReadTokens += cachedReadTokens
+	g.state.CacheWriteTokens += cacheWriteTokens
 	g.state.FreshInputTokens += inputTokens
 	g.persist()
 }
@@ -322,11 +344,11 @@ func ensureBudgetGuard(dir string) {
 
 // recordActualUsage is the call-site-friendly wrapper. Safe to call
 // when globalBudget is nil (no-op).
-func recordActualUsage(model string, inputTokens, cachedReadTokens, outputTokens int64) {
+func recordActualUsage(model string, inputTokens, cachedReadTokens, cacheWriteTokens, outputTokens int64) {
 	if globalBudget == nil {
 		return
 	}
-	globalBudget.chargeActual(model, inputTokens, cachedReadTokens, outputTokens)
+	globalBudget.chargeActual(model, inputTokens, cachedReadTokens, cacheWriteTokens, outputTokens)
 }
 
 var unknownModelWarned = map[string]bool{}
@@ -399,10 +421,22 @@ func settleEstimateToActual(s *budgetState) (moved bool, reason string) {
 		return false, ""
 	}
 	settled := int(math.Ceil(s.ActualSpentCents))
-	if settled >= s.SpentCents {
+	if settled == s.SpentCents {
 		return false, ""
 	}
 	was := s.SpentCents
 	s.SpentCents = settled
+	if settled > was {
+		// Settling UP. This used to be impossible by construction: the
+		// per-phase estimates were assumed to upper-bound measured cost, so the
+		// function only ever moved downward and silently returned here. Pricing
+		// cache writes at the 1h rate (2x base) broke that assumption — a phase
+		// that establishes a breakpoint can now measure above its own estimate.
+		// Leaving SpentCents at the low estimate would mean allow() enforces the
+		// monthly cap against a number already known to be wrong, so the cap
+		// would quietly stop being a cap. Settle up and say so: a persistent
+		// message here means the estimate constants need raising.
+		return true, fmt.Sprintf("settled %d¢ estimated UP to %d¢ measured — a phase cost more than its estimate; raise the per-phase constants if this repeats", was, settled)
+	}
 	return true, fmt.Sprintf("settled %d¢ estimated → %d¢ measured", was, settled)
 }

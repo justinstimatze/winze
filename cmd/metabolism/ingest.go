@@ -952,7 +952,7 @@ func callIngestLLM(client anthropic.Client, prompt string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("API error: %w", err)
 	}
-	recordActualUsage(string(anthropic.ModelClaudeHaiku4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
+	recordActualUsage(string(anthropic.ModelClaudeHaiku4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.CacheCreationInputTokens, resp.Usage.OutputTokens)
 
 	if resp.StopReason == "max_tokens" {
 		return "", fmt.Errorf("ingest response truncated at %d output tokens: the tail claim would carry a quote cut mid-sentence, so the whole response is discarded rather than partially trusted", resp.Usage.OutputTokens)
