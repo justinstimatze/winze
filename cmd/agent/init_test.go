@@ -13,6 +13,20 @@ import (
 // fresh store passing is the only thing that says the scaffold works, and it
 // is exactly what nobody could check while the procedure was folklore.
 
+// gitIdentity names an author for a subprocess that will commit. init creates
+// the store's repo itself, so the `git config user.email` the other tests here
+// run against an existing repo has nothing to configure yet — and a machine
+// with no global identity fails inside git rather than in anything these tests
+// are about. That is what held CI red from 2026-08-09 while every developer
+// box, each carrying a ~/.gitconfig, stayed green. Reproduce the CI shape with
+// GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null go test ./cmd/agent/.
+var gitIdentity = []string{
+	"GIT_AUTHOR_NAME=winze test",
+	"GIT_AUTHOR_EMAIL=test@example.com",
+	"GIT_COMMITTER_NAME=winze test",
+	"GIT_COMMITTER_EMAIL=test@example.com",
+}
+
 func winzeRoot(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd() // cmd/agent
@@ -39,6 +53,7 @@ func TestInitProducesAStoreThatCompiles(t *testing.T) {
 		t.Fatalf("building winze-agent: %v\n%s", err, out)
 	}
 	cmd := exec.Command(bin, "init", dir, "--private", "--from", winzeRoot(t))
+	cmd.Env = append(os.Environ(), gitIdentity...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("init failed: %v\n%s", err, out)
@@ -76,6 +91,7 @@ func TestInitProducesAStoreThatCompiles(t *testing.T) {
 	remember := exec.Command(bin, "call", "winze_remember",
 		`{"note":"A scaffolded store accepts its first memory through the build gate.","title":"Scaffold write check"}`)
 	remember.Env = append(os.Environ(), "WINZE_STORE="+dir, "WINZE_BIN="+filepath.Join(winzeRoot(t), "bin"))
+	remember.Env = append(remember.Env, gitIdentity...) // the write path commits too
 	if out, err := remember.CombinedOutput(); err != nil || strings.Contains(string(out), "failed") {
 		t.Fatalf("a fresh store rejected its first memory: %v\n%s", err, out)
 	}
