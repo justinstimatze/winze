@@ -109,19 +109,24 @@ func TestReifyDatesComeFromTheLogNotTheClock(t *testing.T) {
 	if !strings.Contains(out, "resolved through 2026-03-05") {
 		t.Errorf("resolution history does not carry the hypothesis's own last ResolvedAt (2026-03-05); got:\n%s", grepLine(out, "Resolution history"))
 	}
-	// A hypothesis that was never resolved must get no date rather than a
-	// substituted one — this is the case where reaching for the clock is most
-	// tempting and least correct.
-	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, "Resolution history") && strings.Contains(line, "resolved through ") {
-			continue
-		}
-		if strings.Contains(line, "Resolution history") && !strings.HasSuffix(strings.TrimSpace(line), "Resolution history:") {
-			t.Errorf("unresolved hypothesis got a dated history comment: %q", strings.TrimSpace(line))
-		}
-	}
 	if y := time.Now().Format("2006"); strings.Contains(out, "reified "+y) {
 		t.Errorf("output still contains a %s `reified` stamp — the clock is back in the generator", y)
+	}
+}
+
+// TestReifyOmitsTheDateWhenNothingResolved covers the case where reaching for
+// the clock is most tempting and least correct: a hypothesis with no
+// ResolvedAt at all. The honest output is no date, not today's.
+func TestReifyOmitsTheDateWhenNothingResolved(t *testing.T) {
+	for _, line := range strings.Split(reifyOnce(t, t.TempDir()), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, "Resolution history") {
+			continue
+		}
+		if line == "// Resolution history:" || strings.Contains(line, "resolved through ") {
+			continue
+		}
+		t.Errorf("history comment carries a date from neither the log nor nothing: %q", line)
 	}
 }
 
