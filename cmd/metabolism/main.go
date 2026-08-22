@@ -2304,7 +2304,14 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 				for i := 0; i < limit; i++ {
 					t := targets[i]
 					if dryRun {
-						fmt.Printf("  [dry-run] would query: %s → %q\n", t.Hypothesis, t.Query)
+						// Report the ask-once verdict too. A preview that says
+						// "would query" for a query the real run will skip is
+						// worse than no preview — it is the reason to run one.
+						if ask := shouldAskQuery(mlog, t.Hypothesis, t.Query, "arxiv"); ask.Fire {
+							fmt.Printf("  [dry-run] would query: %s → %q\n", t.Hypothesis, t.Query)
+						} else {
+							fmt.Printf("  [dry-run] would SKIP: %s → %q — %s\n", t.Hypothesis, t.Query, ask.Reason)
+						}
 						continue
 					}
 					// ZIM backend (if available and not gated by bias audit).
@@ -2314,8 +2321,12 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 					// concentration; skip it this cycle to diversify.
 					if zimPath != "" && !gates.skipZim {
 						zimQ := t.queryFor("zim")
-						fmt.Printf("  querying (zim): %s → %q\n", t.Hypothesis, zimQ)
-						runSensorCycle(dir, zimPath, zimIndex, t, "zim", nil)
+						if ask := shouldAskQuery(mlog, t.Hypothesis, zimQ, "zim"); !ask.Fire {
+							fmt.Printf("  skipping (zim): %s → %q — %s\n", t.Hypothesis, zimQ, ask.Reason)
+						} else {
+							fmt.Printf("  querying (zim): %s → %q\n", t.Hypothesis, zimQ)
+							runSensorCycle(dir, zimPath, zimIndex, t, "zim", nil)
+						}
 					} else if zimPath != "" && gates.skipZim {
 						fmt.Printf("  skipping zim for %s (availability-heuristic bias gate)\n", t.Hypothesis)
 					}
@@ -2328,12 +2339,19 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 					// arXiv backend — always on so phase 1 still produces signal
 					// when ZIM is gated by availability heuristic. arXiv rate-limits
 					// tight queries; sleep 5s between calls per arXiv etiquette.
-					if i > 0 {
-						time.Sleep(5 * time.Second)
-					}
 					arxivQ := t.queryFor("arxiv")
-					fmt.Printf("  querying (arxiv): %s → %q\n", t.Hypothesis, arxivQ)
-					runSensorCycle(dir, "", "", t, "arxiv", nil)
+					if ask := shouldAskQuery(mlog, t.Hypothesis, arxivQ, "arxiv"); !ask.Fire {
+						fmt.Printf("  skipping (arxiv): %s → %q — %s\n", t.Hypothesis, arxivQ, ask.Reason)
+					} else {
+						// arXiv rate-limits tight queries; sleep 5s between calls
+						// per arXiv etiquette. Inside the branch so a skipped
+						// query costs no wait either.
+						if i > 0 {
+							time.Sleep(5 * time.Second)
+						}
+						fmt.Printf("  querying (arxiv): %s → %q\n", t.Hypothesis, arxivQ)
+						runSensorCycle(dir, "", "", t, "arxiv", nil)
+					}
 					// Kagi backend — live web search, per-query signal across
 					// encyclopedias / journals / blogs / news. Metered at
 					// ~$0.025/query, so only fires when KAGI_API_KEY is set.
@@ -2341,8 +2359,12 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 					// returns diversified sources by design.
 					if os.Getenv("KAGI_API_KEY") != "" {
 						kagiQ := t.queryFor("kagi")
-						fmt.Printf("  querying (kagi): %s → %q\n", t.Hypothesis, kagiQ)
-						runSensorCycle(dir, "", "", t, "kagi", nil)
+						if ask := shouldAskQuery(mlog, t.Hypothesis, kagiQ, "kagi"); !ask.Fire {
+							fmt.Printf("  skipping (kagi): %s → %q — %s\n", t.Hypothesis, kagiQ, ask.Reason)
+						} else {
+							fmt.Printf("  querying (kagi): %s → %q\n", t.Hypothesis, kagiQ)
+							runSensorCycle(dir, "", "", t, "kagi", nil)
+						}
 					}
 				}
 				phases++
