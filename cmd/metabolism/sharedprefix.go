@@ -35,6 +35,31 @@ import (
 // Below this, a cache_control marker is silently a no-op. (Haiku's is 2048.)
 const sonnetCacheMinTokens = 1024
 
+// charsPerToken converts prefix length to an approximate token count.
+//
+// Measured 2026-08-22 against the live block: 7584 chars billed as 1688 input
+// tokens, a ratio of 4.49. The previous estimate of 4.0 over-counted by 12%,
+// which mattered because it was used to decide whether the block clears the
+// cache floor: it reported 1024 tokens at 4096 chars where the true count is
+// ~912, so anything between roughly 4096 and 4600 chars passed the guard while
+// the API silently ignored the breakpoint.
+const charsPerToken = 4.49
+
+// sharedPrefixMarginFactor is how far above the floor the block must sit for
+// the test to pass. The floor itself is not a safe target: the ratio is an
+// approximation and corpus vocab shrinks as well as grows, so a block sitting
+// exactly at 1024 tokens is one deleted predicate away from silently
+// uncached.
+const sharedPrefixMarginFactor = 1.25
+
+// estimateTokens is the single definition of the chars-to-tokens conversion.
+// The guard below and TestSharedPrefixClearsSonnetMin both call it, so they
+// cannot disagree about where the floor is — which they previously did, the
+// test carrying its own `/ 4`.
+func estimateTokens(chars int) int {
+	return int(float64(chars) / charsPerToken)
+}
+
 var (
 	predDeclRe = regexp.MustCompile(`type (\w+) (BinaryRelation|UnaryClaim)\[([^\]]+)\]`)
 	roleDeclRe = regexp.MustCompile(`type (\w+) struct\{ \*Entity \}`)
@@ -101,8 +126,9 @@ Only encode claims the source EXPLICITLY commits to. Do not infer, extrapolate, 
 	// it back under the line with no other symptom. ~4 chars/token is the
 	// usual rough estimate; the check only has to catch an order-of-magnitude
 	// shortfall, not measure precisely.
-	if est := len(prefix) / 4; est < sonnetCacheMinTokens {
-		fmt.Fprintf(os.Stderr, "[shared-prefix] ~%d tokens is under Sonnet's %d-token cache minimum — cache_control on this block is a no-op\n", est, sonnetCacheMinTokens)
+	if est := estimateTokens(len(prefix)); est < sonnetCacheMinTokens {
+		fmt.Fprintf(os.Stderr, "[shared-prefix] %d chars (~%d tokens at %.2f chars/tok) is under Sonnet's %d-token cache minimum — cache_control on this block is a no-op\n",
+			len(prefix), est, charsPerToken, sonnetCacheMinTokens)
 	}
 	return prefix
 }

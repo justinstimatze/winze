@@ -21,16 +21,21 @@ func TestSharedPrefixClearsSonnetMin(t *testing.T) {
 	if block == "" {
 		t.Fatalf("sharedMetabolismPrefix returned empty — vocab extraction failed from %s", root)
 	}
-	// ~4 chars/token; require a margin over the 1024 floor so ordinary vocab
-	// churn doesn't skate under it. 1024 tok ≈ 4096 chars; demand ≥ 4600.
-	const minChars = 4600
-	if len(block) < minChars {
-		toks := len(block) / 4
-		t.Errorf("shared prefix is %d chars (~%d tok) — under the Sonnet cache floor with margin (want ≥ %d chars ≈ %d tok). "+
+	// Both the floor and the ratio come from sharedprefix.go rather than being
+	// restated here. This test used to hardcode its own `/ 4` and a minChars of
+	// 4600 described as a margin over 4096 — but at the measured 4.49 ratio the
+	// floor IS 4598, so the margin was two characters wide. A duplicated
+	// constant that drifts from the one the code uses is worse than no test:
+	// it passes while the thing it guards is broken.
+	toks := estimateTokens(len(block))
+	minTokens := int(sonnetCacheMinTokens * sharedPrefixMarginFactor)
+	if toks < minTokens {
+		t.Errorf("shared prefix is %d chars (~%d tok) — want ≥ %d tok, the %d-token Sonnet floor plus a %.0f%% margin. "+
 			"Caching will silently no-op. Add real shared content or lower the tier expectation.",
-			len(block), toks, minChars, minChars/4)
+			len(block), toks, minTokens, sonnetCacheMinTokens, (sharedPrefixMarginFactor-1)*100)
 	}
-	t.Logf("shared prefix: %d chars (~%d tok), clears Sonnet 1024-tok min", len(block), len(block)/4)
+	t.Logf("shared prefix: %d chars (~%d tok at %.2f chars/tok); floor %d, margin target %d",
+		len(block), toks, charsPerToken, sonnetCacheMinTokens, minTokens)
 }
 
 // TestSharedPrefixDeterministic guards the property server-side prefix caching
