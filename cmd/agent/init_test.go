@@ -48,9 +48,18 @@ func TestInitProducesAStoreThatCompiles(t *testing.T) {
 	// runInit exits the process on failure, so drive the built binary rather
 	// than calling it in-process — a t.Fatal is more useful than os.Exit(1)
 	// taking the whole test binary with it.
-	bin := filepath.Join(t.TempDir(), "winze-agent")
+	// Both binaries go in one dir. winze_remember below shells out to winze-add
+	// through WINZE_BIN, and pointing that at the repo's own bin/ only works on
+	// a box that has run `make build` — bin/ is gitignored, so on a clean
+	// checkout the store's first write dies at fork/exec instead of testing
+	// anything.
+	tools := t.TempDir()
+	bin := filepath.Join(tools, "winze-agent")
 	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("building winze-agent: %v\n%s", err, out)
+	}
+	if out, err := exec.Command("go", "build", "-o", filepath.Join(tools, "winze-add"), "../add").CombinedOutput(); err != nil {
+		t.Fatalf("building winze-add: %v\n%s", err, out)
 	}
 	cmd := exec.Command(bin, "init", dir, "--private", "--from", winzeRoot(t))
 	cmd.Env = append(os.Environ(), gitIdentity...)
@@ -90,7 +99,7 @@ func TestInitProducesAStoreThatCompiles(t *testing.T) {
 	// the same as working, and only a real write says which one this is.
 	remember := exec.Command(bin, "call", "winze_remember",
 		`{"note":"A scaffolded store accepts its first memory through the build gate.","title":"Scaffold write check"}`)
-	remember.Env = append(os.Environ(), "WINZE_STORE="+dir, "WINZE_BIN="+filepath.Join(winzeRoot(t), "bin"))
+	remember.Env = append(os.Environ(), "WINZE_STORE="+dir, "WINZE_BIN="+tools)
 	remember.Env = append(remember.Env, gitIdentity...) // the write path commits too
 	if out, err := remember.CombinedOutput(); err != nil || strings.Contains(string(out), "failed") {
 		t.Fatalf("a fresh store rejected its first memory: %v\n%s", err, out)
