@@ -1716,27 +1716,27 @@ var TripCycle8DunningKrugerEffectCommentaryOnQuantitativeForecastingSearchResolu
 //   Trajectory: corroborated ×6, irrelevant ×3
 // ---------------------------------------------------------------------------
 
-var EvidenceSearchgoalGoalPredictiveHallucination = Event{&Entity{
+var EvidenceSearchGoalGoalPredictiveHallucination = Event{&Entity{
 	ID:    "evidence-search-goal:goal-predictive-hallucination",
 	Name:  "Evidence search for goal: Goal Predictive Hallucination",
 	Kind:  "event",
 	Brief: "Metabolism sensor query across arxiv, kagi for external sources on goal: Goal Predictive Hallucination. Found: The Predictive Coding Account of Psychosis - PMC - NIH; Deficits in Predictive Coding Underlie Hallucinations in Schizophrenia; Case Study: Predictive Coding and Information Bottleneck (+74 more).",
 }}
 
-var TopologyPredictsgoalGoalPredictiveHallucinationSearch = Predicts{
+var TopologyPredictsGoalGoalPredictiveHallucinationSearch = Predicts{
 	Subject: StructuralFragilityPredictsCurationGaps,
-	Object:  EvidenceSearchgoalGoalPredictiveHallucination,
+	Object:  EvidenceSearchGoalGoalPredictiveHallucination,
 	Prov:    metabolismPredictionSource,
 }
 
-var goalGoalPredictiveHallucinationSearchOutcome = &ResolutionOutcome{
+var GoalGoalPredictiveHallucinationSearchOutcome = &ResolutionOutcome{
 	Result:   "confirmed",
 	Evidence: "180 cycles, 180 with signal. Corroborated: found 77 unique sources including The Predictive Coding Account of Psychosis - PMC - NIH; Deficits in Predictive Coding Underlie Hallucinations in Schizophrenia; Case Study: Predictive Coding and Information Bottleneck.",
 }
 
-var goalGoalPredictiveHallucinationSearchResolution = ResolvedAs{
-	Subject: EvidenceSearchgoalGoalPredictiveHallucination,
-	Object:  goalGoalPredictiveHallucinationSearchOutcome,
+var GoalGoalPredictiveHallucinationSearchResolution = ResolvedAs{
+	Subject: EvidenceSearchGoalGoalPredictiveHallucination,
+	Object:  GoalGoalPredictiveHallucinationSearchOutcome,
 	Prov:    metabolismPredictionSource,
 }
 
