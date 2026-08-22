@@ -163,6 +163,19 @@ func loadBudgetGuard(dir string) *budgetGuard {
 // allow returns (true, reason) if the phase fits in the remaining
 // budget, else (false, reason). The reason is meant for logGate output.
 // Cap of 0 = unlimited (always allows).
+//
+// Two separate refusals, and conflating them is what hid the failure this was
+// written to fix. A flat monthly cap says nothing about WHEN the money may be
+// spent, so the loop spent at whatever rate it could until the month was gone
+// and then idled: 990¢ of a 1000¢ cap went between 2026-08-01 and 08-13, and
+// the remaining eighteen days sensed nothing at all. Every hourly cycle still
+// fired, skipped every phase, and logged the same "only 0¢ remaining" line, so
+// three weeks of silence looked identical to a busy loop having a quiet hour.
+//
+// Pacing gates on elapsed fraction of the month instead: a phase runs only
+// while cumulative spend is under the share of the cap the month has earned.
+// A phase costing more than one day's slice is not starved, because the
+// allowance accumulates — it waits until enough has accrued.
 func (g *budgetGuard) allow(phase string, estCents int) (bool, string) {
 	if g.capCents <= 0 {
 		return true, "no budget cap (METABOLISM_BUDGET_CENTS unset)"
@@ -172,9 +185,29 @@ func (g *budgetGuard) allow(phase string, estCents int) (bool, string) {
 		remaining = 0
 	}
 	if estCents > remaining {
-		return false, fmt.Sprintf("would cost ~%d¢ but only %d¢ remaining of %d¢ monthly cap (set METABOLISM_BUDGET_CENTS=0 to disable)", estCents, remaining, g.capCents)
+		return false, fmt.Sprintf("month exhausted: would cost ~%d¢ but only %d¢ remaining of %d¢ monthly cap (set METABOLISM_BUDGET_CENTS=0 to disable)", estCents, remaining, g.capCents)
 	}
-	return true, fmt.Sprintf("estimated %d¢ fits in %d¢ remaining (cap %d¢)", estCents, remaining, g.capCents)
+	paced := pacedAllowanceCents(g.capCents, time.Now())
+	if g.state.SpentCents+estCents > paced {
+		return false, fmt.Sprintf("ahead of pace: ~%d¢ on top of %d¢ spent would pass the %d¢ earned so far this month (cap %d¢) — deferring, not refusing",
+			estCents, g.state.SpentCents, paced, g.capCents)
+	}
+	return true, fmt.Sprintf("estimated %d¢ fits in %d¢ paced allowance (%d¢ spent, cap %d¢)", estCents, paced, g.state.SpentCents, g.capCents)
+}
+
+// pacedAllowanceCents is how much of the cap the month has earned by now.
+//
+// Floored at one day's slice. Without that floor the allowance at 00:00 on the
+// 1st is ~0 and every phase is refused — the same silent idling pacing exists
+// to remove, relocated to a different date and harder to spot because it lasts
+// hours rather than weeks.
+func pacedAllowanceCents(capCents int, now time.Time) int {
+	daysInMonth := float64(time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day())
+	elapsed := (float64(now.Day()-1) + float64(now.Hour())/24.0) / daysInMonth
+	if floor := 1.0 / daysInMonth; elapsed < floor {
+		elapsed = floor
+	}
+	return int(float64(capCents) * elapsed)
 }
 
 // charge adds the phase's estimated cost to the persisted total and

@@ -180,6 +180,43 @@ auto-reset. Set `METABOLISM_BUDGET_CENTS=0` (or unset) to disable. Estimates are
 approximations — actual spend depends on response length; the bookkeeping is
 conservative.
 
+### Pacing
+
+The cap alone says how much may be spent, never when, and a loop that spends as
+fast as it can will spend the month in a fortnight. August 2026 did exactly
+that: 990¢ of a 1000¢ cap went between the 1st and the 13th, and the remaining
+eighteen days sensed nothing. Every hourly cycle still fired and skipped every
+phase, so three weeks of silence logged the same line as a busy loop having a
+quiet hour.
+
+A phase now runs only while cumulative spend sits under the share of the cap the
+month has earned — `pacedAllowanceCents`, elapsed fraction of the month, floored
+at one day's slice so the 1st is not dead. The allowance accumulates, so a phase
+costing more than a day's share is deferred rather than starved: it waits until
+enough has accrued.
+
+The two refusals read differently on purpose. `ahead of pace` is a deferral and
+resolves itself within hours; `month exhausted` means the cap is genuinely gone.
+Conflating them is what let August's outage look ordinary for eighteen days.
+
+### Cache telemetry
+
+The budget line reports prompt-cache effectiveness as read/(read+write+fresh),
+alongside a count of calls that actually carried a `cache_control` breakpoint.
+That count is what distinguishes a broken cache from an unexercised one — a
+distinction the ratio alone cannot make, and its absence cost a full
+investigation. For all of August the ratio read 0% while the true answer was
+that the two call sites carrying the prefix (`llmResolve` and
+`generateGroupConnection`) never ran; the hot path, pair-trip and the critic
+through `callToolUse`, sends no system block at all.
+
+The hot path is deliberately unmarked. `callToolUse` builds a per-pair tool
+schema whose predicate enum is derived from the two entities' role types, and
+the cache prefix is composed tools-then-system-then-messages, so a system
+breakpoint caches the tools above it and a per-call schema invalidates it
+regardless. Freezing the schema would cost both schema-enforced predicate
+validity and the role-keyed Person-endpoint guard.
+
 `go run ./cmd/metabolism --calibrate-trend .` prints the rolling time series
 from `.metabolism-calibration.jsonl` (one row per past `--calibrate`
 invocation) — answers "is useful signal trending up?" without re-running

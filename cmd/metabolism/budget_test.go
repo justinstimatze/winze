@@ -333,3 +333,94 @@ func TestChargeActualRecordsCacheWrites(t *testing.T) {
 		t.Errorf("after reload CacheWriteTokens = %d, want 30 — not persisted", reloaded.state.CacheWriteTokens)
 	}
 }
+
+// TestPacedAllowanceFloorsOnDayOne is the boundary a naive cap×elapsed gets
+// wrong. At 00:00 on the 1st the month has earned nothing, so every phase would
+// be refused — reproducing the exact silent idling pacing exists to remove, on
+// a different date and lasting hours instead of weeks.
+func TestPacedAllowanceFloorsOnDayOne(t *testing.T) {
+	loc := time.UTC
+	midnightFirst := time.Date(2026, 3, 1, 0, 0, 0, 0, loc)
+	got := pacedAllowanceCents(3100, midnightFirst)
+	if got <= 0 {
+		t.Fatalf("allowance at 00:00 on the 1st = %d — the loop is dead on day one", got)
+	}
+	// March has 31 days, so one day's slice of 3100¢ is 100¢.
+	if got != 100 {
+		t.Errorf("day-one allowance = %d¢, want one day's slice of 100¢", got)
+	}
+}
+
+// TestPacedAllowanceGrowsAcrossTheMonth pins the shape: roughly linear, and
+// reaching the whole cap by the end rather than stranding part of it.
+func TestPacedAllowanceGrowsAcrossTheMonth(t *testing.T) {
+	const cap = 3100 // 100¢/day in a 31-day month
+	for _, tc := range []struct {
+		day, want int
+	}{
+		{1, 100},   // floored
+		{2, 100},   // one day elapsed
+		{16, 1500}, // mid-month
+		{31, 3000}, // last day, before its own 24h have elapsed
+	} {
+		got := pacedAllowanceCents(cap, time.Date(2026, 3, tc.day, 0, 0, 0, 0, time.UTC))
+		if got != tc.want {
+			t.Errorf("day %d: allowance = %d¢, want %d¢", tc.day, got, tc.want)
+		}
+	}
+}
+
+// TestAllowSeparatesPacedFromExhausted keeps the two refusals distinguishable
+// in the journal. Reading three weeks of "only 0¢ remaining" as an ordinary
+// quiet hour is how the loop stayed dead for eighteen days unnoticed.
+func TestAllowSeparatesPacedFromExhausted(t *testing.T) {
+	const cap = 3100
+	t.Setenv("METABOLISM_BUDGET_CENTS", "3100")
+	g := loadBudgetGuard(t.TempDir())
+
+	// Derived from today's allowance rather than hardcoded: a fixed 3000¢ would
+	// sit above the earned share for most of a month and below it on the 31st,
+	// so the test would pass all month and fail on one day.
+	earned := pacedAllowanceCents(cap, time.Now())
+	if earned >= cap {
+		t.Fatalf("earned allowance %d¢ is the whole cap — no headroom left to test pacing against", earned)
+	}
+
+	// Spent past today's share but still under the cap: deferred, not out.
+	g.state.SpentCents = earned + 1
+	ok, reason := g.allow("trip", 15)
+	if ok {
+		t.Errorf("3000¢ spent should be ahead of pace early in the month: %s", reason)
+	}
+	if !strings.Contains(reason, "ahead of pace") {
+		t.Errorf("a paced deferral must say so, not read as exhaustion: %q", reason)
+	}
+
+	// Genuinely past the cap: a different fact, and it must read differently.
+	g.state.SpentCents = cap
+	ok, reason = g.allow("trip", 15)
+	if ok {
+		t.Errorf("at the cap nothing should be allowed: %s", reason)
+	}
+	if !strings.Contains(reason, "month exhausted") {
+		t.Errorf("an exhausted month must say so: %q", reason)
+	}
+}
+
+// TestPacingWouldHaveKeptAugustAlive is the regression in the terms of the
+// failure. August spent 990¢ of a 1000¢ cap by the 13th and then idled. Under
+// pacing that spend is above the earned allowance on the 13th, so the phases
+// defer rather than draining the month — and on the 25th there is still
+// allowance left, which is the property that was missing.
+func TestPacingWouldHaveKeptAugustAlive(t *testing.T) {
+	const cap = 1000
+	on13th := pacedAllowanceCents(cap, time.Date(2026, 8, 13, 0, 0, 0, 0, time.UTC))
+	if on13th >= 990 {
+		t.Errorf("allowance on the 13th = %d¢ — pacing would not have stopped the burn that killed August", on13th)
+	}
+	on25th := pacedAllowanceCents(cap, time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC))
+	if on25th <= on13th {
+		t.Errorf("allowance must keep growing: 13th=%d¢ 25th=%d¢", on13th, on25th)
+	}
+	t.Logf("1000¢ cap: %d¢ earned by the 13th, %d¢ by the 25th", on13th, on25th)
+}
