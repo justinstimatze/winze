@@ -1761,7 +1761,7 @@ func generateGroupConnection(client anthropic.Client, sharedPrefix string, group
 	if err != nil {
 		return TripConnection{}, fmt.Errorf("API error: %w", err)
 	}
-	recordActualUsage(string(anthropic.ModelClaudeSonnet4_5), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.CacheCreationInputTokens, resp.Usage.OutputTokens)
+	recordActualUsage(string(anthropic.ModelClaudeSonnet4_5), usageOf(resp.Usage))
 	logCacheEffect("group-trip", resp.Usage)
 
 	var narrative string
@@ -1944,7 +1944,7 @@ func callToolUse(client anthropic.Client, prompt string, tool anthropic.ToolUnio
 	if err != nil {
 		return nil, fmt.Errorf("API error: %w", err)
 	}
-	recordActualUsage(string(model), resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.CacheCreationInputTokens, resp.Usage.OutputTokens)
+	recordActualUsage(string(model), usageOf(resp.Usage))
 	for _, block := range resp.Content {
 		if block.Type == "tool_use" {
 			tu := block.AsToolUse()

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/anthropics/anthropic-sdk-go"
 )
 
 // budgetSchema is bumped when budgetState's shape changes incompatibly.
@@ -285,18 +287,41 @@ var pricingByModel = map[string]modelPricing{
 	"claude-haiku-4-5-20251001":    {inputPerMTok: 1.00, outputPerMTok: 5.00, cacheReadPerMTok: 0.10, cacheWritePerMTok: 2.00},
 }
 
+// tokenUsage is one response's billable token counts, kept together because
+// they are always produced together and always priced together. Passing them as
+// four positional int64s made every signature in this file read
+// (model, int64, int64, int64, int64) — trivially transposable, and a
+// transposed cache-read for a cache-write is a 20x pricing error that nothing
+// would catch.
+type tokenUsage struct {
+	Input      int64 // fresh, uncached input — full price
+	CacheRead  int64 // served from the prompt cache — 10% of base
+	CacheWrite int64 // establishing write — 2x base at the 1h TTL used here
+	Output     int64
+}
+
+// usageOf lifts an SDK response's usage into the local shape.
+func usageOf(u anthropic.Usage) tokenUsage {
+	return tokenUsage{
+		Input:      u.InputTokens,
+		CacheRead:  u.CacheReadInputTokens,
+		CacheWrite: u.CacheCreationInputTokens,
+		Output:     u.OutputTokens,
+	}
+}
+
 // costCents converts measured tokens to a fractional-cent cost.
 // Returns (cents, true) on hit, (0, false) on unknown model — caller
 // decides whether to log the miss.
-func costCents(model string, inputTokens, cachedReadTokens, cacheWriteTokens, outputTokens int64) (float64, bool) {
+func costCents(model string, t tokenUsage) (float64, bool) {
 	p, ok := pricingByModel[model]
 	if !ok {
 		return 0, false
 	}
-	dollars := (float64(inputTokens)/1e6)*p.inputPerMTok +
-		(float64(cachedReadTokens)/1e6)*p.cacheReadPerMTok +
-		(float64(cacheWriteTokens)/1e6)*p.cacheWritePerMTok +
-		(float64(outputTokens)/1e6)*p.outputPerMTok
+	dollars := (float64(t.Input)/1e6)*p.inputPerMTok +
+		(float64(t.CacheRead)/1e6)*p.cacheReadPerMTok +
+		(float64(t.CacheWrite)/1e6)*p.cacheWritePerMTok +
+		(float64(t.Output)/1e6)*p.outputPerMTok
 	return dollars * 100, true
 }
 
@@ -309,8 +334,8 @@ func costCents(model string, inputTokens, cachedReadTokens, cacheWriteTokens, ou
 // the estimate down to them, an uncounted call would settle away real
 // money. UnmeasuredCalls is how the settle step knows to keep its hands
 // off.
-func (g *budgetGuard) chargeActual(model string, inputTokens, cachedReadTokens, cacheWriteTokens, outputTokens int64) {
-	cents, ok := costCents(model, inputTokens, cachedReadTokens, cacheWriteTokens, outputTokens)
+func (g *budgetGuard) chargeActual(model string, t tokenUsage) {
+	cents, ok := costCents(model, t)
 	if !ok {
 		warnUnknownModel(model)
 		g.state.UnmeasuredCalls++
@@ -318,9 +343,9 @@ func (g *budgetGuard) chargeActual(model string, inputTokens, cachedReadTokens, 
 		return
 	}
 	g.state.ActualSpentCents += cents
-	g.state.CacheReadTokens += cachedReadTokens
-	g.state.CacheWriteTokens += cacheWriteTokens
-	g.state.FreshInputTokens += inputTokens
+	g.state.CacheReadTokens += t.CacheRead
+	g.state.CacheWriteTokens += t.CacheWrite
+	g.state.FreshInputTokens += t.Input
 	g.persist()
 }
 
@@ -344,11 +369,11 @@ func ensureBudgetGuard(dir string) {
 
 // recordActualUsage is the call-site-friendly wrapper. Safe to call
 // when globalBudget is nil (no-op).
-func recordActualUsage(model string, inputTokens, cachedReadTokens, cacheWriteTokens, outputTokens int64) {
+func recordActualUsage(model string, t tokenUsage) {
 	if globalBudget == nil {
 		return
 	}
-	globalBudget.chargeActual(model, inputTokens, cachedReadTokens, cacheWriteTokens, outputTokens)
+	globalBudget.chargeActual(model, t)
 }
 
 var unknownModelWarned = map[string]bool{}

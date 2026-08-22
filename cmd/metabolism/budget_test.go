@@ -137,7 +137,7 @@ func TestCurrentMonth_Format(t *testing.T) {
 
 func TestCostCents_KnownModel(t *testing.T) {
 	// 1M Haiku input + 1M Haiku output = $1 + $5 = $6 = 600¢
-	cents, ok := costCents("claude-haiku-4-5", 1_000_000, 0, 0, 1_000_000)
+	cents, ok := costCents("claude-haiku-4-5", tokenUsage{Input: 1_000_000, Output: 1_000_000})
 	if !ok {
 		t.Fatal("expected pricing for haiku-4-5")
 	}
@@ -147,7 +147,7 @@ func TestCostCents_KnownModel(t *testing.T) {
 }
 
 func TestCostCents_UnknownModel(t *testing.T) {
-	cents, ok := costCents("claude-opus-99", 1000, 0, 0, 1000)
+	cents, ok := costCents("claude-opus-99", tokenUsage{Input: 1000, Output: 1000})
 	if ok {
 		t.Error("expected unknown model to return ok=false")
 	}
@@ -158,8 +158,8 @@ func TestCostCents_UnknownModel(t *testing.T) {
 
 func TestCostCents_CacheReadsAreCheaper(t *testing.T) {
 	// 1M Sonnet plain input → 300¢; 1M Sonnet cache-read input → 30¢.
-	plain, _ := costCents("claude-sonnet-4-5", 1_000_000, 0, 0, 0)
-	cached, _ := costCents("claude-sonnet-4-5", 0, 1_000_000, 0, 0)
+	plain, _ := costCents("claude-sonnet-4-5", tokenUsage{Input: 1_000_000})
+	cached, _ := costCents("claude-sonnet-4-5", tokenUsage{CacheRead: 1_000_000})
 	if cached >= plain {
 		t.Errorf("cache-read should be cheaper than plain input: cached=%.2f plain=%.2f", cached, plain)
 	}
@@ -174,8 +174,8 @@ func TestChargeActual_AccumulatesAndPersists(t *testing.T) {
 	g := loadBudgetGuard(dir)
 	// Two haiku calls of 100k input + 100k output each:
 	// per call: 0.1 * $1 + 0.1 * $5 = $0.60 = 60¢
-	g.chargeActual("claude-haiku-4-5", 100_000, 0, 0, 100_000)
-	g.chargeActual("claude-haiku-4-5", 100_000, 0, 0, 100_000)
+	g.chargeActual("claude-haiku-4-5", tokenUsage{Input: 100_000, Output: 100_000})
+	g.chargeActual("claude-haiku-4-5", tokenUsage{Input: 100_000, Output: 100_000})
 	if g.state.ActualSpentCents < 119.9 || g.state.ActualSpentCents > 120.1 {
 		t.Errorf("actual = %.4f, want ~120", g.state.ActualSpentCents)
 	}
@@ -189,7 +189,7 @@ func TestChargeActual_UnknownModelDoesNotPanic(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("METABOLISM_BUDGET_CENTS", "1000")
 	g := loadBudgetGuard(dir)
-	g.chargeActual("claude-from-the-future", 1000, 0, 0, 1000)
+	g.chargeActual("claude-from-the-future", tokenUsage{Input: 1000, Output: 1000})
 	if g.state.ActualSpentCents != 0 {
 		t.Errorf("unknown model should not be charged: actual=%.4f", g.state.ActualSpentCents)
 	}
@@ -200,7 +200,7 @@ func TestRecordActualUsage_NilGlobalIsNoop(t *testing.T) {
 	t.Cleanup(func() { globalBudget = prev })
 	globalBudget = nil
 	// Must not panic.
-	recordActualUsage("claude-haiku-4-5", 100, 0, 0, 100)
+	recordActualUsage("claude-haiku-4-5", tokenUsage{Input: 100, Output: 100})
 }
 
 func TestLoadBudgetSnapshot(t *testing.T) {
@@ -266,9 +266,9 @@ func TestCacheHitPct(t *testing.T) {
 // understates: with reads sitting at 0 for all of August, the write premium was
 // the entire cost of the caching attempt and none of it was counted.
 func TestCostCents_CacheWritesCostDoubleAtOneHourTTL(t *testing.T) {
-	plain, _ := costCents("claude-sonnet-4-5", 1_000_000, 0, 0, 0)
-	write, _ := costCents("claude-sonnet-4-5", 0, 0, 1_000_000, 0)
-	read, _ := costCents("claude-sonnet-4-5", 0, 1_000_000, 0, 0)
+	plain, _ := costCents("claude-sonnet-4-5", tokenUsage{Input: 1_000_000})
+	write, _ := costCents("claude-sonnet-4-5", tokenUsage{CacheWrite: 1_000_000})
+	read, _ := costCents("claude-sonnet-4-5", tokenUsage{CacheRead: 1_000_000})
 
 	if write < 599.9 || write > 600.1 {
 		t.Errorf("1M sonnet cache-write = %.2f cents, want ~600 (2x the 300 base)", write)
@@ -291,7 +291,7 @@ func TestChargeActualRecordsCacheWrites(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("METABOLISM_BUDGET_CENTS", "10000")
 	g := loadBudgetGuard(dir)
-	g.chargeActual("claude-sonnet-4-5", 10, 20, 30, 40)
+	g.chargeActual("claude-sonnet-4-5", tokenUsage{Input: 10, CacheRead: 20, CacheWrite: 30, Output: 40})
 
 	if g.state.CacheWriteTokens != 30 {
 		t.Errorf("CacheWriteTokens = %d, want 30", g.state.CacheWriteTokens)
