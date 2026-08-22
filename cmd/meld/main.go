@@ -12,16 +12,27 @@
 // couples to a store's live working tree and can be reproduced from the
 // manifest. It is read-only by construction — the union of two
 // `package winze` stores cannot `go build` (duplicate identifiers), so the
-// write path (winze-add / winze-edit) does not apply. Only the read path
-// (winze-query), which AST-scrapes composite literals without type-checking,
-// operates over a meld.
+// write path (winze-add / winze-edit), which runs that build as its gate, does
+// not apply.
 //
-// Every store's top-level *.go files are copied in namespace-prefixed
-// (`<ns>__memory.go`); the prefix survives into query results as the source
-// label, so a hit tells you which store it came from. One canonical
-// predicates.go is kept from the primary (first) store so cmd/predicates-suggest
-// still resolves. Cross-store var-name collisions are surfaced, not merged —
-// namespacing is deferred by design; both entities appear, each tagged by store.
+// Nothing reads a meld today either. cmd/query reaches a corpus through
+// defndb.New in every mode, and defn's ingest wants a module that type-checks,
+// which a meld deliberately is not. See docs/meld.md; this doc used to claim
+// winze-query AST-scrapes without type-checking, which was true before the defn
+// migration and is not now.
+//
+// A store's corpus is found, not assumed: it is the one directory in the tree
+// at that SHA whose .go files declare `package winze` (see detectCorpus). This
+// repo keeps its corpus under corpus/; a store scaffolded by `winze-agent init`
+// keeps the same files flat at its root. Both are correct, and the meld dir
+// flattens either.
+//
+// Those corpus files are copied in namespace-prefixed (`<ns>__memory.go`); the
+// prefix survives into query results as the source label, so a hit tells you
+// which store it came from. One canonical predicates.go is kept from the
+// primary (first) store so cmd/predicates-suggest still resolves. Cross-store
+// var-name collisions are surfaced, not merged — namespacing is deferred by
+// design; both entities appear, each tagged by store.
 package main
 
 import (
@@ -53,6 +64,17 @@ type storeEntry struct {
 	Path      string `json:"path"`
 	SHA       string `json:"sha"`
 	Namespace string `json:"namespace"`
+	// CorpusDir is where the corpus was found in this store's tree at SHA:
+	// "corpus" in a winze checkout, "." in a store `winze-agent init`
+	// scaffolded flat. Recorded because the pinned SHA alone no longer says
+	// where to look.
+	CorpusDir string `json:"corpus_dir"`
+
+	// files are the corpus paths detectCorpus already found, carried to
+	// copyStoreGoFiles so the detection grep runs once per store rather than
+	// twice. Kept out of the manifest deliberately: SHA plus CorpusDir
+	// reproduces it, and a stored file list would only rot.
+	files []string
 }
 
 func main() {
@@ -115,7 +137,7 @@ func runMeld(specs []string, out string, quiet bool) error {
 			return fmt.Errorf("meld %s@%s: %w", e.Path, e.SHA[:min(7, len(e.SHA))], err)
 		}
 		if n == 0 {
-			return fmt.Errorf("meld %s@%s: no top-level .go files at that commit", e.Path, e.SHA[:min(7, len(e.SHA))])
+			return fmt.Errorf("meld %s@%s: corpus %s archived no files", e.Path, e.SHA[:min(7, len(e.SHA))], e.CorpusDir)
 		}
 	}
 
@@ -137,7 +159,7 @@ func runMeld(specs []string, out string, quiet bool) error {
 	}
 	fmt.Printf("melded %d stores into %s\n", len(entries), dir)
 	for _, e := range entries {
-		fmt.Printf("  %-16s %s @ %s\n", e.Namespace, e.Path, e.SHA[:min(12, len(e.SHA))])
+		fmt.Printf("  %-16s %s @ %s  corpus=%s\n", e.Namespace, e.Path, e.SHA[:min(12, len(e.SHA))], e.CorpusDir)
 	}
 	fmt.Printf("\nquery it:   winze-query --hybrid \"<q>\" %s\n", dir)
 	fmt.Printf("dissolve:   winze-meld --dissolve %s\n", dir)
@@ -145,7 +167,8 @@ func runMeld(specs []string, out string, quiet bool) error {
 }
 
 // resolveStores parses `path[@ref]` specs into pinned entries with unique
-// filesystem-safe namespaces derived from each store's directory name.
+// filesystem-safe namespaces derived from each store's directory name, and
+// locates each store's corpus at the SHA it pinned.
 func resolveStores(specs []string) ([]storeEntry, error) {
 	seen := map[string]int{}
 	var entries []storeEntry
@@ -165,8 +188,12 @@ func resolveStores(specs []string) ([]storeEntry, error) {
 		if err != nil {
 			return nil, fmt.Errorf("store %s: resolve %q: %w", path, ref, err)
 		}
+		corpusDir, files, err := detectCorpus(abs, sha)
+		if err != nil {
+			return nil, fmt.Errorf("store %s: %w", path, err)
+		}
 		ns := uniqueNamespace(sanitizeNS(filepath.Base(abs)), seen)
-		entries = append(entries, storeEntry{Path: abs, SHA: sha, Namespace: ns})
+		entries = append(entries, storeEntry{Path: abs, SHA: sha, Namespace: ns, CorpusDir: corpusDir, files: files})
 	}
 	return entries, nil
 }
@@ -202,12 +229,17 @@ func gitRevParse(dir, ref string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// copyStoreGoFiles streams `git archive <sha> corpus` and writes each
-// corpus/-level non-test .go file into dir as `<ns>__<name>`. The corpus lives
-// in the corpus/ subdirectory, so the archive is scoped to it. Returns the
-// count written.
+// copyStoreGoFiles archives e's detected corpus files at e.SHA and writes each
+// into dir as `<ns>__<base>.go`, flattening whatever directory the corpus lived
+// in. Returns the count written.
+//
+// The archive names those files explicitly rather than naming a directory, so a
+// store whose corpus sits at its repo root does not drag its whole tree through
+// the tar — and nothing needs filtering on the way out, since nothing was asked
+// for that should not be copied.
 func copyStoreGoFiles(e storeEntry, dir string) (int, error) {
-	cmd := exec.Command("git", "-C", e.Path, "archive", "--format=tar", e.SHA, "corpus")
+	args := append([]string{"-C", e.Path, "archive", "--format=tar", e.SHA, "--"}, e.files...)
+	cmd := exec.Command("git", args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()
@@ -229,14 +261,10 @@ func copyStoreGoFiles(e storeEntry, dir string) (int, error) {
 			cmd.Wait()
 			return count, err
 		}
-		base, ok := strings.CutPrefix(hdr.Name, "corpus/")
-		if !ok || base == "" || strings.Contains(base, "/") { // corpus/-level only
-			continue
+		if hdr.Typeflag != tar.TypeReg {
+			continue // git archive emits the intermediate directory entries too
 		}
-		if !strings.HasSuffix(base, ".go") || strings.HasSuffix(base, "_test.go") {
-			continue
-		}
-		dst := filepath.Join(dir, e.Namespace+"__"+base)
+		dst := filepath.Join(dir, e.Namespace+"__"+filepath.Base(hdr.Name))
 		if err := writeFileFrom(tr, dst); err != nil {
 			cmd.Wait()
 			return count, err
@@ -249,10 +277,10 @@ func copyStoreGoFiles(e storeEntry, dir string) (int, error) {
 	return count, nil
 }
 
-// copyCanonicalPredicates copies the primary store's corpus/predicates.go into
-// dir un-prefixed, so LoadPredicates(dir) resolves. Absent predicates.go is fine.
+// copyCanonicalPredicates copies the primary store's predicates.go into dir
+// un-prefixed, so LoadPredicates(dir) resolves. Absent predicates.go is fine.
 func copyCanonicalPredicates(e storeEntry, dir string) error {
-	cmd := exec.Command("git", "-C", e.Path, "show", e.SHA+":corpus/predicates.go")
+	cmd := exec.Command("git", "-C", e.Path, "show", e.SHA+":"+filepath.Join(e.CorpusDir, "predicates.go"))
 	out, err := cmd.Output()
 	if err != nil {
 		return nil // no predicates.go at that commit — not fatal
@@ -327,4 +355,75 @@ func isEmptyOrAbsent(dir string) (bool, error) {
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "winze-meld:", err)
 	os.Exit(1)
+}
+
+// detectCorpus locates the corpus in store at sha: the one directory whose .go
+// files declare `package winze`, plus the paths of those files.
+//
+// It looks rather than assuming because there is no single right layout. This
+// repo keeps its corpus under corpus/ so defn ingest stops indexing cmd/ and
+// internal/ on every write; a store scaffolded by `winze-agent init` keeps the
+// same files flat at its root, which is what makes `go build .` there a working
+// gate. Nesting a flat store would cost it that gate and buy it nothing.
+//
+// Looking is also the only thing that works at an arbitrary pinned SHA. A
+// layout marker committed today does not exist at last month's commit, and a
+// meld's promise is that its manifest reproduces it.
+//
+// The package clause is the marker for two reasons: Go allows exactly one per
+// directory, so it cannot drift within the corpus; and two `package winze` sets
+// colliding is precisely what makes a meld read-only. The same grep hands back
+// the file list, because every .go file in a directory declares that
+// directory's package — whatever named the directory has already named its
+// contents.
+func detectCorpus(store, sha string) (string, []string, error) {
+	short := sha[:min(7, len(sha))]
+	cmd := exec.Command("git", "-C", store, "grep", "-l", "^package winze$", sha, "--", "*.go")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		// git grep exits 1 for "matched nothing", which is a fact about the
+		// store rather than a git failure. Anything else is git going wrong.
+		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
+			return "", nil, fmt.Errorf("no `package winze` directory at %s — not a winze store", short)
+		}
+		return "", nil, fmt.Errorf("git grep: %v: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	dirs, files := corpusMatches(out, sha)
+	switch {
+	case len(dirs) == 0:
+		return "", nil, fmt.Errorf("no `package winze` directory at %s — not a winze store", short)
+	case len(dirs) > 1:
+		return "", nil, fmt.Errorf("ambiguous corpus at %s: `package winze` in %s — meld will not pick for you",
+			short, strings.Join(dirs, ", "))
+	case len(files) == 0:
+		return "", nil, fmt.Errorf("corpus %s at %s holds only _test.go files", dirs[0], short)
+	}
+	return dirs[0], files, nil
+}
+
+// corpusMatches splits `git grep -l` output into the directories that declared
+// `package winze` and the corpus files to actually meld.
+//
+// A directory is claimed by any match in it, _test.go included — a test file
+// declaring `package winze` sits in the corpus by Go's own rule. The file list
+// drops those: a meld carries corpus content, not the store's own gate.
+func corpusMatches(out []byte, sha string) (dirs, files []string) {
+	seen := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		path, ok := strings.CutPrefix(line, sha+":")
+		if !ok {
+			continue
+		}
+		if d := filepath.Dir(path); !seen[d] {
+			seen[d] = true
+			dirs = append(dirs, d)
+		}
+		if !strings.HasSuffix(path, "_test.go") {
+			files = append(files, path)
+		}
+	}
+	return dirs, files
 }
