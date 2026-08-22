@@ -34,7 +34,12 @@ hypotheses (fresh ones get sensor attention first). Zero-paper cycles
 auto-resolve as `no_signal`. `--suggest` generates ingest templates from
 corroborated results. `--reify` generates `predictions.go` encoding metabolism
 predictions as first-class Predicts/ResolvedAs claims (the KB becomes self-aware
-about its own epistemic performance). `--pipeline` runs the full automated quality pipeline:
+about its own epistemic performance) — but only for a hypothesis that reached a
+substantive resolution (corroborated or challenged). A hypothesis asked
+repeatedly and never resolved past `irrelevant`/`no_signal` is activity, not a
+finding, and is omitted from the corpus entirely; it stays fully recorded in
+`.metabolism-log.json`. Measured 2026-08-22: 52 sensor hypotheses probed, 15
+substantive, 37 omitted. `--pipeline` runs the full automated quality pipeline:
 ingest → go build → go vet → deterministic lint → LLM contradiction check →
 commit if all pass, reject if any gate fails. Exit 2 = quality rejection.
 ZIM backend uses gozim (pure Go, no Python needed). Builds a Bleve fulltext

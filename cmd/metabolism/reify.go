@@ -47,8 +47,11 @@ func existingReifyCycleCount(outPath string) int {
 //
 // The meta-hypothesis: structural fragility (single-source, uncontested)
 // predicts that external evidence exists which could strengthen or challenge
-// a hypothesis. Each evidence search is an Event, and its resolution records
-// whether the prediction was confirmed.
+// a hypothesis. Only a search that reaches a substantive resolution
+// (corroborated or challenged) is reified as an Event — see
+// isSubstantiveResolution. A barren search stays in .metabolism-log.json,
+// which already records every ask, rather than being promoted into the
+// corpus as if it were a finding.
 //
 // The KB records what it predicted, what it found, and whether its
 // predictions resolved — making epistemic performance a first-class
@@ -258,9 +261,13 @@ func runReify(dir string) error {
 	// Count stats
 	totalCycles := len(mlog.Cycles)
 	uniqueHyps := len(order)
+	// A hypothesis counts as resolved only when it reached a substantive
+	// verdict — see isSubstantiveResolution. Everything the sensor calls
+	// irrelevant or no_signal is activity, not a finding, and is excluded
+	// both here and from the emit loop below.
 	resolved := 0
 	for _, r := range records {
-		if r.bestRes != "" {
+		if isSubstantiveResolution(r.bestRes) {
 			resolved++
 		}
 	}
@@ -329,8 +336,10 @@ func runReify(dir string) error {
 	fmt.Fprintf(&b, "//\n")
 	fmt.Fprintf(&b, "// The meta-hypothesis: structural fragility (single-source, uncontested)\n")
 	fmt.Fprintf(&b, "// predicts that external evidence exists which could strengthen or\n")
-	fmt.Fprintf(&b, "// challenge the hypothesis. Each evidence search is an Event, and its\n")
-	fmt.Fprintf(&b, "// resolution records whether the prediction was confirmed.\n")
+	fmt.Fprintf(&b, "// challenge the hypothesis. Only a search that reaches a substantive\n")
+	fmt.Fprintf(&b, "// resolution (corroborated or challenged) is reified as an Event here —\n")
+	fmt.Fprintf(&b, "// a search that came back irrelevant or with no signal is activity, not\n")
+	fmt.Fprintf(&b, "// a finding, and stays in .metabolism-log.json rather than the corpus.\n")
 	fmt.Fprintf(&b, "//\n")
 	fmt.Fprintf(&b, "// This is the first use of the prediction schema (Predicts, ResolvedAs)\n")
 	fmt.Fprintf(&b, "// defined in predicates.go. The forcing function: the metabolism loop\n")
@@ -358,9 +367,20 @@ func runReify(dir string) error {
 	fmt.Fprintf(&b, "\tBrief: \"Hypotheses that are single-source and/or uncontested in the KB are more likely to have findable external evidence that could strengthen or challenge them. Tested by the metabolism loop.\",\n")
 	fmt.Fprintf(&b, "}}\n")
 
-	// Per-hypothesis events, predictions, and resolutions
+	// Per-hypothesis events, predictions, and resolutions. Only hypotheses
+	// that reached a substantive verdict are reified — see
+	// isSubstantiveResolution and the doc comment on hypothesisRecord. A
+	// hypothesis the loop asked about repeatedly and never got past
+	// irrelevant/no_signal is omitted here; it is not lost, it is still every
+	// cycle in .metabolism-log.json, which is the record of activity. This
+	// file is the record of findings.
+	omitted := 0
 	for _, hypName := range order {
 		r := records[hypName]
+		if !isSubstantiveResolution(r.bestRes) {
+			omitted++
+			continue
+		}
 		baseName := camelToWords(hypName)
 		varBase := strings.TrimSuffix(hypName, "Thesis")
 		varBase = strings.TrimSuffix(varBase, "Argument")
@@ -472,7 +492,12 @@ func runReify(dir string) error {
 
 	// KB-internal sections — one meta-hypothesis per prediction type. Each
 	// promoted claim becomes an Event + Predicts (and ResolvedAs once
-	// resolved). Generic emit loop driven by kbInternalConfigs.
+	// resolved). Generic emit loop driven by kbInternalConfigs. Not filtered
+	// by isSubstantiveResolution: these resolvers write confirmed/refuted once
+	// per distinct trip candidate rather than repeating a question, so they
+	// are never the repeated-barren-search problem the sensor filter exists
+	// for, and a refuted durability check is itself a real finding worth
+	// keeping (a promoted claim failed a check).
 	kbResolved := map[string]int{}
 	for _, cfg := range kbInternalConfigs {
 		ord := kbOrder[cfg.predictionType]
@@ -557,8 +582,8 @@ func runReify(dir string) error {
 	}
 
 	fmt.Printf("[reify] generated %s\n", filepath.Base(outPath))
-	fmt.Printf("[reify] structural_fragility: %d hypotheses → %d Events + %d Predicts + %d ResolvedAs\n",
-		uniqueHyps, uniqueHyps, uniqueHyps, resolved)
+	fmt.Printf("[reify] structural_fragility: %d hypotheses probed, %d substantive → %d Events + %d Predicts + %d ResolvedAs (%d activity-only omitted from the corpus)\n",
+		uniqueHyps, resolved, resolved, resolved, resolved, omitted)
 	for _, cfg := range kbInternalConfigs {
 		ord := kbOrder[cfg.predictionType]
 		if len(ord) == 0 {
@@ -708,4 +733,22 @@ func exportedIdent(s string) string {
 	r := []rune(s)
 	r[0] = unicode.ToUpper(r[0])
 	return string(r)
+}
+
+// isSubstantiveResolution reports whether a resolution is a finding worth
+// promoting into the corpus, rather than a record of the loop having asked
+// and gotten nothing back. Scoped to the sensor vocabulary
+// (structural_fragility) deliberately: KB-internal resolvers
+// (trip_lint_durability and friends) write confirmed/refuted once per
+// distinct trip candidate, never repeating the same question, so their
+// volume is never the "same three questions every hour" problem this exists
+// to fix — they are left unfiltered.
+//
+// Measured against 624 logged cycles on 2026-08-22: only 18 of 114 sensor
+// hypotheses ever reached corroborated or challenged. The other 96 are the
+// loop re-asking a handful of questions repeatedly and getting irrelevant or
+// no_signal back — activity, not knowledge, and the reason 160 of 390 corpus
+// entities were the loop describing its own searches rather than findings.
+func isSubstantiveResolution(res string) bool {
+	return res == "corroborated" || res == "challenged"
 }
