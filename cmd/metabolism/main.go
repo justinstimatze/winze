@@ -386,7 +386,10 @@ func main() {
 	}
 
 	if *reify {
-		runReify(dir)
+		if err := runReify(dir); err != nil {
+			fmt.Fprintf(os.Stderr, "metabolism: reify: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -2578,7 +2581,10 @@ func runCycle(dir, zimPath, zimIndex string, llmBudget, entityCap int, dryRun, j
 	if sel.has("reify") {
 		fmt.Println("=== Phase 6: Reify ===")
 		fmt.Println()
-		runReify(dir)
+		if err := runReify(dir); err != nil {
+			fmt.Fprintf(os.Stderr, "metabolism: reify: %v\n", err)
+			failures++
+		}
 		phases++
 		fmt.Println()
 	}

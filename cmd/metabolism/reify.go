@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 )
 
@@ -66,6 +65,15 @@ type hypothesisRecord struct {
 	backends   map[string]bool
 	resCounts  map[string]int // resolution → count (for history comments)
 	evidence   string         // first non-empty Evidence from any cycle (for KB-internal resolvers)
+
+	// lastResolvedAt is the newest Cycle.ResolvedAt across this hypothesis's
+	// cycles, ISO 8601. It dates the resolution-history comment. Stamping
+	// time.Now() there instead made the generated file a function of when the
+	// reifier ran rather than of the log, so every cycle produced a diff
+	// consisting only of the date it had just written — 65 of 67 metabolism
+	// commits between 2026-07-23 and 2026-08-22 were exactly that, and they
+	// defeated the len(changed)==0 quiet-cycle guard in cmd/metabolize.
+	lastResolvedAt string
 }
 
 // kbInternalConfig describes one KB-internal prediction-type bucket. Each
@@ -153,13 +161,13 @@ func kbConfigFor(predictionType string) *kbInternalConfig {
 	return nil
 }
 
-func runReify(dir string) {
+func runReify(dir string) error {
 	logPath := filepath.Join(dir, ".metabolism-log.json")
 	mlog := loadLog(logPath)
 
 	if len(mlog.Cycles) == 0 {
 		fmt.Fprintln(os.Stderr, "metabolism: no cycles logged — nothing to reify")
-		return
+		return nil
 	}
 
 	// Split cycles by prediction type so each gets its own section with
@@ -209,6 +217,10 @@ func runReify(dir string) {
 		r.cycles++
 		if c.Resolution != "" {
 			r.resCounts[c.Resolution]++
+		}
+		// ISO 8601 sorts lexically, so a string compare is the max.
+		if c.ResolvedAt > r.lastResolvedAt {
+			r.lastResolvedAt = c.ResolvedAt
 		}
 		be := c.Backend
 		if be == "" {
@@ -265,7 +277,12 @@ func runReify(dir string) {
 		}
 	}
 
-	today := time.Now().Format("2006-01-02")
+	// Every date written into the generated file comes from the log, never from
+	// the clock. predictions.go is a pure function of .metabolism-log.json, so
+	// re-running the reifier on an unchanged log must produce an unchanged file
+	// — that is what lets the quiet-cycle guard in cmd/metabolize see "nothing
+	// happened" and skip the commit. TestReifyIsDeterministic holds the line.
+	newestCycle := latest.Format("2006-01-02")
 	outPath := filepath.Join(dir, "predictions.go")
 
 	// Shrink guard. predictions.go is a pure function of the log — the whole
@@ -297,7 +314,7 @@ func runReify(dir string) {
 			filepath.Join(dir, ".metabolism-log.json"))
 		fmt.Fprintf(os.Stderr,
 			"[reify] (a moved corpus can strand it), or set WINZE_REIFY_ALLOW_SHRINK=1 if the prune is deliberate.\n")
-		os.Exit(1)
+		return fmt.Errorf("refusing to shrink %s", outPath)
 	}
 
 	var b strings.Builder
@@ -322,7 +339,7 @@ func runReify(dir string) {
 	// Provenance
 	fmt.Fprintf(&b, "\nvar metabolismPredictionSource = Provenance{\n")
 	fmt.Fprintf(&b, "\tOrigin:     \"winze metabolism log (.metabolism-log.json)\",\n")
-	fmt.Fprintf(&b, "\tIngestedAt: %q,\n", today)
+	fmt.Fprintf(&b, "\tIngestedAt: %q,\n", newestCycle)
 	fmt.Fprintf(&b, "\tIngestedBy: \"winze metabolism --reify\",\n")
 	fmt.Fprintf(&b, "\tQuote:      \"%d cycles logged from %s to %s across %d hypotheses. %d resolved.\",\n",
 		totalCycles, earliest.Format("2006-01-02"), latest.Format("2006-01-02"), uniqueHyps, resolved)
@@ -397,7 +414,11 @@ func runReify(dir string) {
 
 		// Resolution history — survives even if .metabolism-log.json is deleted
 		if len(r.resCounts) > 0 {
-			fmt.Fprintf(&b, "// Resolution history (reified %s):\n", today)
+			if r.lastResolvedAt != "" {
+				fmt.Fprintf(&b, "// Resolution history (resolved through %s):\n", r.lastResolvedAt)
+			} else {
+				fmt.Fprintf(&b, "// Resolution history:\n")
+			}
 			fmt.Fprintf(&b, "//   %d cycles total, %d with signal\n", r.cycles, r.withSignal)
 			var trajectory []string
 			for _, res := range []string{"corroborated", "challenged", "irrelevant", "no_signal"} {
@@ -529,12 +550,10 @@ func runReify(dir string) {
 	// the whole point of reify is to emit a corpus slice that compiles.
 	formatted, err := format.Source([]byte(b.String()))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "metabolism: gofmt %s: %v\n", outPath, err)
-		os.Exit(1)
+		return fmt.Errorf("gofmt %s: %w", outPath, err)
 	}
 	if err := os.WriteFile(outPath, formatted, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "metabolism: write %s: %v\n", outPath, err)
-		os.Exit(1)
+		return fmt.Errorf("write %s: %w", outPath, err)
 	}
 
 	fmt.Printf("[reify] generated %s\n", filepath.Base(outPath))
@@ -552,10 +571,10 @@ func runReify(dir string) {
 	// Verify it compiles
 	fmt.Println("[reify] verifying: go build ./...")
 	if !runGate(dir, "go", "build", "./...") {
-		fmt.Fprintf(os.Stderr, "[reify] generated file does not compile — check %s\n", outPath)
-		os.Exit(1)
+		return fmt.Errorf("generated file does not compile — check %s", outPath)
 	}
 	fmt.Println("[reify] ✓ build passed")
+	return nil
 }
 
 // betterResolution returns the "better" of two resolutions.
