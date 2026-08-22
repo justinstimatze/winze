@@ -55,20 +55,33 @@ Read-only by construction, not by policy: two stores both declaring
 the union cannot `go build`. The write path (`winze-add` / `winze-edit`) runs
 that build as its gate, so it does not apply to a meld.
 
-## Known gap: nothing queries a meld today
+## Reading a meld
 
-`winze-query` reaches a corpus through `defndb.New(dir)` in every mode, and
-defn's ingest runs `packages.Load("./...")`, which needs a module that
-type-checks. A meld is a directory that deliberately does not:
+`winze-query` reads a meld through a parse tree instead of through defn, and
+picks which on the presence of `.winze-meld.json`. Every mode works —
+`--stats`, `--claims`, `--theories`, `--provenance`, `--disputes`,
+`--decisions`, `--fulltext`, `--hybrid`:
 
-- no `go.mod` (add one and you get past this to the next two)
-- duplicate identifiers across the melded stores, which is the whole design
-- `winze__winze_self.go` imports `winze/internal/corpuslock` and
-  `internal/corpusparse`, unresolvable outside the winze module
+```bash
+winze-query --hybrid "how minds fail at modeling reality" /path/to/meld
+winze-query --claims SomeEntity /path/to/meld
+```
 
-So `winze-meld` builds a correct union dir and there is currently no reader for
-it. This predates corpus detection and is not caused by it — the package doc
-here used to claim winze-query "AST-scrapes composite literals without
-type-checking", which described the pre-defn query. Closing it means either an
-AST-only read path in `cmd/query`, or an ingest that tolerates package errors
-and indexes syntax.
+defn cannot serve a meld and never will be able to. Its ingest runs
+`packages.Load`, which wants a module that type-checks, and a meld is built not
+to be one: no `go.mod`, duplicate identifiers across the melded stores (which is
+what makes it read-only), and `winze_self.go` importing `winze/internal` from
+outside the winze module. A parser is stopped by none of the three.
+
+The seam is `corpusSource` in `cmd/query/corpussource.go` — the six calls every
+mode reaches its data through. `*defndb.Client` already satisfied it, so the AST
+reader is one implementation of the same interface producing the same
+`LiteralField` stream, and no mode had to change. Its correctness is pinned by a
+differential rather than by inspection: `TestASTSourceMatchesDefn` reads the real
+corpus both ways and requires the two streams to be identical, field for field,
+including the source file and line. On the same corpus every mode's output is
+byte-identical between the backends.
+
+The routing is on the manifest and not on defn failing to open. A fallback would
+turn a stale index or a broken ingest into a silent switch to a different reader
+— same command, different answers, no symptom.

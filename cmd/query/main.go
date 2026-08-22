@@ -287,7 +287,7 @@ func runFulltext(kb *kbIndex, query string, jsonOut bool) {
 // theoryOfClaims streams only TheoryOf claims, in index order, instead of the
 // whole claim table. TypeName-scoped iteration is the narrow form of "walk every
 // claim, skip the ones that aren't TheoryOf".
-func theoryOfClaims(client *defndb.Client) ([]claimRecord, error) {
+func theoryOfClaims(client corpusSource) ([]claimRecord, error) {
 	byVar := map[string]*claimRecord{}
 	order := []string{}
 	err := client.EachFieldOfType("TheoryOf", func(f *defndb.LiteralField) bool {
@@ -307,7 +307,7 @@ func theoryOfClaims(client *defndb.Client) ([]claimRecord, error) {
 }
 
 func runTheories(dir, target string, jsonOut bool) {
-	client, err := defndb.New(dir)
+	client, err := openCorpus(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "query: %v\n", err)
 		os.Exit(1)
@@ -371,7 +371,7 @@ func runTheories(dir, target string, jsonOut bool) {
 }
 
 func runClaims(dir, target string, jsonOut bool) {
-	client, err := defndb.New(dir)
+	client, err := openCorpus(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "query: %v\n", err)
 		os.Exit(1)
@@ -428,7 +428,7 @@ func runClaims(dir, target string, jsonOut bool) {
 }
 
 func runProvenance(dir, target string, jsonOut bool) {
-	client, err := defndb.New(dir)
+	client, err := openCorpus(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "query: %v\n", err)
 		os.Exit(1)
@@ -495,7 +495,7 @@ func runProvenance(dir, target string, jsonOut bool) {
 // instead of materialising the whole claim table (plus the entity and
 // provenance tables) via buildIndex. TypeName-scoped iteration is the narrow
 // form of "walk every claim, skip the ones that aren't disputes".
-func disputeClaims(client *defndb.Client) ([]claimRecord, error) {
+func disputeClaims(client corpusSource) ([]claimRecord, error) {
 	byVar := map[string]*claimRecord{}
 	order := []string{}
 	for _, t := range []string{"Disputes", "DisputesOrg"} {
@@ -516,7 +516,7 @@ func disputeClaims(client *defndb.Client) ([]claimRecord, error) {
 }
 
 func runDisputes(dir string, jsonOut bool) {
-	client, err := defndb.New(dir)
+	client, err := openCorpus(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "query: %v\n", err)
 		os.Exit(1)
@@ -623,15 +623,15 @@ func runStats(kb *kbIndex, jsonOut bool) {
 // --- index building ---
 
 func buildIndex(dir string) (*kbIndex, error) {
-	client, err := defndb.New(dir)
+	client, err := openCorpus(dir)
 	if err != nil {
-		return nil, fmt.Errorf("defndb: %w", err)
+		return nil, fmt.Errorf("corpus: %w", err)
 	}
 	defer client.Close()
-	return buildIndexDefn(client, dir)
+	return buildIndexFrom(client, dir)
 }
 
-func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
+func buildIndexFrom(client corpusSource, dir string) (*kbIndex, error) {
 	roleTypes, err := client.RoleTypeSet()
 	if err != nil {
 		return nil, err
@@ -657,7 +657,7 @@ func buildIndexDefn(client *defndb.Client, dir string) (*kbIndex, error) {
 // slice order is stable across runs. The map funnel it replaces inherited Go's
 // randomised iteration order, which made every read path resolve a fuzzy target
 // to a different entity from one run to the next.
-func loadEntities(client *defndb.Client) ([]entityRecord, map[string]*entityRecord, error) {
+func loadEntities(client corpusSource) ([]entityRecord, map[string]*entityRecord, error) {
 	varRoles, err := client.EntityVarsWithRoles()
 	if err != nil {
 		return nil, nil, err
@@ -702,7 +702,7 @@ func loadEntities(client *defndb.Client) ([]entityRecord, map[string]*entityReco
 // the user-preference predicates) carry Subject only. Both involve their Subject
 // and belong in the index — requiring an Object silently dropped every unary
 // claim. First-seen order is preserved so output is stable across runs.
-func loadClaims(client *defndb.Client) ([]claimRecord, error) {
+func loadClaims(client corpusSource) ([]claimRecord, error) {
 	byVar := map[string]*claimRecord{}
 	order := []string{}
 	err := client.EachField([]string{"Subject", "Object", "Prov"}, func(f *defndb.LiteralField) bool {
@@ -749,7 +749,7 @@ func accumClaimField(byVar map[string]*claimRecord, order *[]string, f *defndb.L
 }
 
 // loadProvenance reads every Provenance literal (Origin/Quote) in index order.
-func loadProvenance(client *defndb.Client) ([]provRecord, error) {
+func loadProvenance(client corpusSource) ([]provRecord, error) {
 	byVar := map[string]*provRecord{}
 	order := []string{}
 	err := client.EachFieldOfType("Provenance", func(f *defndb.LiteralField) bool {
@@ -784,7 +784,7 @@ func loadProvenance(client *defndb.Client) ([]provRecord, error) {
 // assembles just those claims. It is the narrow-query equivalent of
 // claimsInvolving(buildIndex(dir), varName) and the read-path shape the defn SQL
 // backend makes cheap (docs/defn-migration.md).
-func claimRecordsInvolving(client *defndb.Client, varName string) ([]claimRecord, error) {
+func claimRecordsInvolving(client corpusSource, varName string) ([]claimRecord, error) {
 	matched := map[string]bool{}
 	err := client.EachFieldWithValuePrefix(varName, []string{"Subject", "Object"}, func(f *defndb.LiteralField) bool {
 		// A prefix match also catches "FooBar" for var "Foo"; the base-var

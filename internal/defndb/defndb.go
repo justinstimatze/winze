@@ -307,25 +307,8 @@ func (c *Client) literalFields(filter defnapi.LiteralFieldFilter) ([]LiteralFiel
 			Line:       f.Line,
 		})
 	}
-	sortLiteralFields(out)
+	SortLiteralFields(out)
 	return out, nil
-}
-
-// sortLiteralFields imposes the stable (source file, line, field name) order
-// that the read paths treat as "index order". defn's rows come back in
-// whatever order the store yields once SkipOrderBy drops the ORDER BY; sorting
-// here is what makes query output reproducible.
-func sortLiteralFields(fs []LiteralField) {
-	sort.SliceStable(fs, func(i, j int) bool {
-		a, b := fs[i], fs[j]
-		if a.SourceFile != b.SourceFile {
-			return a.SourceFile < b.SourceFile
-		}
-		if a.Line != b.Line {
-			return a.Line < b.Line
-		}
-		return a.FieldName < b.FieldName
-	})
 }
 
 // ClaimFields returns Subject/Object/Prov fields from claim composite literals.
@@ -446,4 +429,21 @@ func (c *Client) Search(pattern string) ([]SearchResult, error) {
 		out = append(out, SearchResult{Name: d.Name, Kind: d.Kind, SourceFile: d.SourceFile, Line: d.StartLine})
 	}
 	return out, nil
+}
+
+// sortLiteralFields imposes the stable (source file, line, field name) order
+// that the read paths treat as "index order". defn's rows come back in
+// whatever order the store yields once SkipOrderBy drops the ORDER BY; sorting
+// here is what makes query output reproducible.
+func SortLiteralFields(fs []LiteralField) {
+	sort.SliceStable(fs, func(i, j int) bool {
+		a, b := fs[i], fs[j]
+		if a.SourceFile != b.SourceFile {
+			return a.SourceFile < b.SourceFile
+		}
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+		return a.FieldName < b.FieldName
+	})
 }
