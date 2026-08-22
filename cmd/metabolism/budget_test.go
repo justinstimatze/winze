@@ -250,12 +250,40 @@ func TestCacheHitPct(t *testing.T) {
 	}
 	g.state.CacheReadTokens = 900
 	g.state.FreshInputTokens = 100
+	g.state.CachedPrefixCalls = 3
 	pct, ok := g.cacheHitPct()
 	if !ok || pct != 90 {
 		t.Errorf("900 read / 100 fresh → want 90%% ok, got %.1f%% ok=%v", pct, ok)
 	}
 	if s := g.cacheSuffix(); !strings.Contains(s, "cache 90% hit") {
 		t.Errorf("suffix = %q, want it to contain the hit clause", s)
+	}
+}
+
+// TestCacheSuffixSeparatesUnexercisedFromBroken is the distinction August
+// lacked. Reads at zero against non-zero fresh input has two readings —
+// the breakpoint failed, or no call carrying one was ever made — and the
+// budget line reported "cache 0% hit" for both. It was the second, for a
+// whole month, and the metric could not say so.
+func TestCacheSuffixSeparatesUnexercisedFromBroken(t *testing.T) {
+	unexercised := &budgetGuard{}
+	unexercised.state.FreshInputTokens = 50_000
+	got := unexercised.cacheSuffix()
+	if strings.Contains(got, "0% hit") {
+		t.Errorf("a month with no prefixed calls must not report a hit rate: %q", got)
+	}
+	if !strings.Contains(got, "no cached-prefix calls") {
+		t.Errorf("suffix = %q, want it to say no prefixed calls were made", got)
+	}
+
+	// Same token counts, but calls carrying a breakpoint were made and did not
+	// cache. That IS a regression, and it must read as one.
+	broken := &budgetGuard{}
+	broken.state.FreshInputTokens = 50_000
+	broken.state.CachedPrefixCalls = 12
+	got = broken.cacheSuffix()
+	if !strings.Contains(got, "0% hit") {
+		t.Errorf("12 prefixed calls with no reads is a real 0%%: %q", got)
 	}
 }
 
