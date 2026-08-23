@@ -3,7 +3,7 @@ module github.com/justinstimatze/winze
 go 1.26.2
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.61.0
+	github.com/anthropics/anthropic-sdk-go v1.66.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/justinstimatze/defn v0.26.31
