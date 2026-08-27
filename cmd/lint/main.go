@@ -1007,9 +1007,11 @@ func main() {
 	rc9 := structuralDedupRule(dir)
 	fmt.Println()
 	rc10 := lexiconFenceRule(dir)
+	fmt.Println()
+	rc11 := thinConjectureRule(dir)
 
 	worst := rc1
-	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10} {
+	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11} {
 		if rc > worst {
 			worst = rc
 		}

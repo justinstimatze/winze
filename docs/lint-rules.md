@@ -5,7 +5,7 @@ for the LLM contradiction check.
 
 The rules: naming-oracle, orphan-report, value-conflict, contested-concept,
 brief-check, provenance-split, llm-contradiction, brief-drift, structural-dedup,
-lexicon-fence.
+lexicon-fence, thin-conjecture.
 
 ## structural-dedup
 
@@ -52,3 +52,34 @@ attribution for anything lexicon-derived is a `Conjecture` (`From:
 compiler closes the `Conjecture` side; this rule closes the free-string
 `Provenance` side it can't reach. Matched precisely enough that the ordinary
 word "lexicon" in prose doesn't trip it. See `docs/lexicon.md`.
+
+## thin-conjecture
+
+`thin-conjecture` flags a `Conjecture` literal whose `Rationale` is the empty
+string (key omitted counts the same as `Rationale: ""`). A `Conjecture` is
+uncitable by construction — no `Quote` field, closed by the compiler — but its
+honesty depends on `Rationale` actually carrying winze's own reasoning for the
+connection; an empty one is generated knowledge with no reasoning recorded at
+all, and Go's zero value lets that compile silently. Hard failure (exit 1): a
+missing `Rationale` has no legitimate reading the way a bare Brief mention does
+for brief-drift.
+
+Walks every expression under each var decl looking for a `Conjecture` literal
+at any depth, not just the var's own top-level type — `cmd/add --conjecture`
+inlines the literal into the claim's `Prov` field
+(`var X = TheoryOf{..., Prov: Conjecture{...}}`), it is never a standalone
+top-level var, so a shallower check finds nothing against the real corpus.
+
+Deliberately narrow: only the empty string is flagged. A short-but-present
+`Rationale` ("TBD") is a real quality question too, but there's no
+forcing-function instance of it yet to say what "thin" means in practice — see
+the project's own schema-accretion discipline — so this rule waits for one
+rather than inventing a threshold.
+
+Motivated by a dispatch exchange with onsetter (justinstimatze/onsetter):
+onsetter's write-time CLAUDE.md ask-block layer was proposed as the gate, but
+its `PreToolUse` hook is hardcoded to `Write|Edit` and every corpus `.go`
+mutation here goes through the `defn` MCP tool per this project's own
+CLAUDE.md — the ask would never fire. A deterministic lint rule sees the AST
+on disk regardless of which tool wrote it, so it's the mechanism that actually
+covers winze's real write path.
