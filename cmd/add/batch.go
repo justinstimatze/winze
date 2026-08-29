@@ -97,8 +97,6 @@ func readBatch(path string) ([]claimSpec, error) {
 	return specs, nil
 }
 
-// runBatch appends every claim in the batch under one build gate, reverting
-// all touched files if any step fails. Returns a process exit code.
 func runBatch(batchPath, repoRoot string, dryRun bool) int {
 	specs, err := readBatch(batchPath)
 	if err != nil {
@@ -116,6 +114,18 @@ func runBatch(batchPath, repoRoot string, dryRun bool) int {
 		if err := validateFlags(s.Predicate, s.Subject, s.Object, s.Quote, s.Origin, s.ProvVar, s.Conjecture, s.Rationale, s.To, s.Name, s.Unary); err != nil {
 			fmt.Fprintf(os.Stderr, "batch record %d (%q): %v\n", i+1, s.Name, err)
 			return 2
+		}
+	}
+
+	// Same *Entity-slot resolution as the single-claim path (see
+	// resolveEntityRef) — done once here so both the dry-run print below and
+	// the real write loop see the resolved refs.
+	for i, s := range specs {
+		if subjAny, objAny, ok := anyRoleSlots(repoRoot, s.Predicate); ok {
+			specs[i].Subject = resolveEntityRef(s.Subject, subjAny)
+			if !s.Unary {
+				specs[i].Object = resolveEntityRef(s.Object, objAny)
+			}
 		}
 	}
 

@@ -22,21 +22,16 @@ winze_link(from=NewerDecision, to=OlderDecision, relation="Supersedes",
            rationale="why the newer one replaces it")
 ```
 
-**Known gap (2026-08-28):** `Supersedes` is declared over `*Entity` slots
-(any role, on purpose — see `corpus/predicates.go`), but `winze_link` passes
-`from`/`to` straight through to `winze-add --subject`/`--object` with no
-type-directed resolution. A role-typed var (the common case — `winze_remember`
-defaults every memory to `Concept`) needs its embedded field named
-explicitly: `winze-add ... --subject NewerDecision.Entity --object
-OlderDecision.Entity`. The trip cycle's own codegen already solves this for
-its own writes (`slotExpr` in `cmd/metabolism/tripverdict.go`), but that
-logic is metabolism-internal and does not cover `cmd/add`'s general
-`--subject`/`--object` flags or `winze_link`. Until `cmd/add` gets an
-equivalent type-directed resolution (or `execLink` retries with `.Entity`
-appended on a build-gate failure shaped like this one), calling `winze_link`
-with `relation="Supersedes"` between two ordinary memories will fail the
-build gate unless the caller already knows to add `.Entity` — a real fix,
-not yet scheduled.
+This works with bare var names even though `Supersedes` is declared over
+`*Entity` slots (any role, on purpose — see `corpus/predicates.go`) and a
+real memory is always role-typed (`winze_remember` defaults to `Concept`).
+`winze-add`'s `--subject`/`--object` resolve the predicate's slot type
+against `predicates.go` (`anyRoleSlots`/`resolveEntityRef` in
+`cmd/add/entityref.go`) and append `.Entity` automatically when the slot
+wants any role — the same problem the trip cycle's own codegen solves for
+its writes (`slotExpr` in `cmd/metabolism/tripverdict.go`), generalized so
+`winze_link` and any direct `winze-add` call get it too, not just trip's.
+An explicit `X.Entity` still works and is never double-suffixed.
 
 `--decisions` walks the `Supersedes` graph and shows each **current** decision
 (one nothing supersedes) followed by the chain it replaced:

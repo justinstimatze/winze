@@ -115,7 +115,18 @@ func main() {
 		os.Exit(2)
 	}
 
-	decl := renderClaim(*predicate, *subject, *object, *quote, *origin, *ingestedBy, *provVar, *conjecture, *rationale, *genBy, *claimName, *unary)
+	// A predicate declared over *Entity (any role) needs the embedded field
+	// named explicitly — see resolveEntityRef. Every named-role predicate
+	// (the common case) round-trips through unchanged.
+	subj, obj := *subject, *object
+	if subjAny, objAny, ok := anyRoleSlots(*repoRoot, *predicate); ok {
+		subj = resolveEntityRef(subj, subjAny)
+		if !*unary {
+			obj = resolveEntityRef(obj, objAny)
+		}
+	}
+
+	decl := renderClaim(*predicate, subj, obj, *quote, *origin, *ingestedBy, *provVar, *conjecture, *rationale, *genBy, *claimName, *unary)
 
 	if *dryRun {
 		fmt.Printf("--- would append to %s ---\n", *target)

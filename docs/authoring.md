@@ -34,9 +34,18 @@ winze generates rather than ingests (e.g. a memory-to-memory link). The three
 attribution modes (inline `--quote`/`--origin`, `--provenance-var`,
 `--conjecture`) are mutually exclusive; this is the tool-side honoring of the
 mirror-source-commitments fence — a generated claim can never wear a fabricated
-source. The tool does no slot-type checking of its own — the build gate is what
-validates the claim, which is the load-bearing discipline this project was built
-around. Do NOT relax that path.
+source. The tool does no slot-type *checking* of its own — the build gate is
+what validates the claim, which is the load-bearing discipline this project was
+built around. Do NOT relax that path. It does one narrow slot-type
+*resolution*: `--subject`/`--object` are checked against the target
+predicate's declared slots in `predicates.go`, and `.Entity` is appended
+automatically when a slot wants any role (`BinaryRelation[*Entity, *Entity]`,
+e.g. `Supersedes`, `StructurallyAnalogousTo`) rather than a named one — every
+real entity is declared through a role wrapper (`Concept`, `Hypothesis`, …)
+that embeds `*Entity`, never as a bare `*Entity`, so the slot type alone
+decides whether the field access is needed (`cmd/add/entityref.go`). An
+explicit `X.Entity` is left untouched. This is convenience, not validation —
+a wrong var name still fails the same build gate exactly as before.
 
 ## Batch mode
 
