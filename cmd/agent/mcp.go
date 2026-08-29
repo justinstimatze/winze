@@ -73,14 +73,10 @@ func runServe(args []string) {
 	}
 }
 
-// recall result-shaping defaults. Recall exists for interactive latency, so it
-// returns compact headlines: capped to a handful of hits, each brief truncated.
-// Without these a wide query over kilobyte-scale project memories inlines every
-// full brief and overshoots the per-tool-result size cap, forcing the harness to
-// spill to disk and the reader to round-trip — the opposite of associative recall.
+const recallDefaultBriefChars = 500
+
 const (
-	recallDefaultLimit      = 5
-	recallDefaultBriefChars = 240
+	recallDefaultLimit = 5
 )
 
 func handleRecall(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -109,7 +105,7 @@ func handleRecall(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	}
 	if briefChars > 0 {
 		for i := range hits {
-			hits[i].Brief = truncate(hits[i].Brief, briefChars)
+			hits[i].Brief = truncateWithHint(hits[i].Brief, briefChars)
 		}
 	}
 	out, _ := json.MarshalIndent(struct {
@@ -372,7 +368,8 @@ func nearestMemories(text string, n int) []queryHit {
 // murky middle in between. block hard-refuses; warn advises. Env-overridable
 // as the store and embedder evolve.
 func dupBlockScore() float64 { return envFloat("WINZE_DEDUP_BLOCK", 0.62) }
-func dupWarnScore() float64  { return envFloat("WINZE_DEDUP_WARN", 0.45) }
+
+func dupWarnScore() float64 { return envFloat("WINZE_DEDUP_WARN", 0.45) }
 
 // linkSuggestScore is the floor for proposing a typed link at remember-time.
 // Measured on this store (2026-07-23, all-minilm): scoring every memory's brief
@@ -527,4 +524,18 @@ func writeFailure(verb, out string, err error, gateNote ...string) *mcp.CallTool
 func storeSuspect(root string) bool {
 	fi, err := os.Stat(root)
 	return err != nil || !fi.IsDir() || !storeRootConfigured()
+}
+
+// truncateWithHint truncates like truncate, but for handleRecall's JSON API
+// specifically: a bare "…" gave a cold caller no way to know digging further
+// was possible. Measured live (2026-08-29): the correct entity ranked #1 for
+// a natural query and a fresh session still reported "not found" because the
+// answer sat past the truncation point and nothing said retrying with a
+// larger brief_chars would recover it.
+func truncateWithHint(s string, max int) string {
+	collapsed := strings.Join(strings.Fields(s), " ")
+	if len(collapsed) <= max {
+		return collapsed
+	}
+	return fmt.Sprintf("%s… [%d more chars — retry with brief_chars:%d for the full text]", collapsed[:max], len(collapsed)-max, len(collapsed))
 }

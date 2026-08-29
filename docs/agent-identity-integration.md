@@ -154,14 +154,39 @@ queue.
    cleared; remaining perf headroom (the defn ask, incremental sync) is
    optimization, not a blocker.
 
+**First live measurement, 2026-08-03 → 2026-08-29 (`0/8 → 8/8`, one session, not
+a green light on its own):** the write path this precondition actually gates —
+an agent writes its own session-end context via `winze_remember`, a genuinely
+cold session (a fresh subagent, zero inherited context) recalls it later via
+`winze_recall`, scored against 8 questions with ground truth locked before the
+write — had never been run end to end until today. First pass: **0/8**
+correct with `winze_recall`'s then-defaults. Root cause was mechanical, not
+epistemic: 3/8 misses were the right entity ranked #1 but truncated below the
+answer (`brief_chars` defaulted to 240, with a bare `…` giving no signal that
+more existed); 4/8 misses were a single multi-topic session-summary entity
+losing BM25/semantic rank to small, unrelated-but-lexically-adjacent existing
+entities on narrow queries; 1/8 was a stale-but-correct partial hit from the
+same dilution effect. Fixed both causes (`recallDefaultBriefChars` 240→500
+plus an actionable truncation hint; split the session note into 7 atomic
+entities) and re-ran the identical 8 questions on a second fresh subagent:
+**8/8**, all high confidence. See `docs/agent.md`'s `winze_recall` entry.
+
+This is a first data point, not the confidence bar itself: one session,
+self-authored ground truth, one fresh-subagent trial, no multi-day gap (the
+"cold" session was seconds later, not days), and no test under real corpus
+growth or concurrent writers. What it does establish: the failure mode found
+was retrieval ergonomics and write hygiene, not a defect in the
+typed-extraction model itself — and both are now fixed defaults/discipline
+rather than open questions.
+
 **Status: precondition 2 (perf) substantially cleared; precondition 1
-(memory-confidence) remains.** The design is fixed enough that the pointer
-question is answered and won't churn. With ingest now corpus-scoped, the
-wake-time read is viable; what still gates the build is confidence in
-winze-as-memory — the extraction-recall edge the LongMemEval-S spike exposed, on
-a write path (an agent writing its own context) that is different from and likely
-easier than the third-party-log extraction the spike measured, but which still
-needs its own confidence bar before a cold agent relies on it to know who it is.
+(memory-confidence) has a first positive result, not yet a cleared gate.** The
+design is fixed enough that the pointer question is answered and won't churn.
+With ingest now corpus-scoped, the wake-time read is viable; precondition 1
+now has real evidence in its favor (see above) rather than none, but a single
+same-day N=1 trial is not the bar this section originally called for — a
+multi-session, multi-day version of the same test (real elapsed time, real
+corpus growth in between) is the next step before treating this as cleared.
 
 ## See also
 

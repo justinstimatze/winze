@@ -36,7 +36,18 @@ implementation that drifts.
   existing memory. `force` writes anyway, and is meant to be used after reading
   what it matched, not instead of reading it.
 - **`winze_recall(query, limit?, brief_chars?)`** — hybrid BM25 + semantic
-  associative search, returning compact headlines.
+  associative search, returning compact headlines. Defaults: `limit=5`,
+  `brief_chars=500`. A brief cut short by `brief_chars` ends with `… [N more
+  chars — retry with brief_chars:M for the full text]` rather than a bare
+  ellipsis — a live cold-recall test (2026-08-29) found a caller that hit the
+  right entity at rank 1 and still reported "not found," because nothing said
+  digging further with a bigger `brief_chars` was possible. Write memories as
+  one fact per entity, not a multi-topic session dump: the same test found a
+  single blob diluted BM25/semantic ranking enough that unrelated small
+  entities outranked it on narrow queries — atomic entities fixed that half
+  of the failure, the hint fixed the other half. Together they took the same
+  8-question cold-recall test from 0/8 to 8/8. See
+  `docs/agent-identity-integration.md`'s precondition 1.
 - **`winze_update(var, note)`** — revise a memory's `Brief` in place, through
   the gate. The alternative it exists to prevent is storing a near-duplicate
   and leaving both.
