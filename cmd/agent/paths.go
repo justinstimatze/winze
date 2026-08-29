@@ -107,3 +107,23 @@ func storeRootConfigured() bool {
 	fi, err := os.Stat(filepath.Join(home(), "winze-memory"))
 	return err == nil && fi.IsDir()
 }
+
+// onsetterClaudeMD resolves which CLAUDE.md governs the onsetter write-time
+// gate on winze_remember/winze_update: the --onsetter-check override when set,
+// then $WINZE_AGENT_CLAUDE_MD, then the store's own root CLAUDE.md, beside
+// memory.go. Returns "" when none apply, so the gate can skip rather than
+// block — the same fail-open posture storeRootConfigured already established
+// for hooks where a store might not be fully set up yet.
+func onsetterClaudeMD() string {
+	if onsetterCheckOverride != "" {
+		return onsetterCheckOverride
+	}
+	if v := os.Getenv("WINZE_AGENT_CLAUDE_MD"); v != "" {
+		return v
+	}
+	p := filepath.Join(storeRoot(), "CLAUDE.md")
+	if _, err := os.Stat(p); err != nil {
+		return ""
+	}
+	return p
+}

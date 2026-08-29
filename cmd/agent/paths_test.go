@@ -162,3 +162,45 @@ func TestStoreRootConfigured(t *testing.T) {
 		t.Error("WINZE_STORE set: want true")
 	}
 }
+
+// TestOnsetterClaudeMDResolutionOrder pins the override-then-env-then-store-root
+// chain onsetterClaudeMD adds on top of storeRoot, and that it fails open (
+// returns "") rather than naming a path that does not exist, so
+// checkOnsetterGate can skip cleanly instead of erroring on a missing file.
+func TestOnsetterClaudeMDResolutionOrder(t *testing.T) {
+	clearStoreEnv(t)
+	t.Setenv("WINZE_AGENT_CLAUDE_MD", "")
+	prevOverride := onsetterCheckOverride
+	t.Cleanup(func() { onsetterCheckOverride = prevOverride })
+	onsetterCheckOverride = ""
+
+	store := t.TempDir()
+	t.Setenv("WINZE_STORE", store)
+
+	// No CLAUDE.md anywhere yet: fails open.
+	if got := onsetterClaudeMD(); got != "" {
+		t.Errorf("no CLAUDE.md exists: onsetterClaudeMD() = %q, want \"\"", got)
+	}
+
+	// The store's own root CLAUDE.md is the default once it exists.
+	storeCM := filepath.Join(store, "CLAUDE.md")
+	if err := os.WriteFile(storeCM, []byte("store"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := onsetterClaudeMD(); got != storeCM {
+		t.Errorf("store CLAUDE.md exists: onsetterClaudeMD() = %q, want %q", got, storeCM)
+	}
+
+	// $WINZE_AGENT_CLAUDE_MD outranks the store default, and need not exist on
+	// disk itself — the caller resolves it, this function only names it.
+	t.Setenv("WINZE_AGENT_CLAUDE_MD", "/somewhere/else/CLAUDE.md")
+	if got := onsetterClaudeMD(); got != "/somewhere/else/CLAUDE.md" {
+		t.Errorf("with WINZE_AGENT_CLAUDE_MD set: onsetterClaudeMD() = %q, want /somewhere/else/CLAUDE.md", got)
+	}
+
+	// --onsetter-check outranks everything, including the env var.
+	onsetterCheckOverride = "/forced/CLAUDE.md"
+	if got := onsetterClaudeMD(); got != "/forced/CLAUDE.md" {
+		t.Errorf("with onsetterCheckOverride set: onsetterClaudeMD() = %q, want /forced/CLAUDE.md", got)
+	}
+}

@@ -45,6 +45,13 @@ implementation that drifts.
   so it is written as a `Conjecture` and carries no source quote by
   construction. `winze-query --schema <store>` lists the predicates.
 
+`winze_remember` and `winze_update` also run the note past onsetter's ask
+engine before committing — advisory, never blocking — so a rule-shaped memory
+("always do X", "never do Y") gets the same "want a hook instead?" prompt a
+`CLAUDE.md` edit would. See `docs/onsetter-integration.md` for which
+`CLAUDE.md` governs this and how to point it elsewhere with
+`$WINZE_AGENT_CLAUDE_MD` or `winze-agent serve --onsetter-check=<path>`.
+
 ## Creating one
 
 ```
@@ -137,3 +144,5 @@ that doc, and it exists because the rename removed the accidental cover.
 - `docs/multi-session-write-shape.md` — how N sessions write to one store
   without corrupting it or fighting in git.
 - `docs/mcp-tools.md` — the other MCP servers this project consumes.
+- `docs/onsetter-integration.md` — the write-time quality gate on
+  `winze_remember`/`winze_update`.

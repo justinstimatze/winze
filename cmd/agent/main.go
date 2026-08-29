@@ -37,7 +37,7 @@ func main() {
 	case "recall-hook":
 		runRecallHook()
 	case "serve":
-		runServe()
+		runServe(os.Args[2:])
 	case "capture-guard":
 		runCaptureGuard()
 	case "call":

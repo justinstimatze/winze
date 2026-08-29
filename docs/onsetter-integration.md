@@ -1,8 +1,10 @@
-# Feedback: onsetter should gate winze-agent writes, not just CLAUDE.md
+# onsetter gates winze-agent writes, not just CLAUDE.md
 
-Not yet implemented. This is a forward note for when memory moves fully onto
-`winze-agent` — recorded here rather than in CLAUDE.md's doc index because
-there's no code behind it yet.
+**Implemented 2026-08-28.** `winze_remember` and `winze_update` now run every
+note past onsetter's `ask` package before committing — advisory, not
+blocking. This file is kept as a doc rather than folded into `docs/agent.md`
+because it still records the design call (which `CLAUDE.md` governs a
+path-less write) and the history of the gap it closed.
 
 ## The gap
 
@@ -47,16 +49,42 @@ winze's migration that opens it.
 
 onsetter reported over dispatch that its ask-matching engine is now importable
 from outside onsetter — `github.com/justinstimatze/onsetter/ask`, formerly
-`internal/ask`. Two specifics that decide the shape of the work above:
+`internal/ask`. Two specifics decided the shape of the work below:
 
-- `ask.Match(e Edit)` now accepts `Edit.Path == ""`, so `when:` / `not:` /
+- `ask.Match(e Edit)` accepts `Edit.Path == ""`, so `when:` / `not:` /
   `has:` headers run against note-only content. An ask that also sets `in:` /
   `not-in:` / `untouched:` rejects with a Result saying it needs a path — by
   design, so those headers are simply not usable on a path-less call.
 - `discover.Roots(path)` was **not** changed and still needs a real path to
-  climb from, which a `winze_remember` call does not have. So the open question
-  is no longer "can onsetter see a path-less write" but "which `CLAUDE.md`
-  governs one" — the store's own, the calling cwd's, or an explicit setting.
-  That is a winze-side decision, and it is the only thing still unanswered.
+  climb from, which a `winze_remember` call does not have. So the open
+  question was no longer "can onsetter see a path-less write" but "which
+  `CLAUDE.md` governs one" — the store's own, the calling cwd's, or an
+  explicit setting. That decision is recorded below.
 
 Full writeup in onsetter's `INTEGRATIONS.md`.
+
+## Status: implemented (2026-08-28)
+
+`cmd/agent/onsetter_gate.go`'s `checkOnsetterGate(note string)` resolves a
+`CLAUDE.md`, parses its asks with `ask.ParseFile`, and calls `.Match(ask.Edit{New:
+note})` path-less on each one. `handleRemember` and `handleUpdate`
+(`cmd/agent/mcp.go`) call it before their `execAdd`/`execSetBrief` write, and
+append any fired asks' prose to the tool result — advisory, so a memory is
+never refused for being rule-shaped, only flagged for the calling agent to
+judge.
+
+**Which `CLAUDE.md` governs a path-less call** (`onsetterClaudeMD`,
+`cmd/agent/paths.go`), most explicit first:
+
+1. `winze-agent serve --onsetter-check=<path>` (or the same flag through
+   `winze-agent call`'s environment, since `call.go` shares the handlers).
+2. `$WINZE_AGENT_CLAUDE_MD`.
+3. The store's own root `CLAUDE.md`, beside `memory.go` (`storeRoot()`).
+4. None of the above: fails open — `checkOnsetterGate` no-ops rather than
+   blocking a write over a `CLAUDE.md` that was never configured. This
+   matches `storeRootConfigured`'s existing posture in `docs/agent.md`: a
+   hook with nowhere to redirect to should stay silent, not refuse.
+
+The `github.com/justinstimatze/onsetter/ask` dependency is pinned to the
+`v0.6.0` tag rather than floating, since onsetter is under active
+development.

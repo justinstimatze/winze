@@ -28,7 +28,9 @@ import (
 // All four are thin wrappers over the built winze-add / winze-query /
 // winze-edit binaries — the tested logic — so this server never reimplements
 // the corpus machinery.
-func runServe() {
+func runServe(args []string) {
+	onsetterCheckOverride = parseServeArgs(args).onsetterCheck
+
 	s := server.NewMCPServer("winze-agent", "0.1.0",
 		server.WithToolCapabilities(true),
 	)
@@ -138,6 +140,7 @@ func handleRemember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	if dd.block != nil {
 		return dd.block, nil
 	}
+	onsetterHits, _ := checkOnsetterGate(note) // advisory only; a parse error must not block a write
 
 	addOut, err := execAdd(note, role, title)
 	if err != nil {
@@ -147,7 +150,7 @@ func handleRemember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	if _, cerr := gitCommitMemory(note); cerr != nil {
 		return mcp.NewToolResultText(fmt.Sprintf("remembered (gate passed) but NOT committed: %v\n%s", cerr, strings.TrimSpace(addOut))), nil
 	}
-	return mcp.NewToolResultText(fmt.Sprintf("remembered as %s and committed.\n%s%s%s", role, strings.TrimSpace(addOut), dd.warning, links)), nil
+	return mcp.NewToolResultText(fmt.Sprintf("remembered as %s and committed.\n%s%s%s%s", role, strings.TrimSpace(addOut), dd.warning, links, onsetterAdvisory(onsetterHits))), nil
 }
 
 // dedupDecision is checkDedup's verdict on a candidate note: a non-nil block is
@@ -254,6 +257,7 @@ func handleUpdate(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	if t, ok := req.GetArguments()["title"].(string); ok {
 		title = strings.TrimSpace(t)
 	}
+	onsetterHits, _ := checkOnsetterGate(note) // advisory only; a parse error must not block a write
 
 	out, err := execSetBrief(varName, note, title)
 	if err != nil {
@@ -262,7 +266,7 @@ func handleUpdate(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	if _, cerr := gitCommitMemory("update " + varName); cerr != nil {
 		return mcp.NewToolResultText(fmt.Sprintf("updated %s (gate passed) but NOT committed: %v", varName, cerr)), nil
 	}
-	return mcp.NewToolResultText(fmt.Sprintf("updated %s and committed.\n%s", varName, strings.TrimSpace(out))), nil
+	return mcp.NewToolResultText(fmt.Sprintf("updated %s and committed.\n%s%s", varName, strings.TrimSpace(out), onsetterAdvisory(onsetterHits))), nil
 }
 
 // execSetBrief runs winze-edit set-brief to revise a memory's Brief (and
