@@ -121,6 +121,7 @@ func handleRemember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	if !ok || strings.TrimSpace(note) == "" {
 		return mcp.NewToolResultError("note: required string argument"), nil
 	}
+	appendRawLog("remember", "", note)
 	role := "Concept"
 	if r, ok := req.GetArguments()["role"].(string); ok && strings.TrimSpace(r) != "" {
 		role = strings.TrimSpace(r)
@@ -249,6 +250,7 @@ func handleUpdate(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 		return mcp.NewToolResultError("note: required string argument"), nil
 	}
 	varName = strings.TrimSpace(varName)
+	appendRawLog("update", varName, note)
 	title := ""
 	if t, ok := req.GetArguments()["title"].(string); ok {
 		title = strings.TrimSpace(t)

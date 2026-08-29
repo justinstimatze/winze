@@ -56,6 +56,17 @@ implementation that drifts.
   so it is written as a `Conjecture` and carries no source quote by
   construction. `winze-query --schema <store>` lists the predicates.
 
+`winze_remember` and `winze_update` also append the raw note text, verbatim,
+to `raw.jsonl` beside `memory.go` — before dedup, before the onsetter check,
+before the typed write even attempts. One shared file for the whole store
+today (no per-nick session files exist yet; see
+`docs/agent-identity-integration.md`). This is the MemPalace-shaped recovery
+path: a note that gets dedup-blocked, fails the build gate, or lands in a
+`Brief` a later `brief_chars` truncates is not gone, it is one grep away in
+this file. Best-effort by construction — a write failure here never blocks
+the real tool response — and it carries no schema and no build gate, so it
+costs nothing to have and nothing to maintain (`cmd/agent/rawlog.go`).
+
 `winze_remember` and `winze_update` also run the note past onsetter's ask
 engine before committing — advisory, never blocking — so a rule-shaped memory
 ("always do X", "never do Y") gets the same "want a hook instead?" prompt a
