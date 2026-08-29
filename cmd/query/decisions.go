@@ -131,3 +131,19 @@ func entityNamer(kb *kbIndex) func(string) string {
 		return v
 	}
 }
+
+// supersededSet returns the var names of every entity that appears as the
+// Object of a Supersedes claim — the set runHybrid downranks by default, so
+// a deliberately-replaced memory or decision does not outrank its current
+// replacement. Superseded, not deleted: the entity stays fully queryable,
+// and --include-superseded restores its natural rank.
+func supersededSet(kb *kbIndex) map[string]bool {
+	set := map[string]bool{}
+	for _, c := range kb.Claims {
+		if c.Predicate != "Supersedes" || c.Object == "" {
+			continue
+		}
+		set[c.Object] = true
+	}
+	return set
+}

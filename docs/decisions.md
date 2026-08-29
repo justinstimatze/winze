@@ -22,6 +22,22 @@ winze_link(from=NewerDecision, to=OlderDecision, relation="Supersedes",
            rationale="why the newer one replaces it")
 ```
 
+**Known gap (2026-08-28):** `Supersedes` is declared over `*Entity` slots
+(any role, on purpose — see `corpus/predicates.go`), but `winze_link` passes
+`from`/`to` straight through to `winze-add --subject`/`--object` with no
+type-directed resolution. A role-typed var (the common case — `winze_remember`
+defaults every memory to `Concept`) needs its embedded field named
+explicitly: `winze-add ... --subject NewerDecision.Entity --object
+OlderDecision.Entity`. The trip cycle's own codegen already solves this for
+its own writes (`slotExpr` in `cmd/metabolism/tripverdict.go`), but that
+logic is metabolism-internal and does not cover `cmd/add`'s general
+`--subject`/`--object` flags or `winze_link`. Until `cmd/add` gets an
+equivalent type-directed resolution (or `execLink` retries with `.Entity`
+appended on a build-gate failure shaped like this one), calling `winze_link`
+with `relation="Supersedes"` between two ordinary memories will fail the
+build gate unless the caller already knows to add `.Entity` — a real fix,
+not yet scheduled.
+
 `--decisions` walks the `Supersedes` graph and shows each **current** decision
 (one nothing supersedes) followed by the chain it replaced:
 
@@ -46,6 +62,11 @@ decisions — 1 current, tracing what each superseded:
   aren't a duplicate to merge away (that loses the history) — they're a chain.
   The `Supersedes` links mark which is current while keeping the older reasoning
   readable and reachable.
+- **The graph also feeds ranking, not just `--decisions`.** `winze-query
+  --hybrid` downranks (never excludes) anything named as the Object of a
+  Supersedes claim, so a superseded memory does not outrank its current
+  replacement in ordinary recall — restore its natural rank with
+  `--include-superseded`. See `docs/query.md`.
 
 The link is a `Conjecture` (winze's own assertion about which decision is
 current), not a `Provenance` — it carries a `Rationale`, no source `Quote`.

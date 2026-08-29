@@ -61,13 +61,7 @@ func rrfFuse(lexRank, semRank map[int]int) []fusedHit {
 	return out
 }
 
-// runHybrid fuses BM25 + semantic rankings, then applies the VERIFIED type
-// signal: --type filters results to a role with zero classification error
-// (the role compiled), and --expand returns each hit's typed claim
-// neighborhood so downstream reasoning gets the relationships, not just a prose
-// snippet. This is the "typed for retrieval, from the same source of truth as
-// typed for compilation" half — the type is a retrieval signal for free.
-func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut bool) {
+func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, includeSuperseded bool) {
 	canonRole := ""
 	if typeFilter != "" {
 		var ok bool
@@ -118,6 +112,12 @@ func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut bool)
 		}
 		fused = kept
 	}
+
+	// Staleness downrank: a superseded entity stays in the result set (this is
+	// retrieval, not deletion) but sinks below every non-superseded hit, so a
+	// deliberately-replaced memory does not outrank its current replacement.
+	fused = downrankSuperseded(kb, fused, includeSuperseded)
+
 	if len(fused) > 15 {
 		fused = fused[:15]
 	}
@@ -230,4 +230,31 @@ func rankStr(r int) string {
 		return "—"
 	}
 	return fmt.Sprintf("#%d", r)
+}
+
+// downrankSuperseded partitions fused into non-superseded hits followed by
+// superseded ones, each group keeping its relative order — a stable
+// demotion, not an exclusion, so a deliberately-replaced memory or decision
+// sinks below its current replacement without leaving the result set.
+// include restores each hit's natural RRF order (--include-superseded).
+// Pure and deterministic — the testable core of the staleness downrank,
+// independent of BM25/embeddings, the same reason rrfFuse is split out.
+func downrankSuperseded(kb *kbIndex, fused []fusedHit, include bool) []fusedHit {
+	if include {
+		return fused
+	}
+	superseded := supersededSet(kb)
+	if len(superseded) == 0 {
+		return fused
+	}
+	kept := make([]fusedHit, 0, len(fused))
+	stale := make([]fusedHit, 0, len(fused))
+	for _, f := range fused {
+		if superseded[kb.Entities[f.idx].VarName] {
+			stale = append(stale, f)
+		} else {
+			kept = append(kept, f)
+		}
+	}
+	return append(kept, stale...)
 }

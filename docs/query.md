@@ -7,6 +7,7 @@ go run ./cmd/query --semantic "machine that seems to understand but does not" . 
 go run ./cmd/query --hybrid "confirmation bias" .   # reciprocal-rank-fusion of BM25 + semantic into one list
 go run ./cmd/query --hybrid "consciousness" --type Hypothesis .  # type-aware: filter hybrid results to a verified role (zero-classification-error)
 go run ./cmd/query --hybrid "apophenia" --expand .  # append each hit's typed claim neighborhood (predicate → neighbor + role) — reasoning-ready context
+go run ./cmd/query --hybrid "winze positioning" --include-superseded .  # by default a superseded entity (object of a Supersedes claim) is downranked, not excluded; this restores its natural rank
 go run ./cmd/query --dupes ConfirmationBias .       # structural twins: same-role entities sharing this one's claim-neighborhood (coin-time dedup)
 go run ./cmd/query --theories "apophenia" .        # competing theories of a concept
 go run ./cmd/query --claims "Chalmers" .           # all claims involving an entity

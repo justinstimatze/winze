@@ -448,6 +448,17 @@ func printTripReport(report TripReport, jsonOut bool) {
 // cycle has no source-grounding step, so Person-attribution claims it
 // generates would be fabrications. See feedback memory
 // feedback_trip_promotion_fabrication.md.
+//
+// Supersedes is listed here AND in tripBannedPredicates, for a third reason
+// beyond Person-attribution and beyond "trip's home turf": a fabricated
+// supersession is retrieval-consequential, not just a false-provenance risk
+// — cmd/query/hybrid.go downranks whatever a Supersedes claim names as
+// superseded, so a trip hallucination here would bury a real, current
+// memory. It has a slot entry specifically so the ban has a live target;
+// TestTripCompatiblePredicates fails a ban with no predicateSlots entry as a
+// dead one, which the test is right to reject — declaring a predicate
+// reachable-in-principle and then banning it, both live-tested, is a
+// stronger record of the decision than leaving it silently absent.
 var predicateSlots = map[string]struct {
 	Subject string
 	Object  string
@@ -461,6 +472,7 @@ var predicateSlots = map[string]struct {
 	"TheoryOf":                {"Hypothesis", "Concept"},
 	"CommentaryOn":            {"Concept", "Concept"},
 	"StructurallyAnalogousTo": {"Entity", "Entity"},
+	"Supersedes":              {"Entity", "Entity"},
 }
 
 // anyRole is the slot value for a predicate declared over *Entity. Such a
@@ -525,17 +537,33 @@ func compatiblePredicates(roleA, roleB string) []string {
 }
 
 // tripBannedPredicates lists predicates the trip cycle MUST NOT promote.
-// The line drawn here: ban predicates whose Subject is a Person and whose
-// semantics assert intellectual commitment or biographical fact about
-// that Person. Fabricating any of these is a mirror-source-commitments
-// violation: the corpus would assert "X said Y" or "A was influenced by
-// B" without grounding evidence.
+// Two distinct rationales populate this list — a predicate can land here for
+// either one:
 //
-// Currently bans:
-//   - Proposes, Disputes, Accepts: Person → Hypothesis. Assert that a
+//  1. Person-attribution fabrication. The line: ban predicates whose Subject
+//     is a Person and whose semantics assert intellectual commitment or
+//     biographical fact about that Person. Fabricating any of these is a
+//     mirror-source-commitments violation: the corpus would assert "X said
+//     Y" or "A was influenced by B" without grounding evidence.
+//
+//     Currently bans:
+//     - Proposes, Disputes, Accepts: Person → Hypothesis. Assert that a
 //     specific Person committed to a position on a hypothesis.
-//   - InfluencedBy: Person → Person. Asserts a biographical claim about
+//     - InfluencedBy: Person → Person. Asserts a biographical claim about
 //     intellectual influence between two real people.
+//
+//  2. Retrieval-consequential fabrication. Supersedes is banned even though
+//     it asserts nothing about a Person: a fabricated "DecisionX Supersedes
+//     DecisionY" would not just misassert provenance the way category 1
+//     does — cmd/query/hybrid.go's ranking downranks whatever a Supersedes
+//     claim names as superseded, so a trip hallucination here would bury a
+//     real, current memory behind a hallucinated replacement. Not currently
+//     reachable anyway (Supersedes has no predicateSlots entry, so the trip
+//     emit menu never offers it — see predicateSlots' own doc comment), but
+//     listed here too so the ban survives if a future predicateSlots entry
+//     is added without re-deriving this risk from scratch, the same gap
+//     that let StructurallyAnalogousTo's slot-widening walk past this list
+//     once (see the role-level guard in tripCompatiblePredicates).
 //
 // Knowingly permitted (with the gap noted in feedback memory):
 //   - TheoryOf, CommentaryOn, BelongsTo, DerivedFrom: Concept/Hypothesis
@@ -560,6 +588,7 @@ var tripBannedPredicates = map[string]bool{
 	"Disputes":     true,
 	"Accepts":      true,
 	"InfluencedBy": true,
+	"Supersedes":   true,
 }
 
 // tripCompatiblePredicates is compatiblePredicates with attribution

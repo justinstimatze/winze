@@ -69,3 +69,40 @@ func TestDecisionChainsCycleTerminates(t *testing.T) {
 		t.Errorf("pure cycle has no head, want 0 chains, got %+v", got)
 	}
 }
+
+// TestSupersededSet pins supersededSet to the same Supersedes graph
+// decisionChains walks: the Object of every Supersedes claim is superseded,
+// the current head (C, never an Object) is not, and an unrelated predicate
+// contributes nothing.
+func TestSupersededSet(t *testing.T) {
+	kb := kbWith([]claimRecord{
+		{Predicate: "Supersedes", Subject: "C", Object: "B"},
+		{Predicate: "Supersedes", Subject: "B", Object: "A"},
+		{Predicate: "RelatesTo", Subject: "X", Object: "Y"}, // ignored
+	}, map[string]string{"A": "Alpha", "B": "Beta", "C": "Gamma"})
+
+	got := supersededSet(kb)
+	for _, v := range []string{"A", "B"} {
+		if !got[v] {
+			t.Errorf("supersededSet missing %q", v)
+		}
+	}
+	if got["C"] {
+		t.Error("C is the current head (never an Object) but was marked superseded")
+	}
+	if got["X"] || got["Y"] {
+		t.Error("a RelatesTo claim should not contribute to the superseded set")
+	}
+}
+
+// TestSupersededSetEmpty pins the no-Supersedes-claims case to an empty,
+// non-nil-vs-nil-agnostic result — downrankSuperseded relies on len()==0
+// short-circuiting rather than a nil check.
+func TestSupersededSetEmpty(t *testing.T) {
+	kb := kbWith([]claimRecord{
+		{Predicate: "RelatesTo", Subject: "X", Object: "Y"},
+	}, map[string]string{"X": "X", "Y": "Y"})
+	if got := supersededSet(kb); len(got) != 0 {
+		t.Errorf("supersededSet with no Supersedes claims = %v, want empty", got)
+	}
+}

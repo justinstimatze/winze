@@ -48,3 +48,26 @@ func TestConjectureHasNoQuoteField(t *testing.T) {
 		t.Fatal("Conjecture must NOT have a Quote field — that field's absence is the fence against fabricated attribution")
 	}
 }
+
+// TestSupersedesAcceptsAnyEntityRoleAndConjecture pins Supersedes' two
+// deliberate properties: its slots are *Entity, so a Concept can supersede a
+// Hypothesis (or any other role) without type-mismatch, and — like every
+// predicate winze_link writes — it accepts a Conjecture in its Attribution
+// slot rather than requiring a sourced Provenance, since no external source
+// ever states that one of this project's own decisions replaces another.
+func TestSupersedesAcceptsAnyEntityRoleAndConjecture(t *testing.T) {
+	newer := Hypothesis{&Entity{ID: "newer", Name: "Newer"}}
+	older := Concept{&Entity{ID: "older", Name: "Older"}}
+	c := Supersedes{
+		Subject: newer.Entity,
+		Object:  older.Entity,
+		Prov: Conjecture{
+			GeneratedBy: "winze-link",
+			From:        []*Entity{newer.Entity, older.Entity},
+			Rationale:   "the newer decision replaces the older one",
+		},
+	}
+	if !c.Prov.Conjectural() {
+		t.Error("a Supersedes claim backed by a Conjecture should report Conjectural()")
+	}
+}

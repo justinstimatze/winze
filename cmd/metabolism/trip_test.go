@@ -716,17 +716,19 @@ func TestCompatiblePredicates(t *testing.T) {
 		roleB string
 		want  []string
 	}{
-		// StructurallyAnalogousTo is declared over *Entity, so it is compatible
-		// with every role pair — including Place↔Person, which has no other
-		// predicate. That is the point of the widening: an analogy says nothing
-		// about what its endpoints are. Whether trip may *use* it on a given
-		// pair is a separate question, answered by tripCompatiblePredicates.
-		{"Person", "Person", []string{"InfluencedBy", "StructurallyAnalogousTo"}},
-		{"Person", "Hypothesis", []string{"Accepts", "Disputes", "Proposes", "StructurallyAnalogousTo"}},
-		{"Hypothesis", "Person", []string{"Accepts", "Disputes", "Proposes", "StructurallyAnalogousTo"}}, // symmetric
-		{"Hypothesis", "Concept", []string{"StructurallyAnalogousTo", "TheoryOf"}},
-		{"Concept", "Concept", []string{"BelongsTo", "CommentaryOn", "DerivedFrom", "StructurallyAnalogousTo"}},
-		{"Place", "Person", []string{"StructurallyAnalogousTo"}},
+		// StructurallyAnalogousTo and Supersedes are both declared over
+		// *Entity, so both are compatible with every role pair — including
+		// Place↔Person, which has no other predicate. That is the point of the
+		// widening: neither predicate says anything about what its endpoints
+		// are. Whether trip may *use* either on a given pair is a separate
+		// question, answered by tripCompatiblePredicates (Supersedes is banned
+		// there regardless of role pair).
+		{"Person", "Person", []string{"InfluencedBy", "StructurallyAnalogousTo", "Supersedes"}},
+		{"Person", "Hypothesis", []string{"Accepts", "Disputes", "Proposes", "StructurallyAnalogousTo", "Supersedes"}},
+		{"Hypothesis", "Person", []string{"Accepts", "Disputes", "Proposes", "StructurallyAnalogousTo", "Supersedes"}}, // symmetric
+		{"Hypothesis", "Concept", []string{"StructurallyAnalogousTo", "Supersedes", "TheoryOf"}},
+		{"Concept", "Concept", []string{"BelongsTo", "CommentaryOn", "DerivedFrom", "StructurallyAnalogousTo", "Supersedes"}},
+		{"Place", "Person", []string{"StructurallyAnalogousTo", "Supersedes"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.roleA+"-"+tc.roleB, func(t *testing.T) {
@@ -892,5 +894,23 @@ func TestAnalogyPredicatesReachTrip(t *testing.T) {
 	// Pin the specific predicate this test was written for.
 	if !offered["StructurallyAnalogousTo"] {
 		t.Error("StructurallyAnalogousTo not offered for a Hypothesis pair — the analogy predicate is dark")
+	}
+}
+
+// TestSupersedesIsTripBanned locks in Phase 2's explicit trip-eligibility
+// decision: the trip cycle must never generate a Supersedes claim, because
+// cmd/query/hybrid.go's ranking downranks whatever a Supersedes claim names
+// as superseded, so a fabricated one would bury a real, current memory
+// behind a hallucinated replacement. Checked directly (membership in
+// tripBannedPredicates) and behaviorally (absent from the emit menu for a
+// role pair it would otherwise qualify for, since its slots are *Entity).
+func TestSupersedesIsTripBanned(t *testing.T) {
+	if !tripBannedPredicates["Supersedes"] {
+		t.Fatal("Supersedes must be in tripBannedPredicates — a trip-fabricated supersession is retrieval-consequential, not just a provenance risk")
+	}
+	for _, p := range tripCompatiblePredicates("Concept", "Concept") {
+		if p == "Supersedes" {
+			t.Error("tripCompatiblePredicates(\"Concept\", \"Concept\") offers Supersedes — the ban list is not filtering it")
+		}
 	}
 }

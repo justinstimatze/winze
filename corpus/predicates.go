@@ -680,3 +680,29 @@ type AbsorbedAlternate UnaryClaim[*Entity]
 // later addition if a source forces it). Not functional — one goal is advanced
 // by many Concepts, and one Concept may advance more than one goal.
 type AdvancesGoal BinaryRelation[Concept, LearningGoal]
+
+// Supersedes: the subject decision or memory replaces the object as the
+// current one. Convention: Subject is the newer decision, Object the one it
+// replaces (cmd/query/decisions.go's decisionChains walks this graph to
+// answer "what's current" and "what did it replace"). Written by winze_link
+// as the agent's own Conjecture — no source states that one internal
+// decision replaces another, so this predicate never carries a sourced
+// Provenance with an invented Quote.
+//
+// Slots are *Entity, not a narrower role, for the same reason
+// StructurallyAnalogousTo widened: a decision worth recording is not
+// confined to one role. A Hypothesis can supersede an earlier Hypothesis: a
+// Concept can supersede an earlier Concept naming the same design call.
+// Constraining the roles would either reject real supersessions or force
+// them into a predicate that lies about what changed.
+//
+// Deliberately excluded from cmd/metabolism's trip cycle
+// (tripBannedPredicates) and from buildIngestPrompt's sourced-extraction
+// menu: trip has no source-grounding step, so a fabricated "DecisionX
+// Supersedes DecisionY" would not just misassert provenance the way other
+// banned predicates do — it would make cmd/query/hybrid.go's ranking
+// downrank or bury a real, current memory behind a hallucinated
+// replacement. Sourced ingest never sees this predicate either, because no
+// external article states that one entry in this project's own decision
+// log replaces another.
+type Supersedes BinaryRelation[*Entity, *Entity]
