@@ -89,6 +89,7 @@ stays small so it can stay current. To pull a topic yourself:
 - `docs/observatory.md` — `winze-observatory`: standalone fleet dashboard
 - `docs/benchmark.md` — `winze-benchmark`: retrieval benchmark (grep/bm25/defn/ast)
 - `docs/mcp-tools.md` — defn / adit / wikipedia-zim
+- `docs/memtool.md` — `integrations/memtool`: winze as the backend for Anthropic's native `memory_20250818` tool; `cmd/memtooldemo` is the live round-trip demo
 - `docs/multi-session-write-shape.md`, `docs/typed-citation.md` — the write shape
 - `docs/docs-recall.md` — how this recall works
 

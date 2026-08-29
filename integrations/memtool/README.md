@@ -37,17 +37,28 @@ import them directly even if it wanted to.
 design, and this package respects that by construction rather than adding a
 special case.
 
+## The conversation loop
+
+The native `memory_20250818` tool has no `input_schema` — Anthropic's API
+supplies it server-side — so it does not fit the SDK's generic `BetaTool`/
+`BetaToolRunner` abstraction, which always requires one. `loop.go`'s `Loop`
+is the hand-rolled equivalent for this one tool: it declares
+`anthropic.BetaMemoryTool20250818Param` in the request's `tools`, and for
+each returned `"memory"` tool_use block, re-marshals its `Input` (an `any`)
+to JSON and unmarshals it into `anthropic.BetaMemoryTool20250818CommandUnion`
+before handing it to `Executor.Execute` and appending the `tool_result`.
+`loop_test.go` exercises that JSON round-trip directly — the closest a unit
+test gets to what a live response actually hands back — without touching the
+network.
+
 ## What's not built yet
 
-This is the executor (`Executor.Execute`), not the conversation loop. The
-native `memory_20250818` tool has no `input_schema` — Anthropic's API
-supplies it server-side — so it does not fit the SDK's generic `BetaTool`/
-`BetaToolRunner` abstraction, which always requires one. Wiring this into a
-live conversation means declaring `anthropic.BetaMemoryTool20250818Param` in
-a request's `tools`, then routing each returned `"memory"` tool_use block's
-input through `Execute` by hand and appending a `tool_result`. That loop, and
-an end-to-end demo proving one Claude conversation round-trips through it
-into winze, is the next step — not yet built, since it costs real API calls
-and is a good target for `docs/agent-identity-integration.md`'s own
-precondition-1 kind of validation, not something to assume works from the
-executor's unit tests alone.
+An end-to-end demo proving one live Claude conversation round-trips through
+this into winze — a fact written via the memory tool in one conversation,
+recalled correctly by a second conversation that shares no message history —
+lives at `cmd/memtooldemo` and is written, but has not yet been *run*: it
+costs real, billed API calls (`ANTHROPIC_API_KEY` required), so building and
+testing it is as far as this went without that explicit go-ahead. Running it
+is the actual precondition-1-shaped validation
+`docs/agent-identity-integration.md` calls for — passing unit tests on
+`Executor` and `Loop` is not the same claim as a live round trip succeeding.
