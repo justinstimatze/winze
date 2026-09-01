@@ -30,11 +30,15 @@ func TestBudgetGuard_InvalidEnvIgnored(t *testing.T) {
 }
 
 func TestBudgetGuard_AllowsWithinCap(t *testing.T) {
-	t.Setenv("METABOLISM_BUDGET_CENTS", "100")
+	// Cap high enough that pacedAllowanceCents' day-1 floor (1/daysInMonth
+	// of the cap, as low as 1/28 in February) still clears 13¢ -- this test
+	// is about the flat-cap check, not pacing (which has its own dedicated
+	// tests below), and a 100¢ cap made it flake on the 1st of every month.
+	t.Setenv("METABOLISM_BUDGET_CENTS", "1000")
 	g := loadBudgetGuard(t.TempDir())
 	ok, _ := g.allow("sense", 13)
 	if !ok {
-		t.Errorf("13¢ should fit in 100¢ cap")
+		t.Errorf("13¢ should fit in 1000¢ cap")
 	}
 }
 
