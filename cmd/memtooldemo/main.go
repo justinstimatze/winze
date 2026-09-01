@@ -1,4 +1,4 @@
-package memtooldemo
+package main
 
 import (
 	"context"
