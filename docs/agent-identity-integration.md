@@ -302,10 +302,30 @@ carried a leaked `<task-notification>` block and 6 carried a full host-injected
 compaction-resume summary — noise `laterAskNoise`/`cleanAsk` didn't yet strip.
 Fixed in `cmd/longmemeval/transcript.go`; see its tests.
 
-So the next step here isn't a `--hybrid` scoring pass in isolation — it's
-telling the two failure modes apart at scale (how many of the 50 are coverage
-vs. genuine collision) before deciding whether either is worth building
-against.
+**Sized, 2026-09-02.** Deterministic, zero API cost: for each of the 50 real
+misses, counted content-word overlap between the held-out probe and the
+session's own stored note (a crude but free proxy for "does the note even
+describe this"). 32 of 50 (64%) share zero content words with their own note —
+confident coverage gaps. Of the 18 that share at least one, hand-checking the 8
+with the strongest overlap against their full briefs found 4 were coincidence
+(a shared generic word like "elegant" or "let's," no real topical link once the
+brief is actually read) and 3 were genuine — confirmed absent from the top 15
+on both signals via `winze-query -hybrid`. All three genuine misses are the
+*same* mechanism: a "spin out a project, pick a name, check for collisions"
+session losing to a different session ending the same way. Querying one
+project-naming session's own probe surfaces *three other* project-naming
+sessions in the top 15 before it does — a cluster diluting itself, not a single
+pairwise collision.
+
+So the two modes from above are not comparably sized. Coverage gaps are the
+overwhelming majority of the residual — at least 47 of 50 (94%). The
+recurring-idiom collision is real and confirmed, but narrow: 3 of 50 (6%), one
+identifiable pattern. That changes what's worth building against: a `--hybrid`
+change aimed at the collision case would touch a small, specific slice: it
+would not move the 43% headline miss rate, because that rate is dominated by
+notes that never described what got probed. The higher-leverage fix, if this
+is worth pursuing further, is on the write side — a larger or better-allocated
+note budget — not the retrieval side.
 
 **A gate that had stopped gating.** This pass refused 0 of 140 writes where the
 pre-fix run at 20 refused 2 — `novelSpecifics` was counting a bare date as
