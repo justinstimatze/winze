@@ -110,148 +110,24 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 
 	// Replay oldest-first so each note is written into a store holding every
 	// earlier note and none of the later ones -- the growth the design doc asks for.
-	vars := make([]string, len(picked))
-	var rejected []string
-	writeStart := time.Now()
-	for i, s := range picked {
-		out, err := run("call", "winze_remember", `{"note":`+mustJSON(noteFor(s))+`}`)
-		if err != nil {
-			t.Errorf("write %d (%s) failed to execute: %v\n%s", i, s.ID[:8], err, out)
-			continue
-		}
-		if vars[i] = createdVar(out); vars[i] == "" {
-			rejected = append(rejected, fmt.Sprintf("%s %q — %s",
-				s.Start.Format("2006-01-02"), s.Title, dedupReason(out)))
-		}
-	}
-	t.Logf("%d writes in %s; %d stored, %d rejected before storage",
-		len(picked), time.Since(writeStart).Round(time.Second),
-		len(picked)-len(rejected), len(rejected))
-	for _, r := range rejected {
-		t.Logf("  rejected: %s", r)
-	}
+	vars, rejected := writeSessions(t, run, picked)
+	assertRawTier(t, store, picked, rejected)
 
-	// The raw tier is Phase 3a's whole claim: appendRawLog runs on the fourth
-	// line of handleRemember, before the dedup gate, so a note the gate refuses
-	// is meant to survive anyway. Until this replay there was no rejection to
-	// test that against -- rawlog.go had never captured a single entry in
-	// production. Assert it here, where writes were actually refused.
-	rawPath := filepath.Join(store, "raw.jsonl")
-	rawBytes, err := os.ReadFile(rawPath)
-	if err != nil {
-		t.Fatalf("raw tier absent at %s: %v", rawPath, err)
-	}
-	rawLines := strings.Count(strings.TrimSpace(string(rawBytes)), "\n") + 1
-	if rawLines != len(picked) {
-		t.Errorf("raw tier holds %d entries, want %d (one per attempted write)", rawLines, len(picked))
-	}
-	for _, r := range rejected {
-		title, _, _ := strings.Cut(strings.TrimPrefix(r[11:], `"`), `"`)
-		if !strings.Contains(string(rawBytes), title) {
-			t.Errorf("rejected note %q is not in the raw tier — it is genuinely lost", title)
-		}
-	}
-	t.Logf("raw tier: %d entries for %d attempted writes; all %d rejected notes recoverable",
-		rawLines, len(picked), len(rejected))
-
-	// The store is now at full size. Probe each stored note twice.
-	//
-	// TITLE is the note's own first line, so a hit says the store can find a
-	// memory by its own words -- necessary, but nearer a lookup than a recall.
-	// LATER is a mid-session user turn that was never written into any note, so
-	// a hit says retrieval bridged from wording the store has never seen. That
-	// second number is the one worth having; the first is its control.
-	probe := func(query, want string) (int, error) {
-		payload := fmt.Sprintf(`{"query":%s,"limit":%d,"brief_chars":0}`, mustJSON(query), len(picked))
-		out, err := run("call", "winze_recall", payload)
-		if err != nil {
-			return 0, fmt.Errorf("%v\n%s", err, out)
-		}
-		var hits recallHits
-		if err := json.Unmarshal([]byte(out), &hits); err != nil {
-			return 0, fmt.Errorf("unparseable JSON: %v\n%s", err, out)
-		}
-		return rankOf(hits, want), nil
-	}
-
-	// WINZE_SELFRECALL_MANIFEST, when set, dumps one JSON line per session with
-	// the exact query text used for each probe and its var name -- the detail a
-	// summary line can't carry, needed to replay one session's probe by hand
-	// against the persistent store (WINZE_SELFRECALL_STORE) after the test exits.
-	var manifest *os.File
-	if p := os.Getenv("WINZE_SELFRECALL_MANIFEST"); p != "" {
-		manifest, err = os.Create(p)
-		if err != nil {
-			t.Fatalf("creating manifest %s: %v", p, err)
-		}
-		defer manifest.Close()
-	}
-
-	var titleFound, titleMiss, titleRankSum int
-	var laterFound, laterMiss, laterRankSum, noLater int
-	t.Logf("%-4s %-12s %-6s %-6s %-6s %s", "idx", "date", "after", "title", "later", "session")
-	for i, s := range picked {
-		if vars[i] == "" {
-			continue
-		}
-		titleRank, err := probe(s.Title, vars[i])
-		if err != nil {
-			t.Errorf("title probe %d: %v", i, err)
-			continue
-		}
-		if titleRank == 0 {
-			titleMiss++
-		} else {
-			titleFound++
-			titleRankSum += titleRank
-		}
-
-		laterRank, laterLabel := 0, "n/a"
-		if q := s.LaterAsk(); q != "" {
-			if len(q) > 400 {
-				q = q[:400]
-			}
-			laterRank, err = probe(q, vars[i])
-			if err != nil {
-				t.Errorf("later probe %d: %v", i, err)
-				continue
-			}
-			laterLabel = rankLabel(laterRank)
-			if laterRank == 0 {
-				laterMiss++
-			} else {
-				laterFound++
-				laterRankSum += laterRank
-			}
-		} else {
-			noLater++
-		}
-		t.Logf("%-4d %-12s %-6d %-6s %-6s %s", i, s.Start.Format("2006-01-02"),
-			len(picked)-1-i, rankLabel(titleRank), laterLabel, s.Title)
-		if manifest != nil {
-			laterQ := s.LaterAsk()
-			if len(laterQ) > 400 {
-				laterQ = laterQ[:400]
-			}
-			rec, _ := json.Marshal(map[string]any{
-				"idx": i, "date": s.Start.Format("2006-01-02"), "title": s.Title, "var": vars[i],
-				"title_rank": titleRank, "later_rank": laterRank, "later_ask": laterQ,
-			})
-			manifest.Write(append(rec, '\n'))
-		}
-	}
-	if titleFound == 0 {
-		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", titleMiss)
+	// The store is now at full size. Probe each stored note twice; see probeAll's
+	// doc comment for what TITLE and LATER each establish.
+	title, later, noLater := probeAll(t, run, picked, vars, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
+	if title.found == 0 {
+		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", title.miss)
 	}
 	t.Logf("TITLE PROBE: %d/%d recalled, mean rank %.2f, %d never surfaced",
-		titleFound, titleFound+titleMiss, float64(titleRankSum)/float64(titleFound), titleMiss)
-	if laterFound == 0 {
+		title.found, title.found+title.miss, title.meanRank(), title.miss)
+	if later.found == 0 {
 		t.Logf("LATER PROBE: nothing surfaced across %d probes (%d sessions had no second ask)",
-			laterMiss, noLater)
+			later.miss, noLater)
 	} else {
 		t.Logf("LATER PROBE: %d/%d recalled from text never written into a note, mean rank %.2f, "+
 			"%d never surfaced, %d sessions had no second ask",
-			laterFound, laterFound+laterMiss, float64(laterRankSum)/float64(laterFound), laterMiss, noLater)
+			later.found, later.found+later.miss, later.meanRank(), later.miss, noLater)
 	}
 	t.Logf("write-rejection rate %d/%d (%.0f%%) at store size %d",
 		len(rejected), len(picked), 100*float64(len(rejected))/float64(len(picked)), len(picked))
@@ -403,4 +279,163 @@ func selfRecallCount() int {
 		}
 	}
 	return selfRecallN
+}
+
+// probeStats tallies one probe's outcomes across the replay -- pulled out of
+// TestSelfRecallDecaysWithCorpusGrowth so the per-session loop has one thing
+// to update instead of three counters threaded through by hand.
+type probeStats struct {
+	found, miss, rankSum int
+}
+
+func (p *probeStats) record(rank int) {
+	if rank == 0 {
+		p.miss++
+	} else {
+		p.found++
+		p.rankSum += rank
+	}
+}
+
+func (p probeStats) meanRank() float64 {
+	if p.found == 0 {
+		return 0
+	}
+	return float64(p.rankSum) / float64(p.found)
+}
+
+// assertRawTier is Phase 3a's whole claim: appendRawLog runs on the fourth
+// line of handleRemember, before the dedup gate, so a note the gate refuses
+// is meant to survive anyway. Pulled out of TestSelfRecallDecaysWithCorpusGrowth
+// alongside writeSessions, which is the only caller that has a rejected list
+// worth checking this against.
+func assertRawTier(t *testing.T, store string, picked []*transcriptSession, rejected []string) {
+	t.Helper()
+	rawPath := filepath.Join(store, "raw.jsonl")
+	rawBytes, err := os.ReadFile(rawPath)
+	if err != nil {
+		t.Fatalf("raw tier absent at %s: %v", rawPath, err)
+	}
+	rawLines := strings.Count(strings.TrimSpace(string(rawBytes)), "\n") + 1
+	if rawLines != len(picked) {
+		t.Errorf("raw tier holds %d entries, want %d (one per attempted write)", rawLines, len(picked))
+	}
+	for _, r := range rejected {
+		title, _, _ := strings.Cut(strings.TrimPrefix(r[11:], `"`), `"`)
+		if !strings.Contains(string(rawBytes), title) {
+			t.Errorf("rejected note %q is not in the raw tier — it is genuinely lost", title)
+		}
+	}
+	t.Logf("raw tier: %d entries for %d attempted writes; all %d rejected notes recoverable",
+		rawLines, len(picked), len(rejected))
+}
+
+// probeAll runs both probes (title, then LaterAsk) against every stored
+// session and optionally dumps a manifest -- pulled out of
+// TestSelfRecallDecaysWithCorpusGrowth, which had grown to interleave the
+// probe calls, the manifest dump, and three counters in one loop.
+//
+// TITLE is the note's own first line, so a hit says the store can find a
+// memory by its own words -- necessary, but nearer a lookup than a recall.
+// LATER is a mid-session user turn that was never written into any note, so
+// a hit says retrieval bridged from wording the store has never seen. That
+// second number is the one worth having; the first is its control.
+func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, vars []string, manifestPath string) (title, later probeStats, noLater int) {
+	t.Helper()
+	probe := func(query, want string) (int, error) {
+		payload := fmt.Sprintf(`{"query":%s,"limit":%d,"brief_chars":0}`, mustJSON(query), len(picked))
+		out, err := run("call", "winze_recall", payload)
+		if err != nil {
+			return 0, fmt.Errorf("%v\n%s", err, out)
+		}
+		var hits recallHits
+		if err := json.Unmarshal([]byte(out), &hits); err != nil {
+			return 0, fmt.Errorf("unparseable JSON: %v\n%s", err, out)
+		}
+		return rankOf(hits, want), nil
+	}
+
+	// WINZE_SELFRECALL_MANIFEST, when set, dumps one JSON line per session with
+	// the exact query text used for each probe and its var name -- the detail a
+	// summary line can't carry, needed to replay one session's probe by hand
+	// against the persistent store (WINZE_SELFRECALL_STORE) after the test exits.
+	var manifest *os.File
+	if manifestPath != "" {
+		var err error
+		manifest, err = os.Create(manifestPath)
+		if err != nil {
+			t.Fatalf("creating manifest %s: %v", manifestPath, err)
+		}
+		defer manifest.Close()
+	}
+
+	t.Logf("%-4s %-12s %-6s %-6s %-6s %s", "idx", "date", "after", "title", "later", "session")
+	for i, s := range picked {
+		if vars[i] == "" {
+			continue
+		}
+		titleRank, err := probe(s.Title, vars[i])
+		if err != nil {
+			t.Errorf("title probe %d: %v", i, err)
+			continue
+		}
+		title.record(titleRank)
+
+		laterRank, laterLabel := 0, "n/a"
+		if q := s.LaterAsk(); q != "" {
+			if len(q) > 400 {
+				q = q[:400]
+			}
+			laterRank, err = probe(q, vars[i])
+			if err != nil {
+				t.Errorf("later probe %d: %v", i, err)
+				continue
+			}
+			laterLabel = rankLabel(laterRank)
+			later.record(laterRank)
+		} else {
+			noLater++
+		}
+		t.Logf("%-4d %-12s %-6d %-6s %-6s %s", i, s.Start.Format("2006-01-02"),
+			len(picked)-1-i, rankLabel(titleRank), laterLabel, s.Title)
+		if manifest != nil {
+			laterQ := s.LaterAsk()
+			if len(laterQ) > 400 {
+				laterQ = laterQ[:400]
+			}
+			rec, _ := json.Marshal(map[string]any{
+				"idx": i, "date": s.Start.Format("2006-01-02"), "title": s.Title, "var": vars[i],
+				"title_rank": titleRank, "later_rank": laterRank, "later_ask": laterQ,
+			})
+			manifest.Write(append(rec, '\n'))
+		}
+	}
+	return title, later, noLater
+}
+
+// writeSessions replays picked sessions oldest-first through winze_remember,
+// pulled out of TestSelfRecallDecaysWithCorpusGrowth so the write phase and
+// the probe phase are each one readable function instead of one long one.
+func writeSessions(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession) (vars []string, rejected []string) {
+	t.Helper()
+	vars = make([]string, len(picked))
+	writeStart := time.Now()
+	for i, s := range picked {
+		out, err := run("call", "winze_remember", `{"note":`+mustJSON(noteFor(s))+`}`)
+		if err != nil {
+			t.Errorf("write %d (%s) failed to execute: %v\n%s", i, s.ID[:8], err, out)
+			continue
+		}
+		if vars[i] = createdVar(out); vars[i] == "" {
+			rejected = append(rejected, fmt.Sprintf("%s %q — %s",
+				s.Start.Format("2006-01-02"), s.Title, dedupReason(out)))
+		}
+	}
+	t.Logf("%d writes in %s; %d stored, %d rejected before storage",
+		len(picked), time.Since(writeStart).Round(time.Second),
+		len(picked)-len(rejected), len(rejected))
+	for _, r := range rejected {
+		t.Logf("  rejected: %s", r)
+	}
+	return vars, rejected
 }
