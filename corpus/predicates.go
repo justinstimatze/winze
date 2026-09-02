@@ -706,3 +706,29 @@ type AdvancesGoal BinaryRelation[Concept, LearningGoal]
 // external article states that one entry in this project's own decision
 // log replaces another.
 type Supersedes BinaryRelation[*Entity, *Entity]
+
+// RelatesTo: a general see-also between two entities, asserted by winze
+// itself rather than mirrored from a source. This is winze_link's documented
+// default relation (docs/agent.md), and cmd/agent/mcp_test.go and
+// cmd/add/main_test.go already exercise the string "RelatesTo" -- the
+// forcing function fired when winze_link shipped; this type was simply never
+// declared, so every winze_link call using the default relation has been
+// failing the build gate with "undefined: RelatesTo" since. Not a new
+// speculative predicate: closing a gap in an already-committed contract.
+//
+// Distinct from References despite the identical shape: References is the
+// honest floor for a markdown vault's own explicit [[wikilink]] structure
+// (a Provenance claim, mirroring what the source actually asserts).
+// RelatesTo is always a Conjecture -- winze's own connection between two
+// memories, with no source to mirror and none invented, per winze_link's
+// tool contract ("The link is winze's OWN assertion... no source is
+// invented").
+//
+// Deliberately absent from predicateSlots in cmd/metabolism/trip.go: adding
+// a type here does not make it trip-eligible, and a generic Entity-Entity
+// predicate reachable by the trip cycle with no source-grounding step is
+// exactly the shape StructurallyAnalogousTo already required a role-level
+// guard for. RelatesTo stays reachable only through the explicit,
+// agent-invoked winze_link path unless someone deliberately opts it into
+// predicateSlots later.
+type RelatesTo BinaryRelation[*Entity, *Entity]
