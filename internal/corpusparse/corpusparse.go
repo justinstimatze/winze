@@ -380,3 +380,50 @@ func unquote(s string) string {
 	}
 	return s
 }
+
+// LoadDeclaredTypeNames walks every dir/*.go file for top-level `type X ...`
+// declarations and returns their names -- role types (roles.go), schema
+// structs (schema.go), and predicates (predicates.go) alike.
+//
+// Exists because cmd/add's var-name collision check only guarded against
+// existing ENTITY and CLAIM var names, never against the package's own type
+// names. A note whose leading content word CamelCases to an existing role --
+// "Decision: ...", "Concept of X", any fact starting with a word that is also
+// a role name -- silently passed that check, then failed go build with
+// "X redeclared in this block" and reverted. Confirmed live 2026-09-02: a
+// 140-session self-recall replay hit both "Decision" and "Concept" this way
+// within its first 70 writes. The build gate correctly prevented corruption,
+// but only after wasting a build and dropping the fact from the corpus
+// (recoverable only via the raw tier, if the caller has one).
+func LoadDeclaredTypeNames(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []string
+	fset := token.NewFileSet()
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.SkipObjectResolution)
+		if err != nil {
+			continue // a non-corpus or unparseable file here is not this function's problem
+		}
+		for _, decl := range f.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				if ts, ok := spec.(*ast.TypeSpec); ok && !seen[ts.Name.Name] {
+					seen[ts.Name.Name] = true
+					out = append(out, ts.Name.Name)
+				}
+			}
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}

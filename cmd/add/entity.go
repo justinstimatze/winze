@@ -34,7 +34,10 @@ func runEntity(o entityOpts) int {
 	}
 
 	// Var name: explicit --name, else auto-generated from the brief and made
-	// unique against existing vars (the build gate would reject a collision).
+	// unique against existing vars AND the package's own declared type names
+	// (Concept, Decision, Person, ... -- a note whose leading word CamelCases
+	// to one of these would otherwise pass this check clean and only fail at
+	// go build with "X redeclared in this block").
 	used := map[string]bool{}
 	if ents, claims, err := corpusparse.ParseCorpus(o.repoRoot); err == nil {
 		for _, e := range ents {
@@ -42,6 +45,11 @@ func runEntity(o entityOpts) int {
 		}
 		for _, c := range claims {
 			used[c.VarName] = true
+		}
+	}
+	if types, err := corpusparse.LoadDeclaredTypeNames(o.repoRoot); err == nil {
+		for _, ty := range types {
+			used[ty] = true
 		}
 	}
 	var name, display string

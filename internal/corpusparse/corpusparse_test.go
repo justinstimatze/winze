@@ -207,3 +207,30 @@ func TestIsReifyMachinery(t *testing.T) {
 		}
 	}
 }
+
+// TestLoadDeclaredTypeNamesCollectsAcrossFiles pins the confirmed failure:
+// "Decision" and "Concept" are role/schema type names, so a generated entity
+// var name equal to either would collide with a real type declaration and
+// fail go build with "X redeclared in this block" -- silently, since
+// cmd/add's old collision check only scanned existing entity/claim var
+// names, never the package's own types.
+func TestLoadDeclaredTypeNamesCollectsAcrossFiles(t *testing.T) {
+	dir := writeFixtures(t, map[string]string{
+		"roles.go":      "package corpus\ntype Concept struct{ *Entity }\ntype Person struct{ *Entity }\n",
+		"schema.go":     "package corpus\ntype Decision struct{ Name string }\ntype Entity struct{ Name string }\n",
+		"predicates.go": fixturePredicates,
+	})
+	names, err := LoadDeclaredTypeNames(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, n := range names {
+		got[n] = true
+	}
+	for _, want := range []string{"Concept", "Person", "Decision", "Entity", "Foo", "Bar", "Baz"} {
+		if !got[want] {
+			t.Errorf("want %s among declared type names, got %v", want, names)
+		}
+	}
+}
