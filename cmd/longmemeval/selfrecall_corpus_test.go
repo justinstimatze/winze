@@ -27,6 +27,13 @@ const selfRecallN = 20
 // and would cost real money to discover a ranking bug a sort could have shown.
 // Promote to answer+judge only if this curve bends.
 //
+// Two probes per note, because one of them is too easy. Querying by the
+// session title asks the store to find a note by the note's own opening words,
+// which is close to a lookup; it is kept as the control. The probe that
+// carries the result is a mid-session user turn (LaterAsk) that was never
+// written into any note -- real text from the same session, in wording the
+// store has never seen, which is the shape a cold agent actually arrives with.
+//
 // A dedup rejection is DATA, not an error. The first run of this measured 20
 // writes and 2 rejections at cosine 0.73-0.74 -- against other session notes
 // in the same replay, not against semantic duplicates -- while every note that
@@ -70,7 +77,7 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	if len(usable) < 4 {
 		t.Skipf("only %d sessions carry both a title and an opening ask", len(usable))
 	}
-	picked := stratify(usable, selfRecallN)
+	picked := stratify(usable, selfRecallCount())
 	t.Logf("replaying %d of %d usable sessions, %s .. %s",
 		len(picked), len(usable),
 		picked[0].Start.Format("2006-01-02"), picked[len(picked)-1].Start.Format("2006-01-02"))
@@ -123,7 +130,7 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	// line of handleRemember, before the dedup gate, so a note the gate refuses
 	// is meant to survive anyway. Until this replay there was no rejection to
 	// test that against -- rawlog.go had never captured a single entry in
-	// production. Assert it here, where 2 of 20 writes were actually refused.
+	// production. Assert it here, where writes were actually refused.
 	rawPath := filepath.Join(store, "raw.jsonl")
 	rawBytes, err := os.ReadFile(rawPath)
 	if err != nil {
@@ -142,42 +149,83 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	t.Logf("raw tier: %d entries for %d attempted writes; all %d rejected notes recoverable",
 		rawLines, len(picked), len(rejected))
 
-	// Now the store is at full size. Probe each note with its own session title
-	// and see where it lands.
-	var found, missing, rankSum int
-	t.Logf("%-4s %-12s %-6s %-5s %s", "idx", "date", "after", "rank", "title")
+	// The store is now at full size. Probe each stored note twice.
+	//
+	// TITLE is the note's own first line, so a hit says the store can find a
+	// memory by its own words -- necessary, but nearer a lookup than a recall.
+	// LATER is a mid-session user turn that was never written into any note, so
+	// a hit says retrieval bridged from wording the store has never seen. That
+	// second number is the one worth having; the first is its control.
+	probe := func(query, want string) (int, error) {
+		payload := fmt.Sprintf(`{"query":%s,"limit":%d,"brief_chars":0}`, mustJSON(query), len(picked))
+		out, err := run("call", "winze_recall", payload)
+		if err != nil {
+			return 0, fmt.Errorf("%v\n%s", err, out)
+		}
+		var hits recallHits
+		if err := json.Unmarshal([]byte(out), &hits); err != nil {
+			return 0, fmt.Errorf("unparseable JSON: %v\n%s", err, out)
+		}
+		return rankOf(hits, want), nil
+	}
+
+	var titleFound, titleMiss, titleRankSum int
+	var laterFound, laterMiss, laterRankSum, noLater int
+	t.Logf("%-4s %-12s %-6s %-6s %-6s %s", "idx", "date", "after", "title", "later", "session")
 	for i, s := range picked {
 		if vars[i] == "" {
 			continue
 		}
-		payload := fmt.Sprintf(`{"query":%s,"limit":%d,"brief_chars":0}`, mustJSON(s.Title), len(picked))
-		out, err := run("call", "winze_recall", payload)
+		titleRank, err := probe(s.Title, vars[i])
 		if err != nil {
-			t.Errorf("recall %d: %v\n%s", i, err, out)
+			t.Errorf("title probe %d: %v", i, err)
 			continue
 		}
-		var hits recallHits
-		if err := json.Unmarshal([]byte(out), &hits); err != nil {
-			t.Errorf("recall %d returned unparseable JSON: %v\n%s", i, err, out)
-			continue
-		}
-		rank := rankOf(hits, vars[i])
-		if rank == 0 {
-			missing++
+		if titleRank == 0 {
+			titleMiss++
 		} else {
-			found++
-			rankSum += rank
+			titleFound++
+			titleRankSum += titleRank
 		}
-		t.Logf("%-4d %-12s %-6d %-5s %s", i, s.Start.Format("2006-01-02"),
-			len(picked)-1-i, rankLabel(rank), s.Title)
+
+		laterRank, laterLabel := 0, "n/a"
+		if q := s.LaterAsk(); q != "" {
+			if len(q) > 400 {
+				q = q[:400]
+			}
+			laterRank, err = probe(q, vars[i])
+			if err != nil {
+				t.Errorf("later probe %d: %v", i, err)
+				continue
+			}
+			laterLabel = rankLabel(laterRank)
+			if laterRank == 0 {
+				laterMiss++
+			} else {
+				laterFound++
+				laterRankSum += laterRank
+			}
+		} else {
+			noLater++
+		}
+		t.Logf("%-4d %-12s %-6d %-6s %-6s %s", i, s.Start.Format("2006-01-02"),
+			len(picked)-1-i, rankLabel(titleRank), laterLabel, s.Title)
 	}
-	if found == 0 {
-		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", missing)
+	if titleFound == 0 {
+		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", titleMiss)
 	}
-	t.Logf("RESULT: %d/%d stored notes recalled by own title, mean rank %.2f, %d never surfaced; "+
-		"write-rejection rate %d/%d (%.0f%%)",
-		found, found+missing, float64(rankSum)/float64(found), missing,
-		len(rejected), len(picked), 100*float64(len(rejected))/float64(len(picked)))
+	t.Logf("TITLE PROBE: %d/%d recalled, mean rank %.2f, %d never surfaced",
+		titleFound, titleFound+titleMiss, float64(titleRankSum)/float64(titleFound), titleMiss)
+	if laterFound == 0 {
+		t.Logf("LATER PROBE: nothing surfaced across %d probes (%d sessions had no second ask)",
+			laterMiss, noLater)
+	} else {
+		t.Logf("LATER PROBE: %d/%d recalled from text never written into a note, mean rank %.2f, "+
+			"%d never surfaced, %d sessions had no second ask",
+			laterFound, laterFound+laterMiss, float64(laterRankSum)/float64(laterFound), laterMiss, noLater)
+	}
+	t.Logf("write-rejection rate %d/%d (%.0f%%) at store size %d",
+		len(rejected), len(picked), 100*float64(len(rejected))/float64(len(picked)), len(picked))
 }
 
 // createdVar scrapes the entity name out of winze-agent's write confirmation,
@@ -204,15 +252,48 @@ func mustJSON(s string) string {
 	return string(b)
 }
 
-// noteFor renders the memory note for a session: its title and what the
-// operator opened with, capped at a length a real session note would be.
+// noteFor renders the memory note for a session, in one of two shapes chosen
+// by $WINZE_NOTE_SHAPE.
+//
+// "open" (default) is title plus the operator's first ask -- the cheapest note
+// that could work, and the shape the first 140-session run measured.
+//
+// "arc" adds the session's later asks, minus the one LaterAsk holds out as the
+// probe. That holdout is the whole point: dropping every ask into the note
+// would make the later probe a title probe in different clothes, and the run
+// would report a retrieval win that was really the answer being written into
+// the question. Comparing the two shapes at the same store size separates "the
+// store cannot bridge unseen wording" from "the note did not describe the
+// session" -- which the first run could not tell apart.
+//
+// Both shapes cost nothing: every word is already on disk.
 func noteFor(s *transcriptSession) string {
 	ask := s.OpeningAsk()
 	if len(ask) > 1200 {
 		ask = ask[:1200] + "…"
 	}
-	return fmt.Sprintf("Session %s (%s): %s\n\nOpened with: %s",
+	note := fmt.Sprintf("Session %s (%s): %s\n\nOpened with: %s",
 		s.Start.Format("2006-01-02"), s.ID[:8], s.Title, ask)
+	if os.Getenv("WINZE_NOTE_SHAPE") != "arc" {
+		return note
+	}
+	held := s.LaterAsk()
+	var arc []string
+	budget := 1500
+	for _, a := range s.ArcAsks() {
+		if a == held || budget <= 0 {
+			continue
+		}
+		if len(a) > 300 {
+			a = a[:300] + "…"
+		}
+		arc = append(arc, a)
+		budget -= len(a)
+	}
+	if len(arc) == 0 {
+		return note
+	}
+	return note + "\n\nWent on to: " + strings.Join(arc, " / ")
 }
 
 // rankLabel renders a rank, with 0 meaning the recall never surfaced the note.
@@ -280,4 +361,17 @@ func dedupReason(out string) string {
 		return "blocked at cosine " + score
 	}
 	return "blocked at cosine " + score + " against " + against
+}
+
+// selfRecallCount is how many sessions the replay writes, overridable with
+// $WINZE_SELFRECALL_N. The default keeps the committed test to about a minute;
+// the override is what a real measurement run uses, since store size is the
+// independent variable and 20 notes is a small store to draw a curve through.
+func selfRecallCount() int {
+	if v := os.Getenv("WINZE_SELFRECALL_N"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return selfRecallN
 }

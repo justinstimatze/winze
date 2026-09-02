@@ -150,3 +150,55 @@ func writeTranscript(t *testing.T, name string, lines ...string) string {
 	}
 	return path
 }
+
+// TestCleanAskStripsHostWrapperBlocks pins the thing that would quietly ruin
+// the later-ask probe: a user record carries the operator's words wrapped in
+// host bookkeeping, and system-reminder text is near-identical across every
+// session in the corpus. A probe built from one would match every note equally
+// and the measurement would read as a retrieval failure rather than a fixture bug.
+func TestCleanAskStripsHostWrapperBlocks(t *testing.T) {
+	raw := "<system-reminder>\nCodebase instructions follow.\n</system-reminder>\n" +
+		"<command-name>/compact</command-name>\n" +
+		"actually  hold on\nthe dedup gate is the part that's wrong"
+	got := cleanAsk(raw)
+	if strings.Contains(got, "Codebase instructions") || strings.Contains(got, "compact") {
+		t.Errorf("wrapper text survived: %q", got)
+	}
+	if want := "actually hold on the dedup gate is the part that's wrong"; got != want {
+		t.Errorf("cleanAsk = %q, want %q", got, want)
+	}
+}
+
+// TestLaterAskEmptyWhenTheSessionHasNoSecondAsk covers the branch the replay
+// counts separately: a one-ask session is not a probe failure, it is a session
+// with nothing to probe with, and folding the two together would understate
+// recall.
+func TestLaterAskEmptyWhenTheSessionHasNoSecondAsk(t *testing.T) {
+	s := &transcriptSession{Turns: []Turn{
+		{Role: "user", Content: "the only ask in this session, long enough to clear the floor"},
+		{Role: "assistant", Content: "a long assistant reply that must not be picked up as a later ask"},
+		{Role: "user", Content: "ok"},
+	}}
+	if got := s.LaterAsk(); got != "" {
+		t.Errorf("LaterAsk = %q, want empty", got)
+	}
+}
+
+// TestLaterAskSkipsTheOpeningAskAndShortTurns covers what makes the probe
+// honest. The opening ask is already inside the note, so returning it would
+// make the later probe a second title probe wearing different words; and a
+// corpus of real sessions is full of one-word user turns ("go", "yes",
+// "continue") that name nothing and would match every note or none.
+func TestLaterAskSkipsTheOpeningAskAndShortTurns(t *testing.T) {
+	s := &transcriptSession{Turns: []Turn{
+		{Role: "user", Content: "the opening ask, long enough to clear the length floor easily"},
+		{Role: "assistant", Content: "a reply that is also long enough to clear the floor if it counted"},
+		{Role: "user", Content: "go"},
+		{Role: "user", Content: "the poisoned rows survived the environment repair, which is the real finding"},
+		{Role: "user", Content: "yes"},
+	}}
+	got := s.LaterAsk()
+	if !strings.HasPrefix(got, "the poisoned rows") {
+		t.Errorf("LaterAsk = %q, want the one substantial non-opening user turn", got)
+	}
+}

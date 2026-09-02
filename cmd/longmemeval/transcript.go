@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -243,4 +244,76 @@ func (s *transcriptSession) OpeningAsk() string {
 		}
 	}
 	return ""
+}
+
+// LaterAsk is a user turn from the middle of the session, and it is the probe
+// that makes a recall measurement honest.
+//
+// Probing with Title asks whether the store can find a note by the note's own
+// words, which is nearer a lookup than a recall. A cold agent does not have
+// the title. It arrives holding some other fragment of the same session and
+// needs the note anyway. LaterAsk is that fragment: real text from the
+// session, never written into the note, so a hit means retrieval bridged from
+// wording the store has never seen.
+//
+// The midpoint of ArcAsks, not the last one: a session's final user turns skew
+// toward "ship it" and "push", which say nothing about what the session was.
+// Returns "" when there is no second substantial user turn.
+func (s *transcriptSession) LaterAsk() string {
+	asks := s.ArcAsks()
+	if len(asks) == 0 {
+		return ""
+	}
+	return asks[len(asks)/2]
+}
+
+// cleanAsk strips the host's wrapper blocks out of a user turn and collapses
+// the whitespace, leaving the words the operator actually typed.
+func cleanAsk(s string) string {
+	return strings.Join(strings.Fields(laterAskNoise.ReplaceAllString(s, " ")), " ")
+}
+
+// laterAskNoise matches the wrapper blocks Claude Code injects into user
+// records: system reminders, slash-command echoes, local command output. They
+// are host bookkeeping rather than something the operator asked, and a probe
+// built out of one would measure the harness instead of the memory.
+//
+// Built from a tag list rather than written as one pattern because RE2 has no
+// backreferences, so `<(a|b)>.*?</\1>` does not compile.
+var laterAskNoise = func() *regexp.Regexp {
+	tags := []string{
+		"system-reminder", "command-name", "command-message", "command-args",
+		"local-command-stdout", "local-command-caveat",
+	}
+	alts := make([]string, len(tags))
+	for i, t := range tags {
+		alts[i] = "<" + t + ">.*?</" + t + ">"
+	}
+	return regexp.MustCompile("(?s)" + strings.Join(alts, "|"))
+}()
+
+// ArcAsks is every substantial user turn after the opening one, cleaned.
+//
+// The opening ask says what the operator sat down to do; these say where the
+// session actually went, which is frequently somewhere else. LaterAsk is their
+// midpoint, so a note built from ArcAsks minus that one covers the session's
+// arc without containing the probe -- the only shape in which "does a fuller
+// note retrieve better" is a question about the store rather than about
+// whether the answer was written into the question.
+func (s *transcriptSession) ArcAsks() []string {
+	var asks []string
+	seenFirst := false
+	for _, turn := range s.Turns {
+		if turn.Role != "user" {
+			continue
+		}
+		if !seenFirst {
+			seenFirst = true
+			continue
+		}
+		if c := cleanAsk(turn.Content); len(c) >= 40 {
+			asks = append(asks, c)
+		}
+	}
+	return asks
 }

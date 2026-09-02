@@ -180,13 +180,15 @@ typed-extraction model itself — and both are now fixed defaults/discipline
 rather than open questions.
 
 **Status: precondition 2 (perf) substantially cleared; precondition 1
-(memory-confidence) has a first positive result, not yet a cleared gate.** The
-design is fixed enough that the pointer question is answered and won't churn.
-With ingest now corpus-scoped, the wake-time read is viable; precondition 1
-now has real evidence in its favor (see above) rather than none, but a single
-same-day N=1 trial is not the bar this section originally called for — a
-multi-session, multi-day version of the same test (real elapsed time, real
-corpus growth in between) is the next step before treating this as cleared.
+(memory-confidence) measured and NOT cleared.** The design is fixed enough that
+the pointer question is answered and won't churn, and with ingest corpus-scoped
+the wake-time read is viable. Precondition 1 is a different story: the
+multi-session, multi-day test this section asked for has now run twice, and the
+second pass — 140 sessions across 105 days, probed with text the note has never
+seen — recalls the right memory 57% of the time. The two earlier positives (an
+N=1 8/8 trial, a 140/140 title probe) were both asking an easier question than
+a cold agent asks. See the two Measured sections below in order; the second
+supersedes the first's headline.
 
 ### Measured 2026-09-02: retrieval does not decay; the write gate does
 
@@ -227,12 +229,64 @@ time Phase 3a has been exercised at all — before this replay `raw.jsonl` had
 never captured a single entry in production, because nothing had called
 `winze_remember` since it shipped. Its design claim held on its first real test.
 
-**What this does not establish.** Rank is findability, not sufficiency: nothing
-here checks whether a recalled note *says enough* to reconstruct the session.
-That needs the answerer and the judge, and is worth paying for now that the
-cheap question is answered. The corpus is also one project's sessions on one
-host, and the notes are title-plus-opening-ask rather than what an agent would
-compose at a session's end.
+**What this does not establish.** Probing by title asks the store to find a
+note by the note's own opening words, which is nearer a lookup than a recall.
+The section below re-runs the same replay at seven times the store size with a
+probe the note has never seen, and the result is materially worse.
+
+### Measured 2026-09-02, second pass: the title probe was too easy
+
+The same test at **140 of 140 usable sessions, 2026-05-20 to 2026-09-02 (105
+days)**, with two probes per note instead of one. TITLE is the note's own first
+line, kept as the control. LATER is `transcriptSession.LaterAsk()` — a
+mid-session user turn, cleaned of host wrapper blocks, deliberately *excluded*
+from the note. Real text from the same session, in wording the store has never
+seen, which is the shape a cold agent actually arrives with.
+
+Two note shapes, selected by `$WINZE_NOTE_SHAPE`, at the same store size:
+
+| | `open` (title + first ask) | `arc` (+ later asks, probe held out) |
+|---|---|---|
+| title probe | 140/140, mean rank 1.04 | 140/140, mean rank 1.06 |
+| **later probe** | **51/116 (44%)** | **66/116 (57%)** |
+| later mean rank | 4.67 | 3.97 |
+| returned at rank 1 | 12 | 27 |
+
+Three things follow.
+
+**Corpus growth still does not bite.** 140/140 at mean rank 1.04, up from 20
+notes to 140. Miss rate on the later probe is flat across age quartiles —
+58/55/59/52% under `open`, 42/48/38/44% under `arc`, oldest to newest. Whatever
+is failing, it is not decay, and the first pass could not have seen this because
+the title probe never exercised it.
+
+**Sufficiency is partly answered, and it was free.** A note covering where the
+session went rather than only where it started lifts recall 44% → 57% and more
+than doubles rank-1 hits. The holdout is what makes that a real result: dropping
+every ask into the note would have made the later probe a title probe in
+different clothes. So what an agent writes measurably changes whether the agent
+finds it later — the guidance question, answered without an answerer or a judge.
+Storage itself is lossless: `winze_recall` with `brief_chars: 0` returns a
+1742-character note byte-for-byte, so nothing is lost between write and read.
+
+**The residual is retrieval.** 50 of 116 still never surface, against a note
+describing the session's arc minus one held-out turn. That is `--hybrid`
+scoring, not note content, and it is the next thing to look at.
+
+**A gate that had stopped gating.** This pass refused 0 of 140 writes where the
+pre-fix run at 20 refused 2 — `novelSpecifics` was counting a bare date as
+evidence of recurrence, and every session note carries a fresh one. Fixed by
+excluding calendar-only novelty; see `docs/agent.md`.
+
+**Precondition 1 is not cleared.** A cold agent finding its own session 57% of
+the time from real session text is not confidence in winze-as-memory. The N=1
+8/8 trial and the 140/140 title probe both read as passes; this probe is the one
+that says otherwise, and that is what the measurement bought. Do not implement
+this document's design yet.
+
+**What this still does not establish.** Whether a note that *is* retrieved says
+enough to reconstruct the session — the remaining answerer-and-judge question,
+now much narrower. The corpus is also one project's sessions on one host.
 
 ## See also
 
