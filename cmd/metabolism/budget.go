@@ -200,7 +200,8 @@ func (g *budgetGuard) allow(phase string, estCents int) (bool, string) {
 // Floored at one day's slice. Without that floor the allowance at 00:00 on the
 // 1st is ~0 and every phase is refused — the same silent idling pacing exists
 // to remove, relocated to a different date and harder to spot because it lasts
-// hours rather than weeks.
+// hours rather than weeks. TestPacedAllowanceFloorsOnDayOne pins the floor;
+// TestBudgetGuard_AllowsWithinCap sets its cap high enough to clear it.
 func pacedAllowanceCents(capCents int, now time.Time) int {
 	daysInMonth := float64(time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day())
 	elapsed := (float64(now.Day()-1) + float64(now.Hour())/24.0) / daysInMonth

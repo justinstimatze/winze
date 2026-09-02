@@ -23,13 +23,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/justinstimatze/winze/internal/cliutil"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/justinstimatze/winze/internal/cliutil"
 
 	winze "github.com/justinstimatze/winze/corpus"
 	"github.com/justinstimatze/winze/internal/defndb"

@@ -22,10 +22,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/justinstimatze/winze/internal/cliutil"
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/justinstimatze/winze/internal/cliutil"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
