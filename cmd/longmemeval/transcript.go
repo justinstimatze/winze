@@ -145,25 +145,13 @@ func (s *transcriptSession) absorb(line transcriptLine) {
 	if s.Cwd == "" && line.Cwd != "" {
 		s.Cwd = line.Cwd
 	}
-	if ts, err := time.Parse(time.RFC3339, line.Timestamp); err == nil {
-		if s.Start.IsZero() || ts.Before(s.Start) {
-			s.Start = ts
-		}
-		if ts.After(s.End) {
-			s.End = ts
-		}
-	}
-	if line.Type != "user" && line.Type != "assistant" {
+	s.widenSpan(line.Timestamp)
+	if !line.isProse() {
 		return
 	}
-	if line.Message == nil {
-		return
+	if text := flattenContent(line.Message.Content); text != "" {
+		s.Turns = append(s.Turns, Turn{Role: line.Message.Role, Content: text})
 	}
-	text := flattenContent(line.Message.Content)
-	if text == "" {
-		return
-	}
-	s.Turns = append(s.Turns, Turn{Role: line.Message.Role, Content: text})
 }
 
 // transcriptLine is the subset of a Claude Code transcript record this reader
@@ -203,4 +191,29 @@ type transcriptSession struct {
 	End   time.Time
 	Cwd   string
 	Turns []Turn
+}
+
+// isProse reports whether a record carries something the operator or the model
+// actually said. Everything else in the format -- attachments, snapshots,
+// permission-mode changes, ai-title records -- is host bookkeeping.
+func (l transcriptLine) isProse() bool {
+	return (l.Type == "user" || l.Type == "assistant") && l.Message != nil
+}
+
+// widenSpan grows the session's [Start, End] to cover one record's timestamp.
+//
+// Every record type widens the span, not just the prose-bearing ones: an
+// attachment or a queue-operation is still time the session was open, and a
+// session's real duration is what Phase 3b spaces its writes by.
+func (s *transcriptSession) widenSpan(stamp string) {
+	ts, err := time.Parse(time.RFC3339, stamp)
+	if err != nil {
+		return
+	}
+	if s.Start.IsZero() || ts.Before(s.Start) {
+		s.Start = ts
+	}
+	if ts.After(s.End) {
+		s.End = ts
+	}
 }
