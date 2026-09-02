@@ -183,12 +183,14 @@ rather than open questions.
 (memory-confidence) measured and NOT cleared.** The design is fixed enough that
 the pointer question is answered and won't churn, and with ingest corpus-scoped
 the wake-time read is viable. Precondition 1 is a different story: the
-multi-session, multi-day test this section asked for has now run twice, and the
-second pass — 140 sessions across 105 days, probed with text the note has never
-seen — recalls the right memory 57% of the time. The two earlier positives (an
-N=1 8/8 trial, a 140/140 title probe) were both asking an easier question than
-a cold agent asks. See the two Measured sections below in order; the second
-supersedes the first's headline.
+multi-session, multi-day test this section asked for has now run three times.
+The best result stands at 57% (one note per session, held-out probe text); a
+follow-up attempt to close that gap with multi-claim writes came in *below* it
+at 52%. The two earlier positives (an N=1 8/8 trial, a 140/140 title probe)
+were both asking an easier question than a cold agent asks. See the three
+Measured sections below in order; each supersedes the previous one's headline
+except the third, which is a failed attempt to beat the second, not a
+replacement for it.
 
 ### Measured 2026-09-02: retrieval does not decay; the write gate does
 
@@ -341,6 +343,65 @@ this document's design yet.
 **What this still does not establish.** Whether a note that *is* retrieved says
 enough to reconstruct the session — the remaining answerer-and-judge question,
 now much narrower. The corpus is also one project's sessions on one host.
+
+### Measured 2026-09-02, third pass: multi-claim writes underperformed the baseline
+
+The sizing above put 94% of the residual behind a shared-budget squeeze: a
+session's later turns lose to its earlier ones for space inside one note. The
+direct test of that is to stop sharing the budget — split a session into
+several atomic facts, each its own entity, instead of one blob. Built
+`cmd/longmemeval/claimnote.go`: one Haiku call per session
+(`factExtractionSystemPrompt`, cache-control marked but under Haiku's ~2048-tok
+cache-eligible floor, so every call still pays full price) extracts 3-6 atomic
+facts, each written through its own `winze_remember` call instead of one note
+per session.
+
+Same 140 sessions, same two probes, `$WINZE_NOTE_SHAPE=claims`:
+
+| | `arc` (baseline, one note/session) | `claims` (multi-claim) |
+|---|---|---|
+| title probe | 140/140, mean rank 1.06 | 132/136, mean rank 1.32 |
+| **later probe** | **66/116 (57%)** | **60/115 (52%)** |
+| later mean rank | 3.97 | 4.12 |
+
+Worse on both axes, not better. The hypothesis — that relaxing the shared
+budget closes coverage gaps — is not confirmed by this attempt.
+
+**The likely reason: the dedup gate, not the extraction.** 533 facts were
+extracted; 65 (12%) were rejected before storage, all at fact granularity
+against unrelated sessions weeks apart:
+
+- "User is experiencing RAM exhaustion and needs to investigate the cause" —
+  blocked at cosine 0.64
+- "An out of memory issue was being debugged in the session" — blocked at
+  cosine 0.85
+- "The user experienced a system crash and needs to reconstruct recent Claude
+  sessions" — blocked at cosine 0.63
+
+This is the same recurrence-vs-duplication problem `novelSpecifics` was built
+for above, one level down. A session note about a RAM investigation usually
+carries other specifics beside the topic — a date, a number, what got checked.
+An atomic fact this short often doesn't: "the user is investigating RAM" *is*
+the whole fact, so a fact-granularity recurrence has nothing left to look
+novel on. `novelSpecifics` was tuned against session-note false refusals; it
+has not been tuned against fact-level ones, and this run is the first time it
+was exercised at that granularity.
+
+**Not yet confirmed: whether these 65 rejections explain the 55 later-probe
+misses**, as opposed to being a real but separate cost. That cross-reference —
+matching each rejected fact's session against the miss list — is the next
+concrete step if multi-claim writing is worth pursuing further. Absent that
+check, this section reports a measured negative result and a plausible,
+evidenced mechanism, not a proven cause.
+
+**Cost:** 533 Haiku calls in one run, 56,855 input + 18,130 output tokens, 0
+cache-read (the system prompt is ~450 tokens, under Haiku's cache-eligible
+floor) — a few cents either way, not a budget concern.
+
+Instrumentation (`cmd/longmemeval/claimnote.go`, `claimnote_test.go`, the
+`claims` mode in `selfrecall_corpus_test.go`) is committed with these numbers
+in the commit message regardless of the result — the point of building it was
+to get a real number, and a negative one is still the number.
 
 ## See also
 

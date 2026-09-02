@@ -110,12 +110,13 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 
 	// Replay oldest-first so each note is written into a store holding every
 	// earlier note and none of the later ones -- the growth the design doc asks for.
-	vars, rejected := writeSessions(t, run, picked)
-	assertRawTier(t, store, picked, rejected)
+	varSets, rejected, attempted := writeSessions(t, run, picked)
+	assertRawTier(t, store, attempted, rejected)
 
-	// The store is now at full size. Probe each stored note twice; see probeAll's
-	// doc comment for what TITLE and LATER each establish.
-	title, later, noLater := probeAll(t, run, picked, vars, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
+	// The store is now at full size. Probe each session twice; see probeAll's
+	// doc comment for what TITLE and LATER each establish, and for why a
+	// session can own more than one var under WINZE_NOTE_SHAPE=claims.
+	title, later, noLater := probeAll(t, run, picked, varSets, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
 	if title.found == 0 {
 		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", title.miss)
 	}
@@ -129,8 +130,8 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 			"%d never surfaced, %d sessions had no second ask",
 			later.found, later.found+later.miss, later.meanRank(), later.miss, noLater)
 	}
-	t.Logf("write-rejection rate %d/%d (%.0f%%) at store size %d",
-		len(rejected), len(picked), 100*float64(len(rejected))/float64(len(picked)), len(picked))
+	t.Logf("write-rejection rate %d/%d (%.0f%%) at %d attempted writes for %d sessions",
+		len(rejected), attempted, 100*float64(len(rejected))/float64(attempted), attempted, len(picked))
 }
 
 // createdVar scrapes the entity name out of winze-agent's write confirmation,
@@ -309,7 +310,12 @@ func (p probeStats) meanRank() float64 {
 // is meant to survive anyway. Pulled out of TestSelfRecallDecaysWithCorpusGrowth
 // alongside writeSessions, which is the only caller that has a rejected list
 // worth checking this against.
-func assertRawTier(t *testing.T, store string, picked []*transcriptSession, rejected []string) {
+//
+// Takes attempted rather than inferring it from len(picked): under
+// WINZE_NOTE_SHAPE=claims a session can attempt several writes (one per
+// extracted fact), so the raw tier's expected line count is no longer 1:1
+// with session count.
+func assertRawTier(t *testing.T, store string, attempted int, rejected []string) {
 	t.Helper()
 	rawPath := filepath.Join(store, "raw.jsonl")
 	rawBytes, err := os.ReadFile(rawPath)
@@ -317,8 +323,8 @@ func assertRawTier(t *testing.T, store string, picked []*transcriptSession, reje
 		t.Fatalf("raw tier absent at %s: %v", rawPath, err)
 	}
 	rawLines := strings.Count(strings.TrimSpace(string(rawBytes)), "\n") + 1
-	if rawLines != len(picked) {
-		t.Errorf("raw tier holds %d entries, want %d (one per attempted write)", rawLines, len(picked))
+	if rawLines != attempted {
+		t.Errorf("raw tier holds %d entries, want %d (one per attempted write)", rawLines, attempted)
 	}
 	for _, r := range rejected {
 		title, _, _ := strings.Cut(strings.TrimPrefix(r[11:], `"`), `"`)
@@ -327,7 +333,7 @@ func assertRawTier(t *testing.T, store string, picked []*transcriptSession, reje
 		}
 	}
 	t.Logf("raw tier: %d entries for %d attempted writes; all %d rejected notes recoverable",
-		rawLines, len(picked), len(rejected))
+		rawLines, attempted, len(rejected))
 }
 
 // probeAll runs both probes (title, then LaterAsk) against every stored
@@ -340,10 +346,14 @@ func assertRawTier(t *testing.T, store string, picked []*transcriptSession, reje
 // LATER is a mid-session user turn that was never written into any note, so
 // a hit says retrieval bridged from wording the store has never seen. That
 // second number is the one worth having; the first is its control.
-func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, vars []string, manifestPath string) (title, later probeStats, noLater int) {
+//
+// varSets holds one slice of entity vars per session (length 1 for
+// "open"/"arc", length N for "claims"): a hit counts if the probe surfaces
+// ANY of a session's vars, via bestRankOf.
+func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, varSets [][]string, manifestPath string) (title, later probeStats, noLater int) {
 	t.Helper()
-	probe := func(query, want string) (int, error) {
-		payload := fmt.Sprintf(`{"query":%s,"limit":%d,"brief_chars":0}`, mustJSON(query), len(picked))
+	probe := func(query string, want []string) (int, error) {
+		payload := fmt.Sprintf(`{"query":%s,"limit":%d,"brief_chars":0}`, mustJSON(query), len(picked)*6)
 		out, err := run("call", "winze_recall", payload)
 		if err != nil {
 			return 0, fmt.Errorf("%v\n%s", err, out)
@@ -352,7 +362,7 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 		if err := json.Unmarshal([]byte(out), &hits); err != nil {
 			return 0, fmt.Errorf("unparseable JSON: %v\n%s", err, out)
 		}
-		return rankOf(hits, want), nil
+		return bestRankOf(hits, want), nil
 	}
 
 	// WINZE_SELFRECALL_MANIFEST, when set, dumps one JSON line per session with
@@ -369,12 +379,12 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 		defer manifest.Close()
 	}
 
-	t.Logf("%-4s %-12s %-6s %-6s %-6s %s", "idx", "date", "after", "title", "later", "session")
+	t.Logf("%-4s %-12s %-6s %-4s %-6s %-6s %s", "idx", "date", "after", "n", "title", "later", "session")
 	for i, s := range picked {
-		if vars[i] == "" {
+		if len(varSets[i]) == 0 {
 			continue
 		}
-		titleRank, err := probe(s.Title, vars[i])
+		titleRank, err := probe(s.Title, varSets[i])
 		if err != nil {
 			t.Errorf("title probe %d: %v", i, err)
 			continue
@@ -386,7 +396,7 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 			if len(q) > 400 {
 				q = q[:400]
 			}
-			laterRank, err = probe(q, vars[i])
+			laterRank, err = probe(q, varSets[i])
 			if err != nil {
 				t.Errorf("later probe %d: %v", i, err)
 				continue
@@ -396,15 +406,15 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 		} else {
 			noLater++
 		}
-		t.Logf("%-4d %-12s %-6d %-6s %-6s %s", i, s.Start.Format("2006-01-02"),
-			len(picked)-1-i, rankLabel(titleRank), laterLabel, s.Title)
+		t.Logf("%-4d %-12s %-6d %-4d %-6s %-6s %s", i, s.Start.Format("2006-01-02"),
+			len(picked)-1-i, len(varSets[i]), rankLabel(titleRank), laterLabel, s.Title)
 		if manifest != nil {
 			laterQ := s.LaterAsk()
 			if len(laterQ) > 400 {
 				laterQ = laterQ[:400]
 			}
 			rec, _ := json.Marshal(map[string]any{
-				"idx": i, "date": s.Start.Format("2006-01-02"), "title": s.Title, "var": vars[i],
+				"idx": i, "date": s.Start.Format("2006-01-02"), "title": s.Title, "vars": varSets[i],
 				"title_rank": titleRank, "later_rank": laterRank, "later_ask": laterQ,
 			})
 			manifest.Write(append(rec, '\n'))
@@ -416,17 +426,68 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 // writeSessions replays picked sessions oldest-first through winze_remember,
 // pulled out of TestSelfRecallDecaysWithCorpusGrowth so the write phase and
 // the probe phase are each one readable function instead of one long one.
-func writeSessions(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession) (vars []string, rejected []string) {
+//
+// Returns one var slice per session rather than one var: under
+// WINZE_NOTE_SHAPE=claims each session becomes several atomic entities (one
+// winze_remember call per extracted fact) instead of one blob, and the probe
+// phase needs to know which vars belong to which session to score a hit
+// against any of them. "open"/"arc" sessions just get a slice of length 1.
+func writeSessions(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession) (varSets [][]string, rejected []string, attempted int) {
 	t.Helper()
-	vars = make([]string, len(picked))
+	varSets = make([][]string, len(picked))
 	writeStart := time.Now()
+
+	if os.Getenv("WINZE_NOTE_SHAPE") == "claims" {
+		client, ok := newAnthropicClientFromEnv()
+		if !ok {
+			t.Skip("WINZE_NOTE_SHAPE=claims needs ANTHROPIC_API_KEY (one Haiku call per session, ~700 input + ~150 output tokens each) — skipping")
+		}
+		var inTok, cacheReadTok, outTok int64
+		for i, s := range picked {
+			facts, usage, err := extractFacts(client, s)
+			inTok += usage.InputTokens
+			cacheReadTok += usage.CacheReadInputTokens
+			outTok += usage.OutputTokens
+			if err != nil {
+				t.Errorf("extracting facts for %d (%s): %v", i, s.ID[:8], err)
+				continue
+			}
+			for _, fact := range facts {
+				attempted++
+				out, err := run("call", "winze_remember", `{"note":`+mustJSON(fact)+`}`)
+				if err != nil {
+					t.Errorf("write %d fact %q failed to execute: %v\n%s", i, fact, err, out)
+					continue
+				}
+				if v := createdVar(out); v != "" {
+					varSets[i] = append(varSets[i], v)
+				} else {
+					rejected = append(rejected, fmt.Sprintf("%s %q — %s",
+						s.Start.Format("2006-01-02"), fact, dedupReason(out)))
+				}
+			}
+		}
+		t.Logf("%d sessions, %d facts extracted and attempted in %s; %d stored, %d rejected before storage",
+			len(picked), attempted, time.Since(writeStart).Round(time.Second),
+			attempted-len(rejected), len(rejected))
+		t.Logf("extraction cost: %d input tokens (%d cache-read), %d output tokens across %d Haiku calls",
+			inTok, cacheReadTok, outTok, len(picked))
+		for _, r := range rejected {
+			t.Logf("  rejected: %s", r)
+		}
+		return varSets, rejected, attempted
+	}
+
 	for i, s := range picked {
+		attempted++
 		out, err := run("call", "winze_remember", `{"note":`+mustJSON(noteFor(s))+`}`)
 		if err != nil {
 			t.Errorf("write %d (%s) failed to execute: %v\n%s", i, s.ID[:8], err, out)
 			continue
 		}
-		if vars[i] = createdVar(out); vars[i] == "" {
+		if v := createdVar(out); v != "" {
+			varSets[i] = []string{v}
+		} else {
 			rejected = append(rejected, fmt.Sprintf("%s %q — %s",
 				s.Start.Format("2006-01-02"), s.Title, dedupReason(out)))
 		}
@@ -437,5 +498,23 @@ func writeSessions(t *testing.T, run func(args ...string) (string, error), picke
 	for _, r := range rejected {
 		t.Logf("  rejected: %s", r)
 	}
-	return vars, rejected
+	return varSets, rejected, attempted
+}
+
+// bestRankOf returns the best (lowest) 1-based rank among vars in a recall
+// result, or 0 if none of them were surfaced. Needed once a session can own
+// more than one entity (the "claims" note shape): the question "was this
+// session found" becomes "was ANY of its facts found", not "was its one note
+// found".
+func bestRankOf(hits recallHits, vars []string) int {
+	best := 0
+	for _, v := range vars {
+		if v == "" {
+			continue
+		}
+		if r := rankOf(hits, v); r != 0 && (best == 0 || r < best) {
+			best = r
+		}
+	}
+	return best
 }
