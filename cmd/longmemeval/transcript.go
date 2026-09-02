@@ -268,22 +268,28 @@ func (s *transcriptSession) LaterAsk() string {
 }
 
 // cleanAsk strips the host's wrapper blocks out of a user turn and collapses
-// the whitespace, leaving the words the operator actually typed.
+// the whitespace, leaving the words the operator actually typed. A turn that
+// is entirely a compaction-resume summary returns empty rather than partially
+// cleaned -- there is no operator fragment inside it to recover.
 func cleanAsk(s string) string {
+	if strings.HasPrefix(strings.TrimSpace(s), compactionResumePreamble) {
+		return ""
+	}
 	return strings.Join(strings.Fields(laterAskNoise.ReplaceAllString(s, " ")), " ")
 }
 
 // laterAskNoise matches the wrapper blocks Claude Code injects into user
-// records: system reminders, slash-command echoes, local command output. They
-// are host bookkeeping rather than something the operator asked, and a probe
-// built out of one would measure the harness instead of the memory.
+// records: system reminders, slash-command echoes, local command output, and
+// task notifications. They are host bookkeeping rather than something the
+// operator asked, and a probe built out of one would measure the harness
+// instead of the memory.
 //
 // Built from a tag list rather than written as one pattern because RE2 has no
 // backreferences, so `<(a|b)>.*?</\1>` does not compile.
 var laterAskNoise = func() *regexp.Regexp {
 	tags := []string{
 		"system-reminder", "command-name", "command-message", "command-args",
-		"local-command-stdout", "local-command-caveat",
+		"local-command-stdout", "local-command-caveat", "task-notification",
 	}
 	alts := make([]string, len(tags))
 	for i, t := range tags {
@@ -317,3 +323,11 @@ func (s *transcriptSession) ArcAsks() []string {
 	}
 	return asks
 }
+
+// compactionResumePreamble is the sentence Claude Code stamps at the top of a
+// synthetic user turn when a session resumes from a compacted summary. The
+// turn's entire content is that summary -- host-generated prose about an
+// earlier, possibly unrelated stretch of conversation, not a fragment of the
+// operator's own words -- so a turn starting with it is dropped whole rather
+// than partially cleaned.
+const compactionResumePreamble = "This session is being continued from a previous conversation"

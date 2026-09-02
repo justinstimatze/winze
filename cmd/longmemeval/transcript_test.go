@@ -202,3 +202,33 @@ func TestLaterAskSkipsTheOpeningAskAndShortTurns(t *testing.T) {
 		t.Errorf("LaterAsk = %q, want the one substantial non-opening user turn", got)
 	}
 }
+
+// TestCleanAskDropsCompactionResumeTurnsWhole covers the second corpus finding:
+// 6 of 140 stored notes embedded a host-generated compaction summary -- an
+// entire synthetic user turn whose content is prose about an earlier,
+// unrelated stretch of conversation, not something the operator typed. Unlike
+// the tag-wrapped noise, there is no fragment to recover by stripping a
+// substring, so the whole turn must return empty.
+func TestCleanAskDropsCompactionResumeTurnsWhole(t *testing.T) {
+	raw := "This session is being continued from a previous conversation that ran " +
+		"out of context. Summary: 1. Primary Request and Intent: ..."
+	if got := cleanAsk(raw); got != "" {
+		t.Errorf("cleanAsk = %q, want empty for a compaction-resume turn", got)
+	}
+}
+
+// TestCleanAskStripsTaskNotifications covers the tag found by inspecting the
+// 140-session self-recall corpus directly: 26 of 140 stored notes carried a
+// leaked <task-notification> block, because the first laterAskNoise pass only
+// covered the reminder/command tags and missed this one.
+func TestCleanAskStripsTaskNotifications(t *testing.T) {
+	raw := "finish up the report\n<task-notification>\n<task-id>abc123</task-id>\n" +
+		"<status>completed</status>\n</task-notification>\nand push it"
+	got := cleanAsk(raw)
+	if strings.Contains(got, "task-id") || strings.Contains(got, "completed") {
+		t.Errorf("task-notification body survived: %q", got)
+	}
+	if want := "finish up the report and push it"; got != want {
+		t.Errorf("cleanAsk = %q, want %q", got, want)
+	}
+}
