@@ -166,6 +166,24 @@ type dedupDecision struct {
 // related" with this embedder, so it hard-refuses only clear duplicates
 // (>= block), advises on the murky middle (>= warn), and lets force override.
 //
+// Above the block threshold there is one further test, added 2026-09-02 after
+// a measured 10% false-refusal rate on session notes: a note carrying
+// specifics its nearest neighbour lacks is a recurrence, not a rewording, and
+// stores with a warning instead of being refused. See novelSpecifics for the
+// two real cases that motivated it.
+//
+// A refusal is the most expensive mistake this function can make. An accepted
+// duplicate is noise the operator can see and merge; a refusal deletes the
+// second occurrence and leaves the first standing as though it were the only
+// one, so the store ends up confidently wrong rather than merely cluttered.
+// The raw tier softens that -- appendRawLog runs before this gate -- but a
+// fact recoverable only by grepping raw.jsonl is not in the store.
+//
+// No upper ceiling re-enables the refusal at very high cosine. Nothing
+// measured on this store exceeds 0.74, so a ceiling would be an invented
+// constant; add one if a real duplicate is ever seen slipping through on a
+// stray number.
+//
 // The same ranked query also yields the link candidates. The store stayed
 // near-edgeless because linking was a separate deliberate act nobody performed;
 // the neighbours were computed here every write and discarded.
@@ -178,6 +196,10 @@ func checkDedup(note string, force bool) dedupDecision {
 	nearest, score := hits[0], hits[0].Score
 	switch {
 	case score >= dupBlockScore() && !force:
+		if novel := novelSpecifics(note, nearest.Brief); len(novel) > 0 {
+			d.warning = recurrenceNote(score, nearest.Name, novel)
+			break
+		}
 		d.block = mcp.NewToolResultText(fmt.Sprintf(
 			"NOT stored — a very similar memory already exists (cosine %.2f):\n  %s [%s] — %s\n\n"+
 				"Revise it: winze_update(var=%q, note=…). If this really is a distinct fact, call winze_remember again with force=true.",

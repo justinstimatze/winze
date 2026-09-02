@@ -35,6 +35,29 @@ implementation that drifts.
   typed entity. Build-gated, auto-committed, and refused when it duplicates an
   existing memory. `force` writes anyway, and is meant to be used after reading
   what it matched, not instead of reading it.
+
+  A high cosine alone no longer refuses. Above the block threshold the note is
+  checked for **specifics its nearest neighbour lacks** — an ISO date, a commit
+  sha or session id, a multi-digit number. A reworded duplicate restates a fact
+  and introduces none; a recurrence arrives with its own particulars. When any
+  are found the note stores with a warning naming them, rather than being
+  turned away.
+
+  This came from a measured false-refusal rate, not a hunch. Replaying 20 real
+  sessions across 104 days (`TestSelfRecallDecaysWithCorpusGrowth`, 2026-09-02)
+  refused 2 of 20 writes at cosine 0.74 and 0.73, and neither was a duplicate:
+  a note about recovering from a crashed machine was blocked by one 35 days
+  older about losing sessions, and a RAM investigation by one 59 days older
+  about RAM. Same topic, different incident. For session notes, recurrence is
+  the normal case. With the check in place the same replay stores 20/20 and
+  still recalls every note at rank 1, while a reworded restatement carrying no
+  new specifics is still refused at cosine 0.76 — higher than either
+  recurrence, which is why raising the threshold would not have worked.
+
+  A refusal is the expensive mistake here. An accepted duplicate is visible
+  noise the operator can merge; a refusal deletes the second occurrence and
+  leaves the first standing as though it were the only one, so the store comes
+  out confidently wrong rather than merely cluttered.
 - **`winze_recall(query, limit?, brief_chars?)`** — hybrid BM25 + semantic
   associative search, returning compact headlines. Defaults: `limit=5`,
   `brief_chars=500`. A brief cut short by `brief_chars` ends with `… [N more
