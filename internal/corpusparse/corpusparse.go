@@ -407,23 +407,36 @@ func LoadDeclaredTypeNames(dir string) ([]string, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
 			continue
 		}
-		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.SkipObjectResolution)
-		if err != nil {
-			continue // a non-corpus or unparseable file here is not this function's problem
-		}
-		for _, decl := range f.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok != token.TYPE {
-				continue
-			}
-			for _, spec := range gen.Specs {
-				if ts, ok := spec.(*ast.TypeSpec); ok && !seen[ts.Name.Name] {
-					seen[ts.Name.Name] = true
-					out = append(out, ts.Name.Name)
-				}
+		for _, name := range typeNamesInFile(fset, filepath.Join(dir, e.Name())) {
+			if !seen[name] {
+				seen[name] = true
+				out = append(out, name)
 			}
 		}
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// typeNamesInFile returns the top-level type names declared in one file --
+// the per-file scan pulled out of LoadDeclaredTypeNames so the directory walk
+// isn't nested three loops deep in one function.
+func typeNamesInFile(fset *token.FileSet, path string) []string {
+	f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return nil // a non-corpus or unparseable file here is not this function's problem
+	}
+	var out []string
+	for _, decl := range f.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			if ts, ok := spec.(*ast.TypeSpec); ok {
+				out = append(out, ts.Name.Name)
+			}
+		}
+	}
+	return out
 }
