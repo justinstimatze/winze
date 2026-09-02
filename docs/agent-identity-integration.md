@@ -188,6 +188,52 @@ same-day N=1 trial is not the bar this section originally called for — a
 multi-session, multi-day version of the same test (real elapsed time, real
 corpus growth in between) is the next step before treating this as cleared.
 
+### Measured 2026-09-02: retrieval does not decay; the write gate does
+
+`TestSelfRecallDecaysWithCorpusGrowth` (`cmd/longmemeval`) is the multi-session,
+multi-day version this section asked for. It replays 20 real sessions
+stratified across 104 days of the `~/Documents` project into a scratch store,
+oldest-first, so each note is written into a store holding every earlier note
+and none of the later ones. Then it probes each note with its own session title
+once the store is at full size. No answerer and no judge: rank is deterministic,
+and putting an LLM between the write and the number would cost money to find a
+ranking bug a sort can show.
+
+**Retrieval: 18/18 stored notes came back at rank 1. Mean rank 1.00, zero
+misses.** The oldest note had 19 later writes stacked on top of it and still
+ranked first. Corpus growth was the mechanism this section worried about, and
+on this corpus it does not bite.
+
+**The write gate does. 2 of 20 writes (10%) were refused before storage**, at
+cosine 0.74 and 0.73:
+
+| refused | blocked against | days apart |
+|---|---|---|
+| "Recover Claude sessions from crashed machine" | "Resume lost Claude code sessions from transcripts" | 35 |
+| "RAM and load investigation" | "Investigate RAM and disk space usage" | 59 |
+
+Neither pair is a duplicate. They are the same *topic* recurring weeks apart —
+two separate crashes, two separate RAM investigations. Dedup cannot separate
+recurrence from duplication, and for session notes recurrence is the normal
+case, not the exception. The cost is worse than a dropped write: the second
+incident vanishes and the first stands as though it were the only time, so a
+later reconstruction is wrong rather than merely thin. This is the "write
+hygiene" the N=1 trial named, now with a rate and a mechanism.
+
+**The raw tier caught both.** `appendRawLog` runs on the fourth line of
+`handleRemember`, before the dedup gate, and the replay confirms it: 20 raw
+entries for 20 attempted writes, both refusals recoverable. This is the first
+time Phase 3a has been exercised at all — before this replay `raw.jsonl` had
+never captured a single entry in production, because nothing had called
+`winze_remember` since it shipped. Its design claim held on its first real test.
+
+**What this does not establish.** Rank is findability, not sufficiency: nothing
+here checks whether a recalled note *says enough* to reconstruct the session.
+That needs the answerer and the judge, and is worth paying for now that the
+cheap question is answered. The corpus is also one project's sessions on one
+host, and the notes are title-plus-opening-ask rather than what an agent would
+compose at a session's end.
+
 ## See also
 
 - `docs/multi-session-write-shape.md` — the shared-brain write shape this reuses.

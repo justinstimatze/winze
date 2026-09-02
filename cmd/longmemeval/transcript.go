@@ -138,12 +138,19 @@ func (s *transcriptSession) Span() time.Duration { return s.End.Sub(s.Start) }
 
 // absorb folds one transcript record into the session, keeping the user and
 // assistant prose and widening the session's time span.
+//
+// The title is taken from whichever record carries one. Claude Code stamps
+// aiTitle onto many records per session rather than emitting it once, so
+// first-wins and last-wins are the same thing here and neither needs a rule.
 func (s *transcriptSession) absorb(line transcriptLine) {
 	if line.IsSidechain || line.IsMeta {
 		return
 	}
 	if s.Cwd == "" && line.Cwd != "" {
 		s.Cwd = line.Cwd
+	}
+	if s.Title == "" && line.AITitle != "" {
+		s.Title = line.AITitle
 	}
 	s.widenSpan(line.Timestamp)
 	if !line.isProse() {
@@ -166,6 +173,7 @@ type transcriptLine struct {
 	Timestamp   string `json:"timestamp"`
 	Cwd         string `json:"cwd"`
 	SessionID   string `json:"sessionId"`
+	AITitle     string `json:"aiTitle"`
 	IsSidechain bool   `json:"isSidechain"`
 	IsMeta      bool   `json:"isMeta"`
 	Message     *struct {
@@ -190,6 +198,7 @@ type transcriptSession struct {
 	Start time.Time
 	End   time.Time
 	Cwd   string
+	Title string
 	Turns []Turn
 }
 
@@ -216,4 +225,22 @@ func (s *transcriptSession) widenSpan(stamp string) {
 	if ts.After(s.End) {
 		s.End = ts
 	}
+}
+
+// OpeningAsk is the session's first user turn -- what the operator sat down to
+// do, before any of it had been worked out.
+//
+// This plus Title is the entire write-side input, and both cost nothing: they
+// are already on disk. Re-feeding a whole transcript to a model to compose a
+// session note would simulate something that never happens, because
+// winze_remember is called by the session that lived the work, out of context
+// it already holds. Paying ~33k tokens per session to reconstruct what the
+// writer already knew would measure a pipeline nobody runs.
+func (s *transcriptSession) OpeningAsk() string {
+	for _, turn := range s.Turns {
+		if turn.Role == "user" {
+			return turn.Content
+		}
+	}
+	return ""
 }

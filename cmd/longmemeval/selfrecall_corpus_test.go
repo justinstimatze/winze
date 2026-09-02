@@ -1,0 +1,283 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+)
+
+// selfRecallN is how many sessions the replay writes. Each write runs winze's
+// build gate (~2s), so this is the knob between a minute of wall clock and ten.
+const selfRecallN = 20
+
+// TestSelfRecallDecaysWithCorpusGrowth is Phase 3b's first measurement, and it
+// spends nothing: no answerer, no judge, no API calls.
+//
+// docs/agent-identity-integration.md's open question is whether a memory an
+// agent wrote about its own session stays findable once the store keeps
+// growing around it. That is a retrieval-rank question before it is a
+// comprehension question, and rank is deterministic. Adding an LLM answerer
+// here would put a second, noisier system between the write and the number,
+// and would cost real money to discover a ranking bug a sort could have shown.
+// Promote to answer+judge only if this curve bends.
+//
+// A dedup rejection is DATA, not an error. The first run of this measured 20
+// writes and 2 rejections at cosine 0.73-0.74 -- against other session notes
+// in the same replay, not against semantic duplicates -- while every note that
+// did land came back at rank 1. Counting a rejection as a test failure would
+// bury the one number worth having behind a red result.
+//
+// Skips without the corpus or the built binaries, so it is an instrument
+// rather than a CI gate -- the same status TestAskOnceReplayAgainstTheRealLog
+// carries.
+func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir")
+	}
+	dir := os.Getenv("WINZE_TRANSCRIPT_DIR")
+	if dir == "" {
+		dir = filepath.Join(home, ".claude", "projects", "-home-gas6amus-Documents")
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Skipf("no transcript corpus at %s", dir)
+	}
+	bin := os.Getenv("WINZE_BIN")
+	if bin == "" {
+		bin = filepath.Join(home, "Documents", "winze", "bin")
+	}
+	agent := filepath.Join(bin, "winze-agent")
+	if _, err := os.Stat(agent); err != nil {
+		t.Skipf("no winze-agent at %s (run `make build`)", agent)
+	}
+
+	all, err := readProjectTranscripts(dir, 4)
+	if err != nil {
+		t.Fatalf("reading corpus: %v", err)
+	}
+	var usable []*transcriptSession
+	for _, s := range all {
+		if s.Title != "" && s.OpeningAsk() != "" {
+			usable = append(usable, s)
+		}
+	}
+	if len(usable) < 4 {
+		t.Skipf("only %d sessions carry both a title and an opening ask", len(usable))
+	}
+	picked := stratify(usable, selfRecallN)
+	t.Logf("replaying %d of %d usable sessions, %s .. %s",
+		len(picked), len(usable),
+		picked[0].Start.Format("2006-01-02"), picked[len(picked)-1].Start.Format("2006-01-02"))
+
+	store := filepath.Join(t.TempDir(), "store")
+	env := append(os.Environ(),
+		"WINZE_STORE="+store, "WINZE_BIN="+bin,
+		"GIT_AUTHOR_NAME=selfrecall", "GIT_AUTHOR_EMAIL=selfrecall@localhost",
+		"GIT_COMMITTER_NAME=selfrecall", "GIT_COMMITTER_EMAIL=selfrecall@localhost",
+	)
+	run := func(args ...string) (string, error) {
+		cmd := exec.Command(agent, args...)
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+
+	repo, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatalf("resolving repo root: %v", err)
+	}
+	if out, err := run("init", store, "--from", repo); err != nil {
+		t.Fatalf("scaffolding store: %v\n%s", err, out)
+	}
+
+	// Replay oldest-first so each note is written into a store holding every
+	// earlier note and none of the later ones -- the growth the design doc asks for.
+	vars := make([]string, len(picked))
+	var rejected []string
+	writeStart := time.Now()
+	for i, s := range picked {
+		out, err := run("call", "winze_remember", `{"note":`+mustJSON(noteFor(s))+`}`)
+		if err != nil {
+			t.Errorf("write %d (%s) failed to execute: %v\n%s", i, s.ID[:8], err, out)
+			continue
+		}
+		if vars[i] = createdVar(out); vars[i] == "" {
+			rejected = append(rejected, fmt.Sprintf("%s %q — %s",
+				s.Start.Format("2006-01-02"), s.Title, dedupReason(out)))
+		}
+	}
+	t.Logf("%d writes in %s; %d stored, %d rejected before storage",
+		len(picked), time.Since(writeStart).Round(time.Second),
+		len(picked)-len(rejected), len(rejected))
+	for _, r := range rejected {
+		t.Logf("  rejected: %s", r)
+	}
+
+	// The raw tier is Phase 3a's whole claim: appendRawLog runs on the fourth
+	// line of handleRemember, before the dedup gate, so a note the gate refuses
+	// is meant to survive anyway. Until this replay there was no rejection to
+	// test that against -- rawlog.go had never captured a single entry in
+	// production. Assert it here, where 2 of 20 writes were actually refused.
+	rawPath := filepath.Join(store, "raw.jsonl")
+	rawBytes, err := os.ReadFile(rawPath)
+	if err != nil {
+		t.Fatalf("raw tier absent at %s: %v", rawPath, err)
+	}
+	rawLines := strings.Count(strings.TrimSpace(string(rawBytes)), "\n") + 1
+	if rawLines != len(picked) {
+		t.Errorf("raw tier holds %d entries, want %d (one per attempted write)", rawLines, len(picked))
+	}
+	for _, r := range rejected {
+		title, _, _ := strings.Cut(strings.TrimPrefix(r[11:], `"`), `"`)
+		if !strings.Contains(string(rawBytes), title) {
+			t.Errorf("rejected note %q is not in the raw tier — it is genuinely lost", title)
+		}
+	}
+	t.Logf("raw tier: %d entries for %d attempted writes; all %d rejected notes recoverable",
+		rawLines, len(picked), len(rejected))
+
+	// Now the store is at full size. Probe each note with its own session title
+	// and see where it lands.
+	var found, missing, rankSum int
+	t.Logf("%-4s %-12s %-6s %-5s %s", "idx", "date", "after", "rank", "title")
+	for i, s := range picked {
+		if vars[i] == "" {
+			continue
+		}
+		payload := fmt.Sprintf(`{"query":%s,"limit":%d,"brief_chars":0}`, mustJSON(s.Title), len(picked))
+		out, err := run("call", "winze_recall", payload)
+		if err != nil {
+			t.Errorf("recall %d: %v\n%s", i, err, out)
+			continue
+		}
+		var hits recallHits
+		if err := json.Unmarshal([]byte(out), &hits); err != nil {
+			t.Errorf("recall %d returned unparseable JSON: %v\n%s", i, err, out)
+			continue
+		}
+		rank := rankOf(hits, vars[i])
+		if rank == 0 {
+			missing++
+		} else {
+			found++
+			rankSum += rank
+		}
+		t.Logf("%-4d %-12s %-6d %-5s %s", i, s.Start.Format("2006-01-02"),
+			len(picked)-1-i, rankLabel(rank), s.Title)
+	}
+	if found == 0 {
+		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", missing)
+	}
+	t.Logf("RESULT: %d/%d stored notes recalled by own title, mean rank %.2f, %d never surfaced; "+
+		"write-rejection rate %d/%d (%.0f%%)",
+		found, found+missing, float64(rankSum)/float64(found), missing,
+		len(rejected), len(picked), 100*float64(len(rejected))/float64(len(picked)))
+}
+
+// createdVar scrapes the entity name out of winze-agent's write confirmation,
+// which reads "created entity SomeName (Concept) in memory.go (...)".
+func createdVar(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "created entity ")
+		if !ok {
+			continue
+		}
+		if name, _, ok := strings.Cut(rest, " "); ok {
+			return name
+		}
+	}
+	return ""
+}
+
+// mustJSON encodes a string as a JSON literal for embedding in a tool payload.
+func mustJSON(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return `""`
+	}
+	return string(b)
+}
+
+// noteFor renders the memory note for a session: its title and what the
+// operator opened with, capped at a length a real session note would be.
+func noteFor(s *transcriptSession) string {
+	ask := s.OpeningAsk()
+	if len(ask) > 1200 {
+		ask = ask[:1200] + "…"
+	}
+	return fmt.Sprintf("Session %s (%s): %s\n\nOpened with: %s",
+		s.Start.Format("2006-01-02"), s.ID[:8], s.Title, ask)
+}
+
+// rankLabel renders a rank, with 0 meaning the recall never surfaced the note.
+func rankLabel(rank int) string {
+	if rank == 0 {
+		return "MISS"
+	}
+	return strconv.Itoa(rank)
+}
+
+// rankOf returns the 1-based position of varName in a recall result, or 0 when
+// the recall did not surface it at all.
+func rankOf(hits recallHits, varName string) int {
+	for i, h := range hits.Hits {
+		if h.VarName == varName {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// stratify picks n sessions spread evenly across a chronological slice.
+//
+// Evenly across the calendar, not the most recent n: age is the independent
+// variable. Taking the newest n would hold corpus-growth-since-write nearly
+// constant and measure nothing, which is the same shape of mistake as the N=1
+// same-day trial this whole phase exists to improve on.
+func stratify(sessions []*transcriptSession, n int) []*transcriptSession {
+	if n >= len(sessions) {
+		return sessions
+	}
+	out := make([]*transcriptSession, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, sessions[i*len(sessions)/n])
+	}
+	return out
+}
+
+// recallHits is the shape winze_recall returns.
+type recallHits struct {
+	Matched int `json:"matched"`
+	Hits    []struct {
+		VarName string `json:"var_name"`
+	} `json:"hits"`
+}
+
+// dedupReason pulls the cosine score and the blocking memory out of a
+// "NOT stored" response, so a rejection reads as a measurement rather than as
+// an unexplained absence.
+func dedupReason(out string) string {
+	var score, against string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if _, after, ok := strings.Cut(line, "(cosine "); ok {
+			score, _, _ = strings.Cut(after, ")")
+		}
+		if strings.HasPrefix(line, "Session ") && strings.Contains(line, "] — ") {
+			against, _, _ = strings.Cut(line, " — ")
+		}
+	}
+	if score == "" {
+		return "no entity created, and no dedup message to explain it"
+	}
+	if against == "" {
+		return "blocked at cosine " + score
+	}
+	return "blocked at cosine " + score + " against " + against
+}
