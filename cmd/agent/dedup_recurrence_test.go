@@ -52,9 +52,9 @@ func TestNovelSpecificsTokenising(t *testing.T) {
 	}{
 		{
 			name:      "a date is one token, not three",
-			candidate: "happened on 2026-08-06",
+			candidate: "happened on 2026-08-06, commit 9673a19b",
 			prior:     "nothing dated here",
-			want:      []string{"2026-08-06"},
+			want:      []string{"2026-08-06", "9673a19b"},
 		},
 		{
 			name:      "shared specifics are not novel",
@@ -76,15 +76,36 @@ func TestNovelSpecificsTokenising(t *testing.T) {
 		},
 		{
 			name:      "repeats within the candidate collapse",
-			candidate: "2026-08-06 and again 2026-08-06",
+			candidate: "2026-08-06 and again 2026-08-06, both in run 42",
 			prior:     "",
-			want:      []string{"2026-08-06"},
+			want:      []string{"2026-08-06", "42"},
 		},
 		{
 			name:      "a pure rewording introduces nothing",
 			candidate: "the parser slices by byte offset, so context breaks",
 			prior:     "context comes back broken because the parser slices by byte offset",
 			want:      nil,
+		},
+		{
+			// The 140-session replay refused nothing because every note carried
+			// a fresh timestamp. A date on its own says the day changed, which a
+			// rewording written today says just as loudly.
+			name:      "a date with nothing else beside it is calendar noise",
+			candidate: "on 2026-09-02: the parser slices by byte offset, so context breaks",
+			prior:     "context comes back broken because the parser slices by byte offset",
+			want:      nil,
+		},
+		{
+			name:      "a bare year is calendar noise too",
+			candidate: "as of 2026 the shim is still there",
+			prior:     "the shim is still there",
+			want:      nil,
+		},
+		{
+			name:      "a date counts once a real particular arrives with it",
+			candidate: "on 2026-09-02 it refused 140 of them",
+			prior:     "it refused some of them",
+			want:      []string{"2026-09-02", "140"},
 		},
 	}
 	for _, c := range cases {

@@ -7,7 +7,8 @@ import (
 )
 
 // novelSpecifics returns the concrete tokens present in candidate and absent
-// from prior, deduplicated, in order of first appearance.
+// from prior, deduplicated, in order of first appearance -- and nil when the
+// only novel tokens are calendar ones.
 //
 // This is the signal that separates a recurrence from a rewording, which
 // cosine alone cannot do. Measured 2026-09-02 by
@@ -21,18 +22,34 @@ import (
 // A reworded duplicate restates a fact and introduces no new particulars. A
 // recurrence arrives with its own date and its own identifiers. That
 // asymmetry is deterministic, costs no embedder call, and is what this reads.
+//
+// The calendar exclusion is the correction to a first version that counted a
+// date as evidence all by itself. Replaying 140 sessions on 2026-09-02 refused
+// zero writes where the pre-fix run at 20 refused two, because every note
+// carried a fresh timestamp and so always looked novel -- the gate had stopped
+// gating. Winze's own memory convention tells agents to write absolute dates,
+// which makes "same fact, reworded, dated today" the common case rather than a
+// corner one, so a date has to arrive alongside some other particular before
+// it counts as a new occurrence.
 func novelSpecifics(candidate, prior string) []string {
 	seen := make(map[string]bool)
 	for _, m := range specificsPattern.FindAllString(strings.ToLower(prior), -1) {
 		seen[m] = true
 	}
 	var novel []string
+	calendarOnly := true
 	for _, m := range specificsPattern.FindAllString(strings.ToLower(candidate), -1) {
 		if seen[m] {
 			continue
 		}
 		seen[m] = true // also collapses repeats within the candidate
 		novel = append(novel, m)
+		if !calendarToken.MatchString(m) {
+			calendarOnly = false
+		}
+	}
+	if calendarOnly {
+		return nil
 	}
 	return novel
 }
@@ -68,3 +85,7 @@ func recurrenceNote(score float64, name string, novel []string) string {
 // Single digits are excluded: they appear in ordinary prose constantly and
 // would make almost any pair of notes look distinct.
 var specificsPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2}|\b[0-9a-f]{7,}\b|\b\d{2,}\b`)
+
+// calendarToken matches the specifics that only say "today is a different day":
+// an ISO date, or a bare year.
+var calendarToken = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}|(19|20)\d{2})$`)

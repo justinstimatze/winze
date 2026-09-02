@@ -43,6 +43,17 @@ implementation that drifts.
   are found the note stores with a warning naming them, rather than being
   turned away.
 
+  A date on its own does not count. Every session note carries a fresh
+  timestamp, and winze's own memory convention tells agents to write absolute
+  dates, so a bare ISO date or year says only that the day changed — which a
+  rewording written today says just as loudly. Before this exclusion landed,
+  replaying 140 sessions refused zero of 140 writes: the gate had stopped
+  gating. A date now needs some other particular beside it to read as a new
+  occurrence. Confirmed live both ways — a restatement dated today is refused
+  at cosine 0.79, while one carrying a commit sha and a byte count stores at
+  cosine 0.92. The higher-scoring note is the one that passes, which is the
+  whole point: cosine is not the discriminator.
+
   This came from a measured false-refusal rate, not a hunch. Replaying 20 real
   sessions across 104 days (`TestSelfRecallDecaysWithCorpusGrowth`, 2026-09-02)
   refused 2 of 20 writes at cosine 0.74 and 0.73, and neither was a duplicate:
