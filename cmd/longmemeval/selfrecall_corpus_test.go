@@ -82,7 +82,12 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 		len(picked), len(usable),
 		picked[0].Start.Format("2006-01-02"), picked[len(picked)-1].Start.Format("2006-01-02"))
 
-	store := filepath.Join(t.TempDir(), "store")
+	store := os.Getenv("WINZE_SELFRECALL_STORE")
+	if store == "" {
+		store = filepath.Join(t.TempDir(), "store")
+	} else if err := os.RemoveAll(store); err != nil {
+		t.Fatalf("clearing persistent store %s: %v", store, err)
+	}
 	env := append(os.Environ(),
 		"WINZE_STORE="+store, "WINZE_BIN="+bin,
 		"GIT_AUTHOR_NAME=selfrecall", "GIT_AUTHOR_EMAIL=selfrecall@localhost",
@@ -169,6 +174,19 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 		return rankOf(hits, want), nil
 	}
 
+	// WINZE_SELFRECALL_MANIFEST, when set, dumps one JSON line per session with
+	// the exact query text used for each probe and its var name -- the detail a
+	// summary line can't carry, needed to replay one session's probe by hand
+	// against the persistent store (WINZE_SELFRECALL_STORE) after the test exits.
+	var manifest *os.File
+	if p := os.Getenv("WINZE_SELFRECALL_MANIFEST"); p != "" {
+		manifest, err = os.Create(p)
+		if err != nil {
+			t.Fatalf("creating manifest %s: %v", p, err)
+		}
+		defer manifest.Close()
+	}
+
 	var titleFound, titleMiss, titleRankSum int
 	var laterFound, laterMiss, laterRankSum, noLater int
 	t.Logf("%-4s %-12s %-6s %-6s %-6s %s", "idx", "date", "after", "title", "later", "session")
@@ -210,6 +228,17 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 		}
 		t.Logf("%-4d %-12s %-6d %-6s %-6s %s", i, s.Start.Format("2006-01-02"),
 			len(picked)-1-i, rankLabel(titleRank), laterLabel, s.Title)
+		if manifest != nil {
+			laterQ := s.LaterAsk()
+			if len(laterQ) > 400 {
+				laterQ = laterQ[:400]
+			}
+			rec, _ := json.Marshal(map[string]any{
+				"idx": i, "date": s.Start.Format("2006-01-02"), "title": s.Title, "var": vars[i],
+				"title_rank": titleRank, "later_rank": laterRank, "later_ask": laterQ,
+			})
+			manifest.Write(append(rec, '\n'))
+		}
 	}
 	if titleFound == 0 {
 		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", titleMiss)

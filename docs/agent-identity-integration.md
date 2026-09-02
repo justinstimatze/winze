@@ -269,9 +269,43 @@ finds it later — the guidance question, answered without an answerer or a judg
 Storage itself is lossless: `winze_recall` with `brief_chars: 0` returns a
 1742-character note byte-for-byte, so nothing is lost between write and read.
 
-**The residual is retrieval.** 50 of 116 still never surface, against a note
-describing the session's arc minus one held-out turn. That is `--hybrid`
-scoring, not note content, and it is the next thing to look at.
+**The residual is two different failures, not one.** Pulled a persistent copy
+of the 140-note store and inspected named misses directly with
+`winze-query --hybrid --json` rather than reasoning about it from the summary
+numbers.
+
+*Some misses are note-coverage gaps, not retrieval bugs.* "Review LLM-powered
+life simulation game concept" (2026-05-27) held out the aside "it would be
+interesting to see threads begin to appear across time, kind of like cloud
+atlas." The stored note never mentions it — the session's other later turns
+(naming the project, spinning it out) filled the 1500-char arc budget first.
+No ranking change would surface a note for content the note doesn't contain.
+
+*Some misses are real, and at least one shows why: a recurring personal idiom
+collides across unrelated sessions.* "Analyze transactional romance patterns
+in fantasy" (2026-05-24) held out "we can start with public domain and I can
+acquire you other content for citing as needed, but should we pick a project
+name and spin out into that subdirectory?" — paraphrasing the same
+project-naming turns the note *does* contain ("let's find a name with less
+collisions... let's roll with cupel... transfer context to project dir"). It
+never surfaced. What outranked it: "Design indie VR street racing game with
+OSM" (2026-06-10), whose own note closes with the same operator ritual in
+near-identical words — "based on public domain or other acceptably licensed
+photos," "make the directory, dump all this context into it, git it, push to a
+private gh repo." Two different sessions, same closing habit, and the wrong
+one won on both BM25 and cosine. This is the retrieval-side twin of the
+recurrence problem `novelSpecifics` was built for below: a phrase this
+operator repeats across sessions stops being distinctive to any one of them.
+
+Also found and fixed while inspecting the persisted notes directly: 26 of 140
+carried a leaked `<task-notification>` block and 6 carried a full host-injected
+compaction-resume summary — noise `laterAskNoise`/`cleanAsk` didn't yet strip.
+Fixed in `cmd/longmemeval/transcript.go`; see its tests.
+
+So the next step here isn't a `--hybrid` scoring pass in isolation — it's
+telling the two failure modes apart at scale (how many of the 50 are coverage
+vs. genuine collision) before deciding whether either is worth building
+against.
 
 **A gate that had stopped gating.** This pass refused 0 of 140 writes where the
 pre-fix run at 20 refused 2 — `novelSpecifics` was counting a bare date as
