@@ -73,10 +73,9 @@ page describes, unavoidable once a citation leaves the store's own module.
   the C symbol it constrains, e.g. `Path: "src/nvim/register.c"`,
   `Span.Line: 713`). `coderef-span` re-hashes the live line and flags drift.
   Deliberately not used for Go targets: a Go-to-Go citation across modules
-  should exist-check via `go/packages` (tolerating harmless reformatting),
-  not hash-check (which would flag every `gofmt` pass as stale) — see
-  `docs/lint-rules.md`'s `coderef-existence` section for that mechanism, once
-  it ships.
+  exist-checks via `go/packages` instead (tolerating harmless reformatting,
+  unlike a hash, which would flag every `gofmt` pass as stale) — the
+  `coderef-existence` rule, `docs/lint-rules.md`.
 
 See `FEEDBACK-2026-09-02.md#1` for the original gap report and
 `docs/lint-rules.md` for the full `coderef-*` rule reference.

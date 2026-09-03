@@ -19,6 +19,7 @@
 //  12. dated-measurement  — a Brief/Rationale/Quote reading as an undated measurement (advisory)
 //  13. coderef-mutual-exclusion — a CodeRef setting both Symbol and Client
 //  14. coderef-span       — a Client/Span CodeRef whose cited line's content hash has drifted (--clients, advisory)
+//  15. coderef-existence  — a Client-only CodeRef whose Go symbol no longer exists in that client (--clients, advisory)
 package main
 
 import (
@@ -1028,9 +1029,11 @@ func main() {
 	rc13 := codeRefMutualExclusionRule(dir)
 	fmt.Println()
 	rc14 := codeRefSpanRule(dir, clients)
+	fmt.Println()
+	rc15 := codeRefExistenceRule(dir, clients)
 
 	worst := rc1
-	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11, rc12, rc13, rc14} {
+	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11, rc12, rc13, rc14, rc15} {
 		if rc > worst {
 			worst = rc
 		}

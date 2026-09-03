@@ -221,11 +221,6 @@ type Scene struct {
 //     (or, when Client == "", relative to the store's own repo), hashes the
 //     exact text at Span.Line, and compares to Span.Hash.
 //
-// A third combination — Client != "" && Span == nil — is valid (an
-// existence-checked external citation) but is not checked by any rule until
-// cmd/lint's coderef-existence rule ships; don't mistake an unimplemented
-// check for a passing one.
-//
 // This is a flat struct with a lint-enforced exclusion, not a sum type like
 // Provenance/Conjecture, which the compiler makes mutually exclusive by
 // construction. Deliberate: a real sum type here would need the AST-only

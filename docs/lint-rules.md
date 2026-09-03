@@ -6,7 +6,7 @@ for the LLM contradiction check.
 The rules: naming-oracle, orphan-report, value-conflict, contested-concept,
 brief-check, provenance-split, llm-contradiction, brief-drift, structural-dedup,
 lexicon-fence, thin-conjecture, dated-measurement, coderef-mutual-exclusion,
-coderef-span.
+coderef-span, coderef-existence.
 
 ## structural-dedup
 
@@ -156,7 +156,29 @@ If a third citation ever needs this, promote it to a `cmd/lint
 --hash-line=path:N` convenience flag — not before, per this project's own
 third-occurrence promotion discipline.
 
-**Not yet checked**: a `CodeRef` with `Client != ""` and `Span == nil` (an
-existence-checked citation to a Go symbol in a different module) is a valid,
-distinct shape, but nothing flags it until `coderef-existence` ships. Don't
-mistake an unimplemented check for a passing one.
+A `CodeRef` with `Client != ""` and `Span == nil` (an existence-checked
+citation to a Go symbol in a different module) is a distinct shape this rule
+does not check — see `coderef-existence` below.
+
+## coderef-existence
+
+`coderef-existence` is milestone 2: the Go-to-Go half `coderef-span`
+deliberately doesn't handle. A `CodeRef` with `Client != ""` and `Span == nil`
+names a package-qualified Go symbol (e.g.
+`"github.com/user/otherproject/internal/foo.Bar"`) in an external client's
+module. The rule loads that client with
+[`golang.org/x/tools/go/packages`](https://pkg.go.dev/golang.org/x/tools/go/packages)
+(`packages.Load` with `NeedName|NeedTypes`, `./...`), builds a
+`pkgPath.Name` set from each loaded package's `Types.Scope().Names()`, and
+flags any cited symbol not in that set — a rename or deletion, caught the
+same way `go build` would catch it in-module.
+
+Deliberately not hash-based, unlike `coderef-span`: `go/packages` correctly
+ignores a harmless `gofmt` pass or a comment edit that a hash would flag as
+drift. Same `--clients`/`--clients-file` resolution as `coderef-span` (see
+above), same posture — skips cleanly with nothing configured.
+
+**Known, deliberate limitation**: `Types.Scope().Names()` only sees
+package-level declarations, not methods (`(*Foo).Bar`) — fine for the
+motivating case (a plain function), a real gap if a method citation shows up
+later. Not solved speculatively; extend when a real citation needs it.
