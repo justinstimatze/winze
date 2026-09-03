@@ -21,7 +21,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // canonicalFiles are the schema files every store holds a copy of. The copy is
@@ -113,6 +116,7 @@ func runInit(argv []string) {
 	if err != nil {
 		fatalf("init: %v", err)
 	}
+	warnIfSourceIsNewerThanThisBinary(src)
 	if err := os.MkdirAll(abs, 0o755); err != nil {
 		fatalf("init: %v", err)
 	}
@@ -180,13 +184,23 @@ func runInit(argv []string) {
 		} else {
 			fmt.Println("  linked: this repo now resolves to it (git config winze.store)")
 		}
+		// git config only makes the store resolvable; a session in this repo
+		// still has no winze_remember/winze_recall tool until an MCP server
+		// is registered for it. Print the line rather than run it — adding an
+		// MCP server is a standing config change this command should not make
+		// on a caller's behalf.
+		if exe, err := os.Executable(); err == nil {
+			fmt.Printf("\nThis repo has no MCP server for it yet. Register one:\n  claude mcp add --scope project winze-agent %s serve\n", exe)
+		}
 		return
 	}
 	fmt.Printf("\nPoint a repo at it from that repo's root:\n  git config winze.store %s\n", abs)
 }
 
 // findCorpusSource locates the canonical schema: --from, then $WINZE_SRC, then
-// the corpus beside this binary (the `make build` layout), then give up loudly
+// the corpus beside this binary (the `make build` layout), then the module
+// cache (a repo that depends on winze, or ran `go get` it, has a real copy
+// sitting there even when it never cloned the source), then give up loudly
 // rather than scaffold a store from files that are not there.
 func findCorpusSource(from string) (string, error) {
 	var tried []string
@@ -216,6 +230,26 @@ func findCorpusSource(from string) (string, error) {
 	if exe, err := os.Executable(); err == nil {
 		if p, ok := consider(filepath.Dir(filepath.Dir(exe))); ok {
 			return p, nil
+		}
+	}
+	// go list only answers for a module the current directory actually
+	// requires (a dependency, or a local `replace`) — a plain "go get"
+	// leaves exactly that trace in the module cache, so this is a real
+	// fallback for a repo that pulled winze in as a dependency, not a
+	// guess.
+	if out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/justinstimatze/winze").Output(); err == nil {
+		if p, ok := consider(strings.TrimSpace(string(out))); ok {
+			return p, nil
+		}
+	}
+	if gomodcache, err := exec.Command("go", "env", "GOMODCACHE").Output(); err == nil {
+		if matches, err := filepath.Glob(filepath.Join(strings.TrimSpace(string(gomodcache)), "github.com", "justinstimatze", "winze@*")); err == nil {
+			sort.Strings(matches)
+			for i := len(matches) - 1; i >= 0; i-- {
+				if p, ok := consider(matches[i]); ok {
+					return p, nil
+				}
+			}
 		}
 	}
 	return "", fmt.Errorf("no winze corpus found (looked in %s) — set $WINZE_SRC to a winze checkout or pass --from",
@@ -275,4 +309,38 @@ func runIn(dir string, name string, args ...string) (string, error) {
 func fatalf(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", a...)
 	os.Exit(1)
+}
+
+// warnIfSourceIsNewerThanThisBinary compares src's latest commit against this
+// running binary's own build/install time. A newer checkout means this
+// binary — and, more to the point, whatever sibling winze-* binaries were
+// built alongside it (winze-add, winze-query, ...) — may predate a schema or
+// build-gate fix. FEEDBACK-2026-09-02.md#7 hit exactly this: a `Supersedes`
+// auto-resolve fix landed in the checkout six days before the installed
+// winze-add was built, and the resulting compile error read as a bug rather
+// than a stale binary. Best-effort and advisory only: this never blocks init,
+// it only saves the round-trip of debugging a phantom failure.
+func warnIfSourceIsNewerThanThisBinary(src string) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	exeInfo, err := os.Stat(exe)
+	if err != nil {
+		return
+	}
+	out, err := runIn(src, "git", "log", "-1", "--format=%ct")
+	if err != nil {
+		return
+	}
+	commitUnix, err := strconv.ParseInt(strings.TrimSpace(out), 10, 64)
+	if err != nil {
+		return
+	}
+	commitTime := time.Unix(commitUnix, 0)
+	if commitTime.After(exeInfo.ModTime()) {
+		fmt.Printf("note: %s has commits newer than this binary (built %s) — if a write later fails a\n", src, exeInfo.ModTime().Format("2006-01-02"))
+		fmt.Printf("  build-gate check that %s says is auto-resolved, rebuild first:\n", src)
+		fmt.Printf("  cd %s && make build\n", src)
+	}
 }

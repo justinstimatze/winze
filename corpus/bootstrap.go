@@ -172,7 +172,7 @@ var (
 	RenameWithDeprecation = &Mitigation{
 		ID:        "mit-rename-deprecation",
 		Addresses: OntologyChurn,
-		Rule:      "rename operations emit a deprecation alias that still compiles for N commits before deletion; rename log stored in Dolt; churn KPI (renames_per_week / new_facts_per_week) alerts if >0.3 for 3 weeks",
+		Rule:      "rename operations emit a deprecation alias that still compiles for N commits before deletion; rename log stored in Dolt; churn KPI (renames_per_week / new_facts_per_week) alerts if >0.3 for 3 weeks. Not yet implemented (2026-09-02): no deprecation-alias emission or rename log exists.",
 		Automated: true,
 	}
 
@@ -200,7 +200,7 @@ var (
 	ForcedBriefing = &Mitigation{
 		ID:        "mit-forced-briefing",
 		Addresses: QueryabilityMirage,
-		Rule:      "every worker pre-reads defn.brief(target) before its first write; structured_calls / total_calls KPI target >= 0.7",
+		Rule:      "every worker pre-reads defn.brief(target) before its first write; structured_calls / total_calls KPI target >= 0.7. Not yet implemented (2026-09-02): no structured_calls/KPI tracking exists in the codebase.",
 		Automated: true,
 	}
 
@@ -214,21 +214,21 @@ var (
 	PredicateDisjointness = &Mitigation{
 		ID:        "mit-predicate-disjoint",
 		Addresses: ConsistencyIsNotCorrectness,
-		Rule:      "//winze:disjoint pragma on function or method pairs; deterministic lint enforces across Dolt reference graph; cheap, catches the motivating 'trusts vs distrusts' example without any LLM",
+		Rule:      "//winze:disjoint pragma on function or method pairs; deterministic lint enforces across Dolt reference graph; cheap, catches the motivating 'trusts vs distrusts' example without any LLM. Not yet implemented (2026-09-02): no //winze:disjoint pragma or enforcing lint rule exists (see docs/pragmas.md for the pragmas that do).",
 		Automated: true,
 	}
 
 	SeparateJudgePass = &Mitigation{
 		ID:        "mit-separate-judge",
 		Addresses: ConsistencyIsNotCorrectness,
-		Rule:      "post-commit LLM lint rule with different prompt and context from the authoring worker; budgeted token ceiling; runs async on nightly or pre-merge schedule; logs disagreements with the author",
+		Rule:      "post-commit LLM lint rule with different prompt and context from the authoring worker; budgeted token ceiling; runs async on nightly or pre-merge schedule; logs disagreements with the author. Status open, not resolved (2026-09-02): see ContradictionDetectionLintRule — cmd/lint --llm exists but whether it satisfies this design has not been decided.",
 		Automated: true,
 	}
 
 	RippleEditsEval = &Mitigation{
 		ID:        "mit-rippleedits-eval",
 		Addresses: ConsistencyIsNotCorrectness,
-		Rule:      "port RippleEdits 6-criterion eval to winze shape; run nightly on held-out seed set; report recall per criterion; acceptance criterion for the SeparateJudgePass rule",
+		Rule:      "port RippleEdits 6-criterion eval to winze shape; run nightly on held-out seed set; report recall per criterion; acceptance criterion for the SeparateJudgePass rule. Not yet implemented (2026-09-02): no RippleEdits port or nightly eval runner exists.",
 		Automated: true,
 	}
 )

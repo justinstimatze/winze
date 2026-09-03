@@ -51,6 +51,20 @@ KB already applies to concept links, pointed at the codebase.
 Contrast a prose wiki, a README, or a design doc: a reference to `handleAuth()`
 survives long after `handleAuth` is gone. Here it cannot.
 
+**This holds only within one module.** `go build .` type-checks `CodeRef.Symbol`
+against whatever `winze_self.go`'s own module can see, and `docs/agent.md`
+makes a store its own module by design — many repos share one store, and
+deriving a store from the working directory is the fragmentation that
+decision avoids. So a doc→code citation cannot reach any client repo the
+store serves (the store does not `require` them), and cannot reach non-Go
+code at all. A decision record that needs to cite the law it constrains by
+value, or a citation into a C or Python codebase, hits this wall today. Two
+open proposals — `winze-lint --clients` resolving `CodeRef.Path` against
+client repos with `go/packages` at CI time, or a content-hashed span
+reference for non-Go targets checked the way defn already checks file
+staleness — are recorded in FEEDBACK-2026-09-02.md#1, unimplemented pending a
+choice between them.
+
 ## Enforcement, not detection
 
 The knowledge-management field around this problem splits on one axis. One side

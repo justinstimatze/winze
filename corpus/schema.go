@@ -34,6 +34,14 @@ type Entity struct {
 
 // Decision is a locked-in architectural choice. Decisions are load-bearing:
 // the rest of the KB assumes they hold. Changing one is a branch-level event.
+//
+// This is winze's own fixed-schema architecture record (used in
+// corpus/bootstrap.go), not the general decision-log mechanism every winze
+// store gets for free. A store recording its own project decisions — the
+// germline/aipotluck.org shape — should use a Concept memory plus a
+// Supersedes chain instead; see docs/decisions.md. The two are named alike on
+// purpose (both answer "why is it this way") but serve different corpora:
+// this one only ever describes winze's own build.
 type Decision struct {
 	ID        string
 	Title     string
@@ -49,8 +57,12 @@ type FailureMode struct {
 	Description string
 }
 
-// Mitigation is a defense against a FailureMode. If Automated is true the
-// mitigation runs as a winze lint rule; otherwise it is a procedural discipline.
+// Mitigation is a defense against a FailureMode. Automated names the intended
+// mechanism, not deployment status: true means the mitigation is designed to
+// run as a deterministic lint rule, false means a procedural discipline
+// followed by hand. Whether an Automated mitigation has actually shipped is
+// stated in its own Rule text (see mit-naming-oracle's "Implemented in
+// cmd/lint") or, where it hasn't yet, noted there directly.
 type Mitigation struct {
 	ID        string
 	Addresses *FailureMode

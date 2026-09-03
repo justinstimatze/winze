@@ -1009,9 +1009,11 @@ func main() {
 	rc10 := lexiconFenceRule(dir)
 	fmt.Println()
 	rc11 := thinConjectureRule(dir)
+	fmt.Println()
+	rc12 := datedMeasurementRule(dir)
 
 	worst := rc1
-	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11} {
+	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11, rc12} {
 		if rc > worst {
 			worst = rc
 		}
