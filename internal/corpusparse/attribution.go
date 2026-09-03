@@ -159,6 +159,12 @@ func codeRefs(cl *ast.CompositeLit) []CodeRef {
 					ref.Path = stringLit(v)
 				case "Note":
 					ref.Note = stringLit(v)
+				case "Client":
+					ref.Client = stringLit(v)
+				case "Symbol":
+					ref.HasSymbol = true
+				case "Span":
+					ref.Span = codeSpanLit(v)
 				}
 			}
 			if ref.Path != "" {
@@ -258,4 +264,30 @@ func Actor(id string) string {
 		}
 	}
 	return "human:" + id
+}
+
+// codeSpanLit reads a `&CodeSpan{Line: N, Hash: "..."}` field value.
+func codeSpanLit(e ast.Expr) *CodeSpan {
+	expr := e
+	if ue, ok := e.(*ast.UnaryExpr); ok {
+		expr = ue.X
+	}
+	cl, ok := expr.(*ast.CompositeLit)
+	if !ok {
+		return nil
+	}
+	span := &CodeSpan{}
+	for _, elt := range cl.Elts {
+		k, v, ok := keyValue(elt)
+		if !ok {
+			continue
+		}
+		switch k {
+		case "Line":
+			span.Line = intLit(v)
+		case "Hash":
+			span.Hash = stringLit(v)
+		}
+	}
+	return span
 }

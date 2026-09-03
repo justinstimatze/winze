@@ -129,6 +129,9 @@ bin/
 # semantic search embedding cache (cmd/query --semantic)
 .winze-embed/
 
+# cmd/lint --clients-file default: machine-local client repo paths, never committed
+.winze-clients.json
+
 # self-telemetry (usage-frequency log; local only)
 .winze-usage.jsonl
 

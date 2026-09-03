@@ -187,22 +187,64 @@ type Scene struct {
 }
 
 // CodeRef is a typed citation from a knowledge entity to a live code symbol —
-// the doc→code form of winze's typed-citation primitive. Symbol holds the
-// actual Go symbol (e.g. a function value), so `go build` type-checks the
-// citation: rename or remove the symbol and the corpus stops compiling. A
-// documentation reference that cannot go stale silently, because staleness is
-// a build error rather than something a reviewer might notice.
+// the doc→code form of winze's typed-citation primitive.
 //
-// Path is the human-readable label for rendering and query (e.g.
-// "internal/corpuslock.Acquire"); it is derivable from Symbol via
-// runtime.FuncForPC — a later refinement so Path itself can't drift from
-// Symbol — kept explicit for now. Only entities that document code carry
-// CodeRefs; corpus concepts do not, so the field lives on SourceDoc, not on
-// every Entity.
+// Two independent axes, not every combination valid:
+//
+//   - WHERE the target lives: Client == "" (the only shape before this pair of
+//     fields existed) means the citation targets this store's own module —
+//     Symbol, if set, is the compile-checked existence proof, and `go build`
+//     type-checks it: rename or remove the symbol and the corpus stops
+//     compiling. Client != "" names an external client repo (resolved by
+//     cmd/lint's --clients/--clients-file, see docs/lint-rules.md) that this
+//     store's go.mod deliberately does NOT require — many-repos-to-one-store
+//     is the documented norm (docs/agent.md), so requiring every client would
+//     be exactly the fragmentation that norm avoids. Symbol MUST be nil
+//     whenever Client != "", even if the target happens to be vendored into
+//     this module incidentally — a citation is either "this store's own
+//     module, compiler-checked" or "an external client, lint-checked," never
+//     ambiguously either. cmd/lint's coderef-mutual-exclusion rule enforces
+//     this as a hard failure.
+//
+//   - HOW existence is checked: Span == nil means existence-checked — a
+//     same-module Symbol (checked by `go build`), or, when Client != "", a
+//     package-qualified Go symbol name in Path (e.g.
+//     "github.com/user/otherproject/internal/foo.Bar") resolved against the
+//     named client with golang.org/x/tools/go/packages (cmd/lint's
+//     coderef-existence rule) — deliberately NOT hash-based, since go/packages
+//     correctly ignores harmless reformatting/comment changes a hash would
+//     false-positive on. Span != nil means content-hash-checked: the ONLY
+//     mechanism for a non-Go target (a C symbol, e.g. Path
+//     "src/nvim/register.c" with Span.Line 713) or any citation where
+//     byte-exact content, not mere existence, is the asserted property.
+//     cmd/lint's coderef-span rule reads Path in the named client's checkout
+//     (or, when Client == "", relative to the store's own repo), hashes the
+//     exact text at Span.Line, and compares to Span.Hash.
+//
+// A third combination — Client != "" && Span == nil — is valid (an
+// existence-checked external citation) but is not checked by any rule until
+// cmd/lint's coderef-existence rule ships; don't mistake an unimplemented
+// check for a passing one.
+//
+// This is a flat struct with a lint-enforced exclusion, not a sum type like
+// Provenance/Conjecture, which the compiler makes mutually exclusive by
+// construction. Deliberate: a real sum type here would need the AST-only
+// internal/corpusparse mirror to do actual Go type resolution, which it
+// doesn't and shouldn't start doing for this, and it would force every
+// existing CodeRef literal to change shape.
+//
+// Path is the human-readable label for rendering and query, and doubles as
+// the machine-checked locator: a same-module dotted symbol name
+// ("internal/corpuslock.Acquire"), a client-scoped dotted symbol name when
+// Client != "" && Span == nil, or a client-relative file path
+// ("src/nvim/register.c") when Span != nil — the line itself lives in
+// Span.Line, not appended to Path.
 type CodeRef struct {
-	Symbol any    // the real code symbol — compile-checked existence
-	Path   string // human label, e.g. "internal/corpuslock.Acquire"
-	Note   string // what the citing entity asserts about this symbol
+	Symbol any       // the real code symbol — compile-checked existence. Must be nil when Client != "".
+	Client string    // "" = same-module citation (unchanged); non-empty names an external client checked by cmd/lint --clients
+	Path   string    // human label / locator — see doc above for the three shapes
+	Span   *CodeSpan // nil = existence-checked (Symbol or go/packages); non-nil = content-hash-checked (the only mechanism for non-Go targets)
+	Note   string    // what the citing entity asserts about this symbol
 }
 
 // SourceDoc is a knowledge entity that documents part of a codebase: an
@@ -214,4 +256,19 @@ type CodeRef struct {
 type SourceDoc struct {
 	*Entity
 	Refs []CodeRef
+}
+
+// CodeSpan pins a single line of text in a client's file so a citation that
+// cannot be checked by the Go compiler (a non-Go target, or a Go symbol in a
+// different module) can still detect drift — by content, not by symbol
+// existence. Hash is the sha256 (hex-encoded) of the exact line's text at
+// citation time; cmd/lint's coderef-span rule re-hashes the live file's line
+// and flags a mismatch, a missing file, or a line number past EOF.
+//
+// Single-line only: no forcing-function case yet for a range citation (see
+// this project's own schema-accretion discipline), so no Range field exists
+// until one shows up.
+type CodeSpan struct {
+	Line int    // 1-indexed line number in the client's file at Path
+	Hash string // sha256 (hex) of that exact line's text, captured at citation time
 }

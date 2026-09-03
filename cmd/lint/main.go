@@ -14,6 +14,11 @@
 //  7. provenance-split   — same Origin cited by multiple Provenance vars (advisory)
 //  8. brief-drift        — Brief names an entity with no claim path to it (advisory)
 //  9. structural-dedup   — probable duplicate entities by shared claim-neighborhood (advisory)
+//  10. lexicon-fence      — a Provenance/Quote referencing a private lexicon locator
+//  11. thin-conjecture    — a Conjecture literal with no Rationale
+//  12. dated-measurement  — a Brief/Rationale/Quote reading as an undated measurement (advisory)
+//  13. coderef-mutual-exclusion — a CodeRef setting both Symbol and Client
+//  14. coderef-span       — a Client/Span CodeRef whose cited line's content hash has drifted (--clients, advisory)
 package main
 
 import (
@@ -975,12 +980,20 @@ func main() {
 	llmMaxCalls := fs.Int("llm-max-calls", 0, "max LLM calls per run (0 = unlimited)")
 	llmMaxTokens := fs.Int("llm-max-tokens", 1024, "max tokens per LLM call")
 	briefStrictFlag := fs.Bool("brief-strict", false, "brief-drift gates (exit 1) on unexempted Brief assertion-candidates")
+	clientsFlag := fs.String("clients", "", "external client repos for CodeRef.Client checks: name=path,name=path")
+	clientsFileFlag := fs.String("clients-file", "", "JSON {name:path} client repos (default: $WINZE_CLIENTS_FILE, or .winze-clients.json in cwd)")
 	fs.Parse(os.Args[1:])
 	briefStrict = *briefStrictFlag
 
 	dir := "corpus"
 	if fs.NArg() > 0 {
 		dir = fs.Arg(0)
+	}
+
+	clients, err := resolveClients(*clientsFlag, *clientsFileFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "clients: %v\n", err)
+		os.Exit(2)
 	}
 
 	rc1 := namingOracleRule(dir)
@@ -1011,9 +1024,13 @@ func main() {
 	rc11 := thinConjectureRule(dir)
 	fmt.Println()
 	rc12 := datedMeasurementRule(dir)
+	fmt.Println()
+	rc13 := codeRefMutualExclusionRule(dir)
+	fmt.Println()
+	rc14 := codeRefSpanRule(dir, clients)
 
 	worst := rc1
-	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11, rc12} {
+	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11, rc12, rc13, rc14} {
 		if rc > worst {
 			worst = rc
 		}

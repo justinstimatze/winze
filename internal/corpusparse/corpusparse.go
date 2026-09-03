@@ -41,17 +41,24 @@ type Entity struct {
 
 	// Refs holds the entity's typed code citations, present only on SourceDoc
 	// carriers. Symbol is the compile-checked half and has no textual form, so
-	// only the human label and note survive the parse.
+	// only HasSymbol (whether a Symbol key was present), the human label/locator
+	// (Path), the note, and the cross-repo/non-Go fields (Client, Span) survive
+	// the parse.
 	Refs []CodeRef
 }
 
 // CodeRef is the parseable half of a schema.go CodeRef: the doc→code typed
 // citation's label and assertion. Its Symbol field is what the compiler checks
 // and what makes the citation unable to go stale silently; a parser sees only
-// the prose that travels alongside it.
+// the prose that travels alongside it — HasSymbol records whether a Symbol
+// key was present at all, since the parser can't evaluate what it points to.
+// Client/Span mirror schema.go's cross-repo/non-Go citation fields.
 type CodeRef struct {
-	Path string
-	Note string
+	Path      string
+	Note      string
+	Client    string
+	Span      *CodeSpan
+	HasSymbol bool
 }
 
 // Claim is a typed predicate instance: var X = PredicateType{Subject: A, Object: B, Prov: ...}.
@@ -439,4 +446,13 @@ func typeNamesInFile(fset *token.FileSet, path string) []string {
 		}
 	}
 	return out
+}
+
+// CodeSpan mirrors schema.go's CodeSpan for the AST scraper — corpusparse
+// cannot import corpus/schema.go directly (corpus/winze_self.go imports
+// corpusparse; the reverse would cycle), so every schema type that needs to
+// be parseable gets a matching, hand-kept-in-sync mirror here.
+type CodeSpan struct {
+	Line int
+	Hash string
 }

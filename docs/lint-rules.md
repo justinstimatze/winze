@@ -5,7 +5,8 @@ for the LLM contradiction check.
 
 The rules: naming-oracle, orphan-report, value-conflict, contested-concept,
 brief-check, provenance-split, llm-contradiction, brief-drift, structural-dedup,
-lexicon-fence, thin-conjecture.
+lexicon-fence, thin-conjecture, dated-measurement, coderef-mutual-exclusion,
+coderef-span.
 
 ## structural-dedup
 
@@ -83,3 +84,79 @@ mutation here goes through the `defn` MCP tool per this project's own
 CLAUDE.md — the ask would never fire. A deterministic lint rule sees the AST
 on disk regardless of which tool wrote it, so it's the mechanism that actually
 covers winze's real write path.
+
+## dated-measurement
+
+`dated-measurement` flags a `Brief`, `Rationale`, or `Quote` that reads as a
+measurement or a claim about present state (matching a bare number-plus-unit
+like `24GB`/`97%`/`12ms`, or a present-tense status word — `currently`, `now`,
+`is backed by`, `links in`, `takes`) with no ISO date (`\d{4}-\d{2}-\d{2}`)
+anywhere in the same string. This is README known-problem 5 made concrete:
+`internal/defndb`'s package doc asserted defn was Dolt-backed and too heavy to
+link, that stopped being true, and nothing noticed until an agent read the
+stale claim as a live measurement and built ~500 lines on top of it.
+
+Advisory (returns 0 regardless of hits), not blocking: a real run against the
+corpus (2026-09-02) found 10 of 496 strings scanned, and the pattern is
+deliberately loose (README known-problem 5's own "first cut") — most of the
+real hits were historical decades ("in the 1970s") inside sourced `Quote`
+text, which cannot take an ISO date without either inventing one or rewriting
+the citation's exact source text, and one was a verbatim user remark
+containing the word "now." A precise-enough check to gate on belongs in CI,
+not as a loose heuristic; this stays a report until the false-positive rate
+says otherwise.
+
+## coderef-mutual-exclusion
+
+`coderef-mutual-exclusion` flags a `CodeRef` literal that sets both `Symbol`
+and `Client` — see `corpus/schema.go`'s `CodeRef` doc for why that's a
+structural contradiction: a citation is either this store's own module
+(compiler-checked via `Symbol`) or an external client (lint-checked via
+`Client`), never ambiguously either. Always on, zero cost — no client
+resolution or file I/O needed — so it runs unconditionally like
+`naming-oracle`. Hard failure (exit 1): there's no legitimate reading of a
+citation claiming to be both at once.
+
+## coderef-span
+
+`coderef-span` is the mechanism for the citation shape `Symbol` can never
+reach: a non-Go target, or any citation where byte-exact content rather than
+mere existence is the asserted property (`corpus/schema.go`'s `CodeSpan`,
+`docs/typed-citation.md`, `FEEDBACK-2026-09-02.md#1`). A `CodeRef` with
+`Span` set is checked by reading the exact line of text at `Span.Line` in the
+cited file and comparing its sha256 hash to `Span.Hash`.
+
+A `Client == ""` span (a citation to a file inside the store's own repo) is
+always checked, resolved relative to the store's root. A `Client != ""` span
+(an external target) is checked against the path named for that client via:
+
+```
+--clients=name=path,name=path              # inline, comma-separated
+--clients-file=<path to JSON {"name":"path"}>
+$WINZE_CLIENTS_FILE                         # same JSON shape, env fallback
+.winze-clients.json                         # default file in the working directory, gitignored
+```
+
+With no client configured for a given `Client`-bearing `Span` ref, the check
+skips cleanly (same posture as `--llm`) rather than failing — client paths
+are machine-local and there's nothing wrong with a corpus authored without
+them checked out.
+
+**Authoring a `Span` citation**: `cmd/add` has no flag for this today —
+`CodeRef`/`SourceDoc` are hand-authored Go literals, same as the two
+same-module citations that predate `Client`/`Span`. Compute `Span.Hash` with
+the exact recipe `lineAt`/`hashLine` (`cmd/lint/coderef_span.go`) reproduce,
+byte-for-byte, no trailing newline:
+
+```
+awk 'NR==713{sub(/\r$/,""); printf "%s", $0}' path/to/file | sha256sum
+```
+
+If a third citation ever needs this, promote it to a `cmd/lint
+--hash-line=path:N` convenience flag — not before, per this project's own
+third-occurrence promotion discipline.
+
+**Not yet checked**: a `CodeRef` with `Client != ""` and `Span == nil` (an
+existence-checked citation to a Go symbol in a different module) is a valid,
+distinct shape, but nothing flags it until `coderef-existence` ships. Don't
+mistake an unimplemented check for a passing one.

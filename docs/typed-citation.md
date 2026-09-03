@@ -51,19 +51,35 @@ KB already applies to concept links, pointed at the codebase.
 Contrast a prose wiki, a README, or a design doc: a reference to `handleAuth()`
 survives long after `handleAuth` is gone. Here it cannot.
 
-**This holds only within one module.** `go build .` type-checks `CodeRef.Symbol`
-against whatever `winze_self.go`'s own module can see, and `docs/agent.md`
-makes a store its own module by design — many repos share one store, and
-deriving a store from the working directory is the fragmentation that
-decision avoids. So a doc→code citation cannot reach any client repo the
-store serves (the store does not `require` them), and cannot reach non-Go
-code at all. A decision record that needs to cite the law it constrains by
-value, or a citation into a C or Python codebase, hits this wall today. Two
-open proposals — `winze-lint --clients` resolving `CodeRef.Path` against
-client repos with `go/packages` at CI time, or a content-hashed span
-reference for non-Go targets checked the way defn already checks file
-staleness — are recorded in FEEDBACK-2026-09-02.md#1, unimplemented pending a
-choice between them.
+**The compile-time form holds only within one module.** `go build .`
+type-checks `CodeRef.Symbol` against whatever `winze_self.go`'s own module can
+see, and `docs/agent.md` makes a store its own module by design — many repos
+share one store, and deriving a store from the working directory is the
+fragmentation that decision avoids. So `Symbol` can never reach a client repo
+the store serves (the store does not `require` them) and never reaches non-Go
+code at all. `CodeRef` now has two more fields for exactly this reach,
+checked by `cmd/lint`, not the compiler — the honest cost named plainly: a
+`--clients` lint run is *detection*, not the *prevention* the rest of this
+page describes, unavoidable once a citation leaves the store's own module.
+
+- **`Client string`** names an external client repo (resolved by
+  `cmd/lint --clients`/`--clients-file`, see `docs/lint-rules.md`) instead of
+  requiring it into the store's own `go.mod`. `Symbol` must be nil whenever
+  `Client != ""` — a citation is either same-module-compiler-checked or
+  external-client-lint-checked, never ambiguously either
+  (`coderef-mutual-exclusion` enforces this).
+- **`Span *CodeSpan`** (`Line int`, `Hash string`) is a content-hash citation
+  — the only mechanism that reaches a non-Go target (a decision record citing
+  the C symbol it constrains, e.g. `Path: "src/nvim/register.c"`,
+  `Span.Line: 713`). `coderef-span` re-hashes the live line and flags drift.
+  Deliberately not used for Go targets: a Go-to-Go citation across modules
+  should exist-check via `go/packages` (tolerating harmless reformatting),
+  not hash-check (which would flag every `gofmt` pass as stale) — see
+  `docs/lint-rules.md`'s `coderef-existence` section for that mechanism, once
+  it ships.
+
+See `FEEDBACK-2026-09-02.md#1` for the original gap report and
+`docs/lint-rules.md` for the full `coderef-*` rule reference.
 
 ## Enforcement, not detection
 

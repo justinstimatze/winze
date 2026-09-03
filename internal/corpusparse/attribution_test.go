@@ -59,6 +59,25 @@ var KeyedCarrier = SourceDoc{
 		{Symbol: corpuslock.Release, Path: "internal/corpuslock.Release"},
 	},
 }
+
+var ClientSpanCarrier = SourceDoc{
+	Entity: &Entity{ID: "doc-clientspan", Name: "external ref", Kind: "sourcedoc", Brief: "b"},
+	Refs: []CodeRef{{
+		Client: "wovim",
+		Path:   "src/nvim/register.c",
+		Span:   &CodeSpan{Line: 713, Hash: "deadbeef"},
+		Note:   "register free-list invariant",
+	}},
+}
+
+var ViolatingCarrier = SourceDoc{
+	Entity: &Entity{ID: "doc-violate", Name: "bad ref", Kind: "sourcedoc", Brief: "b"},
+	Refs: []CodeRef{{
+		Symbol: corpuslock.Acquire,
+		Client: "wovim",
+		Path:   "internal/corpuslock.Acquire",
+	}},
+}
 `
 
 func parseFixture(t *testing.T, src string) *Corpus {
@@ -200,5 +219,64 @@ func TestParseCorpusDelegates(t *testing.T) {
 	if len(ents) != len(full.Entities) || len(claims) != len(full.Claims) {
 		t.Errorf("ParseCorpus (%d/%d) diverges from ParseCorpusFull (%d/%d)",
 			len(ents), len(claims), len(full.Entities), len(full.Claims))
+	}
+}
+
+// TestCodeRefHasSymbolDetected pins the shape cmd/lint's coderef-mutual-exclusion
+// rule depends on: a parser can't evaluate what Symbol points to, so it must
+// record whether the key was present at all, distinctly from Client being set.
+func TestCodeRefHasSymbolDetected(t *testing.T) {
+	c := parseFixture(t, fixtureAttribution)
+
+	keyed, ok := c.EntityByVar()["KeyedCarrier"]
+	if !ok {
+		t.Fatal("KeyedCarrier not parsed")
+	}
+	for _, ref := range keyed.Refs {
+		if !ref.HasSymbol {
+			t.Errorf("%+v: expected HasSymbol true (Symbol key is present)", ref)
+		}
+		if ref.Client != "" {
+			t.Errorf("%+v: expected empty Client (same-module citation)", ref)
+		}
+	}
+
+	violating, ok := c.EntityByVar()["ViolatingCarrier"]
+	if !ok {
+		t.Fatal("ViolatingCarrier not parsed")
+	}
+	if len(violating.Refs) != 1 {
+		t.Fatalf("expected 1 code ref, got %d", len(violating.Refs))
+	}
+	ref := violating.Refs[0]
+	if !ref.HasSymbol || ref.Client == "" {
+		t.Errorf("%+v: expected both HasSymbol true and Client set — this is the violating shape cmd/lint must flag", ref)
+	}
+}
+
+func TestCodeRefClientAndSpanParse(t *testing.T) {
+	c := parseFixture(t, fixtureAttribution)
+	e, ok := c.EntityByVar()["ClientSpanCarrier"]
+	if !ok {
+		t.Fatal("ClientSpanCarrier not parsed")
+	}
+	if len(e.Refs) != 1 {
+		t.Fatalf("expected 1 code ref, got %d", len(e.Refs))
+	}
+	ref := e.Refs[0]
+	if ref.Client != "wovim" {
+		t.Errorf("Client = %q, want %q", ref.Client, "wovim")
+	}
+	if ref.Path != "src/nvim/register.c" {
+		t.Errorf("Path = %q, want %q", ref.Path, "src/nvim/register.c")
+	}
+	if ref.HasSymbol {
+		t.Error("HasSymbol should be false: no Symbol key in this literal")
+	}
+	if ref.Span == nil {
+		t.Fatal("Span not parsed")
+	}
+	if ref.Span.Line != 713 || ref.Span.Hash != "deadbeef" {
+		t.Errorf("Span = %+v, want {Line:713 Hash:deadbeef}", ref.Span)
 	}
 }
