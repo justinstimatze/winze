@@ -9,7 +9,7 @@ go run ./cmd/query --hybrid "consciousness" --type Hypothesis .  # type-aware: f
 go run ./cmd/query --hybrid "apophenia" --expand .  # append each hit's typed claim neighborhood (predicate → neighbor + role) — reasoning-ready context
 go run ./cmd/query --hybrid "winze positioning" --include-superseded .  # by default a superseded entity (object of a Supersedes claim) is downranked, not excluded; this restores its natural rank
 go run ./cmd/query --dupes ConfirmationBias .       # structural twins: same-role entities sharing this one's claim-neighborhood (coin-time dedup)
-go run ./cmd/query --raw "gearbox rpm" .            # hybrid BM25 + semantic search over the store's raw.jsonl evidence log — verbatim source text, not a typed claim (see docs/raw-evidence-retrieval.md)
+go run ./cmd/query --raw "gearbox rpm" .            # hybrid BM25 + semantic + temporal search over the store's raw.jsonl evidence log — verbatim source text, not a typed claim (see docs/raw-evidence-retrieval.md)
 go run ./cmd/query --theories "apophenia" .        # competing theories of a concept
 go run ./cmd/query --claims "Chalmers" .           # all claims involving an entity
 go run ./cmd/query --provenance "Sagan" .          # provenance trail for a source

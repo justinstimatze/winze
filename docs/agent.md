@@ -82,16 +82,17 @@ implementation that drifts.
   of the failure, the hint fixed the other half. Together they took the same
   8-question cold-recall test from 0/8 to 8/8. See
   `docs/agent-identity-integration.md`'s precondition 1.
-- **`winze_recall_raw(query, limit?)`** — BM25 keyword search over the raw
-  evidence tier (`raw.jsonl`, below), returning verbatim source text —
-  `{time, tool, var, note, score}` — never a typed claim. Use when
-  `winze_recall`'s curated briefs miss something that might still be sitting
-  in the raw tier: a dedup-blocked note, a fact truncated out of a `Brief`, a
-  session detail winze never got around to typing. Deterministic (no LLM, no
-  embedding call) and read-only — no dedup gate, no onsetter check, no build
-  gate, no commit, because nothing here is encoded as anything. Shells out to
-  `winze-query --raw`, the same pattern `winze_recall` uses against
-  `--hybrid`. See `docs/raw-evidence-retrieval.md`.
+- **`winze_recall_raw(query, limit?)`** — hybrid BM25 + semantic + temporal
+  search over the raw evidence tier (`raw.jsonl`, below), returning verbatim
+  source text — `{time, tool, var, note, score}` — never a typed claim. Use
+  when `winze_recall`'s curated briefs miss something that might still be
+  sitting in the raw tier: a dedup-blocked note, a fact truncated out of a
+  `Brief`, a session detail winze never got around to typing. Read-only — no
+  dedup gate, no onsetter check, no build gate, no commit, because nothing
+  here is encoded as anything — but not deterministic: the semantic channel
+  depends on a local ollama instance the same way `winze_recall` does.
+  Shells out to `winze-query --raw`, the same pattern `winze_recall` uses
+  against `--hybrid`. See `docs/raw-evidence-retrieval.md`.
 - **`winze_update(var, note)`** — revise a memory's `Brief` in place, through
   the gate. The alternative it exists to prevent is storing a near-duplicate
   and leaving both.

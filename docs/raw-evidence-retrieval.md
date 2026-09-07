@@ -24,14 +24,24 @@ recovery log — useful to a human running `grep`, invisible to an agent.
 ## What's new
 
 - **`winze-query --raw <query> <dir>`** (`cmd/query/rawfulltext.go`,
-  `cmd/query/rawhybrid.go`): hybrid BM25 + semantic search over `raw.jsonl`'s
-  `Note` field, fused by reciprocal rank fusion — the same pipeline
-  `--hybrid` uses over the typed corpus, reused rather than reimplemented.
-  `cmd/query/fulltext.go`'s `ftIndex`/`search` (BM25) and
-  `cmd/query/semantic.go`'s `embedSegments`/`vecCache` (embeddings, cached by
-  content hash) are both fully generic over an opaque document index; a raw
-  log entry slots in as a document exactly the way an entity or a provenance
-  record already does, with zero changes to either path.
+  `cmd/query/rawhybrid.go`, `cmd/query/rawtemporal.go`): three-channel
+  hybrid search over `raw.jsonl`'s `Note`/`Time` fields — BM25, semantic
+  (embedding), and temporal (date/relative-date matching) — fused by
+  reciprocal rank fusion. BM25 and semantic reuse the same pipeline
+  `--hybrid` uses over the typed corpus rather than reimplementing it:
+  `cmd/query/fulltext.go`'s `ftIndex`/`search` and `cmd/query/semantic.go`'s
+  `embedSegments`/`vecCache` are both fully generic over an opaque document
+  index, so a raw log entry slots in as a document exactly the way an entity
+  or a provenance record already does. The temporal channel
+  (`parseTemporalRange`/`temporalRank`) is new, pure, deterministic logic —
+  it recognizes a small set of date expressions (`today`, `yesterday`, `N
+  days/weeks/months ago`, `last/this week/month`, an explicit ISO date) and
+  ranks in-window docs by recency; a query with no temporal language leaves
+  the channel silent rather than injecting a recency bias. Fusion for the
+  raw tier is a dedicated `rrfFuseRaw` (`cmd/query/rawhybrid.go`), not
+  `--hybrid`'s own `rrfFuse` — kept separate so `--hybrid`'s already-shipped
+  display and JSON code never has to change shape for a channel it doesn't
+  have.
 - **`winze_recall_raw(query, limit?)`** (`cmd/agent/recall_raw.go`): the MCP
   surface, shelling out to `winze-query --raw` the same way `winze_recall`
   shells out to `--hybrid`. Returns `{time, tool, var, note, score}` per hit —
@@ -72,14 +82,30 @@ object class, not a new way to populate the existing one.
   a raw hit carries no relationship to any other entity, on purpose.
 - **No longer fully deterministic.** Milestone 1 shipped BM25-only
   specifically because it needed no LLM call and no embedding call. Adding
-  the semantic channel (below) trades that purity for recall — the same
-  trade `--hybrid` already made for the typed corpus, extended to a second
-  surface. `--raw` now depends on a local ollama instance the way `--hybrid`
-  and `--semantic` already do, and fails hard rather than silently degrading
-  to BM25-only if it's unreachable.
-- **Temporal and entity-graph channels remain unbuilt.** Eywa's read path
-  fuses four channels (vector, BM25, temporal, entity-graph); this tier now
-  has two of the four.
+  the semantic channel (milestone 2) trades that purity for recall — the
+  same trade `--hybrid` already made for the typed corpus, extended to a
+  second surface. `--raw` now depends on a local ollama instance the way
+  `--hybrid` and `--semantic` already do, and fails hard rather than
+  silently degrading to BM25-only if it's unreachable. The temporal channel
+  (milestone 3) stays at zero marginal dependency: pure stdlib string/time
+  logic.
+- **Entity-graph channel remains unbuilt, and not by oversight.** Eywa's
+  read path fuses four channels (vector, BM25, temporal, entity-graph); this
+  tier now has three of the four. Entity-graph was investigated for
+  milestone 3 and deliberately deferred: the only field that could seed a
+  graph walk over raw docs is `rawDoc.Var`, and `winze_remember` (the tool
+  every self-recall-harness write goes through) always logs it empty — the
+  var doesn't exist yet at the point the raw entry is written, by the same
+  before-typing invariant described above. Claim edges between memory
+  entities only exist once `winze_link` is actually called, and
+  `handleRemember`'s `suggestLinks` only ever *suggests* a `winze_link` call
+  for a human/agent to issue deliberately — it never auto-links. The
+  harness that would have to validate an entity-graph channel produces
+  neither Var-tagged raw entries nor linked entities, so shipping the
+  channel now would mean shipping something with no way to measure whether
+  it does anything. Building it starts with giving the harness real link
+  data to walk — a harness-design decision worth its own pass rather than
+  folding into this one.
 
 ## The number
 
@@ -87,12 +113,13 @@ Measured against the same self-recall harness that produced the 57%/47.5%
 later-probe hit rates already in `README.md`'s Known-problems section
 (`TestSelfRecallDecaysWithCorpusGrowth`, `cmd/longmemeval`,
 `WINZE_SELFRECALL_N=150`, one-note-per-session, 150 real transcript
-sessions), across two runs on the identical sessions and questions:
+sessions), across three runs on the identical sessions and questions:
 
 | | later-probe hit rate | mean rank (found) |
 |---|---|---|
 | Raw tier, BM25 only (2026-09-07) | 41/125 — 32.8% | 5.85 |
 | Raw tier, BM25 + semantic (2026-09-07) | 50/125 — 40.0% | 5.16 |
+| Raw tier, BM25 + semantic + temporal (2026-09-07) | 50/125 — 40.0% | 5.16 |
 | Typed store, BM25 + semantic (2026-09-07) | 51/125 — 40.8% | 5.35 |
 
 Adding the semantic channel closed nearly the entire gap: 32.8% → 40.0%, a
@@ -103,17 +130,43 @@ retrieval and the typed claim graph now perform indistinguishably. The raw
 tier's mean rank among the questions it *did* surface (5.16) is marginally
 better than the typed store's (5.35).
 
+**Adding the temporal channel moved nothing — same 50/125, same 5.16 mean
+rank, to the decimal.** Not a small move; no move. This is worth taking at
+face value rather than writing around: the typed-store row above, untouched
+by this change, reproduced its own milestone-2 figure exactly (51/125,
+mean rank 5.35), which rules out the harness itself drifting between runs —
+the raw tier's flat result holds up as a genuine null. The smoke test in
+`cmd/query/rawtemporal_test.go` and a manual run against the live
+`winze-memory` store both confirm `parseTemporalRange`/`temporalRank` fire
+correctly and rank in-window docs by recency when a query does carry
+recognized date language, so the mechanism isn't the problem. The language
+it looks for is what's scarce in this specific probe set: a rough incidence check (`rg` across the transcript corpus for
+the same phrases the parser recognizes) found them common across full
+transcripts generally, but `LaterAsk` holds back exactly one specific
+mid-session turn per session — the odds that phrase-bearing lines and the
+one held-out turn coincide, across 125 probes, are apparently low enough to
+land at zero this run. That's an inference from the incidence check, not a
+per-probe count — worth an independent look before trusting the exact
+odds, but not before trusting the null result itself, which the identical
+typed-store control makes solid.
+
 **What this does and doesn't settle.** It resolves the retrieval-method
 confound the first number had: once both tiers use the same fusion
 mechanism, object class (typed claim vs. raw text) stops being the
 explanation for the gap, because there mostly isn't one left. It does not
 yet settle whether raw retrieval is *sufficient on its own* — this was
 measured with the raw tier's per-line documents (one `winze_remember` note
-per line), not against a larger, less-curated raw corpus, and the temporal
-and entity-graph channels Eywa's own architecture also uses are still
-missing from both tiers equally. Worth an independent read before leaning on
-this number for anything beyond "the authoring step is not obviously
-buying accuracy that the retrieval mechanism doesn't already provide."
+per line), not against a larger, less-curated raw corpus, and the
+entity-graph channel Eywa's own architecture also uses is still missing
+from both tiers equally (see Honest limits above for why). Nor does the
+temporal channel's null result here settle whether it's worth having: this
+harness's probe shape (one held-out content question per session) is a poor
+fixture for a channel built for date-anchored queries ("what did we discuss
+last week") — a fixture that actually asked date-anchored questions would
+be a fairer test, and doesn't exist yet. Worth an independent read before
+leaning on any of these numbers for more than "the authoring step is not
+obviously buying accuracy that the retrieval mechanism doesn't already
+provide."
 
 ## See also
 
