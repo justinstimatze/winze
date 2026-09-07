@@ -3,12 +3,15 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/justinstimatze/winze/internal/corpuslock"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -144,6 +147,11 @@ func handleRemember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	// Dedup: refuse a clear duplicate, keep a warning for a related one.
 	dd := checkDedup(note, force)
 	if dd.block != nil {
+		if dd.blockedAgainst != "" {
+			origin := fmt.Sprintf("winze_remember %s (dedup-blocked recurrence, cosine %.2f)",
+				time.Now().UTC().Format(time.RFC3339), dd.blockedScore)
+			execDocument(dd.blockedAgainst, note, origin) // best-effort: the refusal stands either way
+		}
 		return dd.block, nil
 	}
 	onsetterHits, _ := checkOnsetterGate(note) // advisory only; a parse error must not block a write
@@ -152,7 +160,11 @@ func handleRemember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	if err != nil {
 		return writeFailure("remember", addOut, err), nil
 	}
-	links := suggestLinks(createdVar(addOut), dd.related)
+	newVar := createdVar(addOut)
+	if newVar != "" {
+		execDocument(newVar, note, "winze_remember "+time.Now().UTC().Format(time.RFC3339)) // best-effort: the memory already succeeded
+	}
+	links := suggestLinks(newVar, dd.related)
 	if _, cerr := gitCommitMemory(note); cerr != nil {
 		return mcp.NewToolResultText(fmt.Sprintf("remembered (gate passed) but NOT committed: %v\n%s", cerr, strings.TrimSpace(addOut))), nil
 	}
@@ -160,13 +172,17 @@ func handleRemember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 }
 
 // dedupDecision is checkDedup's verdict on a candidate note: a non-nil block is
-// a refusal to return as-is; a non-empty warning is appended to the success
-// message when the note stores but resembles an existing memory; related holds
-// the neighbours worth linking the new memory to.
+// a refusal to return as-is (blockedAgainst/blockedScore name what it collided
+// with, so the rejected text can be attributed there instead of discarded); a
+// non-empty warning is appended to the success message when the note stores
+// but resembles an existing memory; related holds the neighbours worth
+// linking the new memory to.
 type dedupDecision struct {
-	block   *mcp.CallToolResult
-	warning string
-	related []queryHit // in-band link candidates, best first
+	block          *mcp.CallToolResult
+	blockedAgainst string  // set alongside block: the matched entity's VarName
+	blockedScore   float64 // set alongside block: the cosine score that triggered it
+	warning        string
+	related        []queryHit // in-band link candidates, best first
 }
 
 // checkDedup guards an append-only store against silently accumulating
@@ -209,6 +225,8 @@ func checkDedup(note string, force bool) dedupDecision {
 			d.warning = recurrenceNote(score, nearest.Name, novel)
 			break
 		}
+		d.blockedAgainst = nearest.VarName
+		d.blockedScore = score
 		d.block = mcp.NewToolResultText(fmt.Sprintf(
 			"NOT stored — a very similar memory already exists (cosine %.2f):\n  %s [%s] — %s\n\n"+
 				"Revise it: winze_update(var=%q, note=…). If this really is a distinct fact, call winze_remember again with force=true.",
@@ -288,9 +306,15 @@ func handleUpdate(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	}
 	onsetterHits, _ := checkOnsetterGate(note) // advisory only; a parse error must not block a write
 
+	old := currentBrief(varName) // captured before the overwrite below
+
 	out, err := execSetBrief(varName, note, title)
 	if err != nil {
 		return writeFailure("update", out, err), nil
+	}
+	if old != "" {
+		origin := fmt.Sprintf("winze_update %s (superseded)", time.Now().UTC().Format(time.RFC3339))
+		execDocument(varName, old, origin) // best-effort: the update already succeeded
 	}
 	if _, cerr := gitCommitMemory("update " + varName); cerr != nil {
 		return mcp.NewToolResultText(fmt.Sprintf("updated %s (gate passed) but NOT committed: %v", varName, cerr)), nil
@@ -571,4 +595,61 @@ func truncateWithHint(s string, max int) string {
 		return collapsed
 	}
 	return fmt.Sprintf("%s… [%d more chars — retry with brief_chars:%d for the full text]", collapsed[:max], len(collapsed)-max, len(collapsed))
+}
+
+// currentBrief returns varName's Brief as it stands right now, by querying
+// --hybrid with the var name itself and taking the exact VarName match --
+// not the top-ranked hit, since --hybrid ranks by relevance, not identity.
+// Empty when the entity can't be found: fail-open, the same posture
+// nearestMemories takes when the embedder or store is unavailable -- a
+// snapshot that can't be taken doesn't block the update it would have
+// annotated.
+func currentBrief(varName string) string {
+	res, ok := runQueryJSON("--hybrid", varName)
+	if !ok {
+		return ""
+	}
+	for _, h := range res.Hits {
+		if h.VarName == varName {
+			return h.Brief
+		}
+	}
+	return ""
+}
+
+// deriveDocumentName builds a deterministic claim var name from the subject
+// and the exact content being documented, so an identical (quote, origin)
+// pair collides and the build gate rejects a genuine duplicate call for
+// free -- the same dedup-by-construction deriveLinkName gives links --
+// while a different snapshot (a later update, a different dedup-blocked
+// recurrence) gets its own name instead of colliding with the last one.
+func deriveDocumentName(varName, quote, origin string) string {
+	short := func(s string) string {
+		if len(s) > 24 {
+			return s[:24]
+		}
+		return s
+	}
+	sum := sha256.Sum256([]byte(quote + "\x00" + origin))
+	return "Documented" + short(varName) + hex.EncodeToString(sum[:4])
+}
+
+// execDocument runs winze-add to attach the entity's own source text as a
+// Provenance-backed unary Documented claim -- real Provenance, not
+// Conjecture, because the source is the agent's own utterance (the session
+// note itself, or the text it was compared against), not an invented
+// external one. Mirrors execLink's shape exactly.
+func execDocument(varName, quote, origin string) (string, error) {
+	args := []string{
+		"--to", "memory.go", "--root", storeRoot(),
+		"--name", deriveDocumentName(varName, quote, origin), "--predicate", "Documented",
+		"--subject", varName, "--unary",
+		"--quote", quote, "--origin", origin, "--ingested-by", "winze-agent",
+	}
+	cmd := exec.Command(addBin(), args...)
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	err := cmd.Run()
+	return buf.String(), err
 }

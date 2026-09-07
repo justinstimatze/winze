@@ -732,3 +732,18 @@ type Supersedes BinaryRelation[*Entity, *Entity]
 // agent-invoked winze_link path unless someone deliberately opts it into
 // predicateSlots later.
 type RelatesTo BinaryRelation[*Entity, *Entity]
+
+// Documented records that a memory entity's exact source text is captured
+// as a verbatim quote in this claim's Provenance -- the entity's own Brief
+// is a live, editable summary; this claim is the immutable record of what
+// was actually written or attempted. An entity accumulates one Documented
+// claim per occurrence over its life: a successful winze_remember, a
+// winze_update's outgoing text just before it's overwritten, or a
+// dedup-blocked recurrence attributed to the entity it collided with
+// instead of being discarded.
+//
+// The slot is *Entity (not a fixed role type), the same shape
+// AbsorbedAlternate already uses, because winze_remember can create any
+// role, not just Concept. Not functional: repeated occurrences are the
+// point, not a collision to prevent.
+type Documented UnaryClaim[*Entity]

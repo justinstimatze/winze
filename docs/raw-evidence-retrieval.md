@@ -175,6 +175,52 @@ leaning on any of these numbers for more than "the authoring step is not
 obviously buying accuracy that the retrieval mechanism doesn't already
 provide."
 
+## Retiring this tier (in progress)
+
+A consult and a direct acid test (2026-09-07) settled a question this doc
+left open — whether the raw tier earns a permanent place, or is standing in
+for a gap the typed store could close at the source. The acid test came
+down on the second answer: two of three `raw.jsonl` lines behind one
+existing memory
+(`DedupBlocksRecurrenceNotJustDuplication` in `~/Documents/winze-memory`) —
+two earlier `winze_remember` attempts at the same finding, reworded — exist
+nowhere in the typed store, confirmed by direct `grep`. Only the third
+attempt, a `winze_update`, survived, and only because it happened to become
+the entity's current `Brief`. `raw.jsonl` was the only place either lost
+attempt's exact wording still existed.
+
+**Phase 1 (shipped): make the write path structurally lose nothing.** A new
+`Documented` unary claim (`corpus/predicates.go`) carries an entity's exact
+source text as real `Provenance` — `Quote`, `Origin`, `IngestedAt` — not
+just a `Brief` summary. `winze_remember` attaches one on every successful
+write; `winze_update` snapshots the outgoing `Brief` into one before
+overwriting it; and — the fix that actually closes the gap the acid test
+found — a dedup-blocked write's text is now attached as a `Documented` claim
+on the entity it collided with, instead of being refused and discarded. All
+three verified live: a fresh scratch store showed the blocked attempt's
+exact text retrievable via `--fulltext`/`--hybrid` afterward, not just
+present structurally. `raw.jsonl`/`appendRawLog` are unchanged in this
+phase — still writing on every call — since existing stores' pre-phase-1
+history hasn't moved anywhere yet.
+
+**Not yet built:**
+- **Phase 2: backfill.** Migrate every existing store's `raw.jsonl` into
+  `Documented` claims on the matching entities (needs a timestamp+text
+  matching heuristic, since not every raw line has a resolvable var). This
+  is what actually makes deletion safe — phase 1 only stops new loss, it
+  doesn't recover what's already stuck in `raw.jsonl` today, including the
+  two attempts the acid test found.
+- Fix `winze_recall`'s `score: 0` bug (README's Known problems) — unrelated
+  mechanically, worth closing before or alongside phase 2.
+- **Phase 3: delete, not demote.** Once phase 2's backfill is verified,
+  check every other `raw.jsonl` reader (meld, memtool, observatory,
+  benchmark are candidates) for a non-retrieval use before removing
+  `appendRawLog`, this tier's retrieval files
+  (`rawfulltext.go`/`rawhybrid.go`/`rawtemporal.go`), `winze_recall_raw`/
+  `--raw`, and the `raw.jsonl` files themselves. The end state has exactly
+  one write path and one retrieval path — the point of doing this, rather
+  than settling for a thinner version of the pair being replaced.
+
 ## See also
 
 - `docs/agent.md` — the `winze-agent` tools.

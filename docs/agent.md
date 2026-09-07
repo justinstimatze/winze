@@ -112,6 +112,20 @@ this file. Best-effort by construction — a write failure here never blocks
 the real tool response — and it carries no schema and no build gate, so it
 costs nothing to have and nothing to maintain (`cmd/agent/rawlog.go`).
 
+**As of the `Documented` claim (phase 1 of retiring `raw.jsonl`'s recovery
+role), the typed store no longer needs raw.jsonl for the same job going
+forward.** Every entity `winze_remember` creates gets a `Documented` claim
+carrying its exact note text as a real `Provenance` (`Quote`, `Origin`,
+`IngestedAt`) — not just a `Brief` summary. `winze_update` snapshots the
+outgoing `Brief` into its own `Documented` claim before overwriting it, so a
+revision doesn't erase the prior text. And a dedup-blocked write no longer
+just vanishes: its text is attached as a `Documented` claim on the entity it
+collided with, so it's retrievable via `--hybrid`/`--fulltext` like anything
+else, not only by grepping `raw.jsonl`. `raw.jsonl` itself is unchanged for
+now — it still writes on every call — since existing stores' pre-phase-1
+history hasn't been backfilled yet; see
+`docs/raw-evidence-retrieval.md`.
+
 `winze_remember` and `winze_update` also run the note past onsetter's ask
 engine before committing — advisory, never blocking — so a rule-shaped memory
 ("always do X", "never do Y") gets the same "want a hook instead?" prompt a
