@@ -197,26 +197,42 @@ write; `winze_update` snapshots the outgoing `Brief` into one before
 overwriting it; and — the fix that actually closes the gap the acid test
 found — a dedup-blocked write's text is now attached as a `Documented` claim
 on the entity it collided with, instead of being refused and discarded. All
-three verified live: a fresh scratch store showed the blocked attempt's
-exact text retrievable via `--fulltext`/`--hybrid` afterward, not just
-present structurally. `raw.jsonl`/`appendRawLog` are unchanged in this
-phase — still writing on every call — since existing stores' pre-phase-1
-history hasn't moved anywhere yet.
+three verified live. A follow-on fix landed the same day: the dedup-block
+path called `execDocument` but never `gitCommitMemory`, so a blocked write's
+`Documented` claim sat as an uncommitted file change until some unrelated
+later write happened to sweep it up — found while verifying phase 2, fixed
+by committing after a successful block-path attach the same way the
+success path already does.
+
+**Phase 2 (shipped): backfill existing content.** A throwaway migration
+script — never committed, deleted after use, per CLAUDE.md's "migration is
+throwaway work" — closed the gap for the one real store that had it: two
+exact database joins (an `update`-tool `raw.jsonl` line already carries its
+resolved var; a `remember`-tool line's exact text matches some entity's
+*current* `Brief`, since `winze-add` stores it verbatim) accounted for
+almost everything, and the small genuine residue — text matching no current
+`Brief` at all, meaning it was rejected before anything recorded
+rejections — was replayed through the real `winze_remember` tool so phase
+1's own logic decided its fate. Verified against the real store: both
+`winze_remember` attempts behind `DedupBlocksRecurrenceNotJustDuplication`
+this doc's acid test found are now retrievable via `--fulltext`/`--hybrid`
+as real `Documented` claims — one via the exact-`Brief` join, one via the
+live dedup-block-attach path firing for real during replay. A real, older
+store's schema copy had also drifted from the canonical `predicates.go` and
+carried a deliberate local `RelatesTo`/`Supersedes` divergence
+(`memory_predicates.go`) — a wholesale schema refresh would have silently
+collided with it; `Documented` was added as a surgical, additive insertion
+into the existing file instead, once `cmd/add`'s any-role resolution
+(`anyRoleSlots`, which only ever reads `predicates.go`, never other files)
+made clear it couldn't live anywhere else either.
 
 **Not yet built:**
-- **Phase 2: backfill.** Migrate every existing store's `raw.jsonl` into
-  `Documented` claims on the matching entities (needs a timestamp+text
-  matching heuristic, since not every raw line has a resolvable var). This
-  is what actually makes deletion safe — phase 1 only stops new loss, it
-  doesn't recover what's already stuck in `raw.jsonl` today, including the
-  two attempts the acid test found.
 - Fix `winze_recall`'s `score: 0` bug (README's Known problems) — unrelated
-  mechanically, worth closing before or alongside phase 2.
-- **Phase 3: delete, not demote.** Once phase 2's backfill is verified,
-  check every other `raw.jsonl` reader (meld, memtool, observatory,
-  benchmark are candidates) for a non-retrieval use before removing
-  `appendRawLog`, this tier's retrieval files
-  (`rawfulltext.go`/`rawhybrid.go`/`rawtemporal.go`), `winze_recall_raw`/
+  mechanically, worth closing before phase 3.
+- **Phase 3: delete, not demote.** Check every other `raw.jsonl` reader
+  (meld, memtool, observatory, benchmark are candidates) for a
+  non-retrieval use before removing `appendRawLog`, this tier's retrieval
+  files (`rawfulltext.go`/`rawhybrid.go`/`rawtemporal.go`), `winze_recall_raw`/
   `--raw`, and the `raw.jsonl` files themselves. The end state has exactly
   one write path and one retrieval path — the point of doing this, rather
   than settling for a thinner version of the pair being replaced.

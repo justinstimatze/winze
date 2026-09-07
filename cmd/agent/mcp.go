@@ -150,7 +150,13 @@ func handleRemember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 		if dd.blockedAgainst != "" {
 			origin := fmt.Sprintf("winze_remember %s (dedup-blocked recurrence, cosine %.2f)",
 				time.Now().UTC().Format(time.RFC3339), dd.blockedScore)
-			execDocument(dd.blockedAgainst, note, origin) // best-effort: the refusal stands either way
+			// Best-effort: the refusal stands either way. Commit only on a
+			// successful attach -- gitCommitMemory has nothing to do otherwise,
+			// and calling it unconditionally would mean every plain refusal
+			// (no attach attempted) pays a commit for zero file change.
+			if _, derr := execDocument(dd.blockedAgainst, note, origin); derr == nil {
+				gitCommitMemory(fmt.Sprintf("document dedup-blocked recurrence against %s", dd.blockedAgainst))
+			}
 		}
 		return dd.block, nil
 	}
