@@ -66,8 +66,8 @@ independently measurable.
 `CLAUDE.md`'s mirror-source-commitments discipline governs what may be
 *encoded* as a claim: only what a source explicitly commits to. A raw-tier
 hit is never encoded as anything — it is returned as source text on a query
-and nothing more. This was the one open risk named in
-`docs/memory-first-repositioning-2026-09-07.md`'s first open question: winze
+and nothing more. This was the one open risk named in `ROADMAP.md`'s "Lead
+with memory, not epistemics" section, first open question: winze
 already reverted an automated writer that promoted speculative hits straight
 into fabricated `Provenance.Quote` claims
 (`feedback_trip_promotion_fabrication`). This tier avoids that failure by
@@ -266,8 +266,7 @@ covered, zero missing.
 
 - `docs/agent.md` — the `winze-agent` tools.
 - `docs/query.md` — the full `winze-query` command list.
-- `docs/memory-first-repositioning-2026-09-07.md` — the repositioning memo
-  this closes the roadmap item from (local, untracked; not linked publicly
-  since it also discusses a private sibling project).
+- `ROADMAP.md`'s "Lead with memory, not epistemics" section — the
+  repositioning memo this closes the roadmap item from.
 - `docs/sota-memory-systems-survey-2026-08-31.md` — the field comparison that
   first named this gap.
