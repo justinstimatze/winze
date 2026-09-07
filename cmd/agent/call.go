@@ -13,7 +13,7 @@ import (
 
 // runCall invokes one memory tool from the command line and prints its text
 // result, so a host that cannot speak MCP over stdio can still reach the same
-// four tools.
+// tools.
 //
 // It dispatches to the very same handlers `serve` registers rather than
 // reimplementing them. A second code path for recall and remember would be a
@@ -26,10 +26,11 @@ import (
 // status instead of parsing prose.
 func runCall(args []string) {
 	handlers := map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
-		"winze_recall":   handleRecall,
-		"winze_remember": handleRemember,
-		"winze_update":   handleUpdate,
-		"winze_link":     handleLink,
+		"winze_recall":     handleRecall,
+		"winze_recall_raw": handleRecallRaw,
+		"winze_remember":   handleRemember,
+		"winze_update":     handleUpdate,
+		"winze_link":       handleLink,
 	}
 	if len(args) < 1 {
 		names := make([]string, 0, len(handlers))

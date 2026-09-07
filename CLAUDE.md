@@ -83,7 +83,8 @@ stays small so it can stay current. To pull a topic yourself:
 - `docs/sensor.md` — `winze-sensor`: raw external-signal probe (arXiv / Semantic Scholar)
 - `docs/skeptical-ingest.md` — sensor input is untrusted; injection defense
 - `docs/lexicon.md` — lexicon as a private reference pool; the `lexicon-fence` rule
-- `docs/agent.md` — `winze-agent`: the agent's read/write door into a store (`winze_remember` / `winze_recall` / `winze_update` / `winze_link`), how a store is resolved, and why it was renamed from `winze-mem`
+- `docs/agent.md` — `winze-agent`: the agent's read/write door into a store (`winze_remember` / `winze_recall` / `winze_recall_raw` / `winze_update` / `winze_link`), how a store is resolved, and why it was renamed from `winze-mem`
+- `docs/raw-evidence-retrieval.md` — `winze_recall_raw` / `winze-query --raw`: BM25 over the raw-evidence log (`raw.jsonl`), why it's a separate object class from typed claims, and the self-recall number it's measured against
 - `docs/meld.md` — `winze-meld`: read-only union of stores for cross-store query
 - `docs/okf.md` — `winze-okf`: export/validate a Google OKF v0.2 bundle; what the projection preserves and loses
 - `docs/observatory.md` — `winze-observatory`: standalone fleet dashboard

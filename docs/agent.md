@@ -7,7 +7,7 @@ them is capability, not subject matter:
 | binary | surface | tools |
 |---|---|---|
 | `winze-mcp` | analytic reads over a corpus | `search`, `claims`, `provenance`, `disputes`, `stats`, `theories` |
-| `winze-agent` | an agent's own reads and writes | `winze_remember`, `winze_recall`, `winze_update`, `winze_link` |
+| `winze-agent` | an agent's own reads and writes | `winze_remember`, `winze_recall`, `winze_recall_raw`, `winze_update`, `winze_link` |
 
 Everything `winze-agent` does runs through the built winze binaries
 (`winze-query`, `winze-add`, `winze-edit`). It orchestrates; it does not
@@ -82,6 +82,16 @@ implementation that drifts.
   of the failure, the hint fixed the other half. Together they took the same
   8-question cold-recall test from 0/8 to 8/8. See
   `docs/agent-identity-integration.md`'s precondition 1.
+- **`winze_recall_raw(query, limit?)`** — BM25 keyword search over the raw
+  evidence tier (`raw.jsonl`, below), returning verbatim source text —
+  `{time, tool, var, note, score}` — never a typed claim. Use when
+  `winze_recall`'s curated briefs miss something that might still be sitting
+  in the raw tier: a dedup-blocked note, a fact truncated out of a `Brief`, a
+  session detail winze never got around to typing. Deterministic (no LLM, no
+  embedding call) and read-only — no dedup gate, no onsetter check, no build
+  gate, no commit, because nothing here is encoded as anything. Shells out to
+  `winze-query --raw`, the same pattern `winze_recall` uses against
+  `--hybrid`. See `docs/raw-evidence-retrieval.md`.
 - **`winze_update(var, note)`** — revise a memory's `Brief` in place, through
   the gate. The alternative it exists to prevent is storing a near-duplicate
   and leaving both.

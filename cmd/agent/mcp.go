@@ -21,13 +21,15 @@ import (
 //	winze_remember(note, role?, title?, force?)  — store a note as a typed
 //	                        memory (build-gated, auto-committed to the store)
 //	winze_recall(query, limit?, brief_chars?)    — hybrid BM25+semantic recall
+//	winze_recall_raw(query, limit?)              — BM25 search over raw.jsonl,
+//	                        returning verbatim source text, never a claim
 //	winze_update(var, note, title?)              — revise a Brief in place
 //	winze_link(from, to, rationale, relation?)   — a typed edge between two
 //	                        memories, written as winze's own Conjecture
 //
-// All four are thin wrappers over the built winze-add / winze-query /
-// winze-edit binaries — the tested logic — so this server never reimplements
-// the corpus machinery.
+// All are thin wrappers over the built winze-add / winze-query / winze-edit
+// binaries — the tested logic — so this server never reimplements the corpus
+// machinery.
 func runServe(args []string) {
 	onsetterCheckOverride = parseServeArgs(args).onsetterCheck
 
@@ -49,6 +51,12 @@ func runServe(args []string) {
 		mcp.WithNumber("limit", mcp.Description("Max memories to return (default 5).")),
 		mcp.WithNumber("brief_chars", mcp.Description("Truncate each brief to this many chars to keep results compact (default 240). Set 0 for full briefs — pair with a small limit so the result stays under the tool-result size cap.")),
 	), handleRecall)
+
+	s.AddTool(mcp.NewTool("winze_recall_raw",
+		mcp.WithDescription("Search the raw-evidence log: verbatim, timestamped text from every winze_remember/winze_update call, before dedup or typing. Returns source text, never a typed claim — use when winze_recall's curated briefs miss something that might still be sitting in the raw tier (a dedup-blocked note, a truncated brief, a fact winze never got around to typing). See docs/raw-evidence-retrieval.md."),
+		mcp.WithString("query", mcp.Required(), mcp.Description("What to search for (keywords — this is BM25, not semantic).")),
+		mcp.WithNumber("limit", mcp.Description("Max hits to return (default 5).")),
+	), handleRecallRaw)
 
 	s.AddTool(mcp.NewTool("winze_update",
 		mcp.WithDescription("Revise an existing memory's Brief (and optionally its title/Name) in place, through the build gate, then auto-commit. Use when a remembered fact changed or should be refined — this is what to do instead of storing a near-duplicate when winze_remember reports one."),
