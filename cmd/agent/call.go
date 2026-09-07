@@ -11,26 +11,12 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// runCall invokes one memory tool from the command line and prints its text
-// result, so a host that cannot speak MCP over stdio can still reach the same
-// tools.
-//
-// It dispatches to the very same handlers `serve` registers rather than
-// reimplementing them. A second code path for recall and remember would be a
-// second place for the dedup check and the build gate to drift out of, and
-// those two are the whole reason the tools are safe to expose.
-//
-//	winze-agent call winze_recall '{"query":"the trip critic","limit":3}'
-//
-// Exits non-zero when the tool reports an error, so a caller can branch on the
-// status instead of parsing prose.
 func runCall(args []string) {
 	handlers := map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
-		"winze_recall":     handleRecall,
-		"winze_recall_raw": handleRecallRaw,
-		"winze_remember":   handleRemember,
-		"winze_update":     handleUpdate,
-		"winze_link":       handleLink,
+		"winze_recall":   handleRecall,
+		"winze_remember": handleRemember,
+		"winze_update":   handleUpdate,
+		"winze_link":     handleLink,
 	}
 	if len(args) < 1 {
 		names := make([]string, 0, len(handlers))

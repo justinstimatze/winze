@@ -24,9 +24,6 @@ import (
 //	winze_remember(note, role?, title?, force?)  — store a note as a typed
 //	                        memory (build-gated, auto-committed to the store)
 //	winze_recall(query, limit?, brief_chars?)    — hybrid BM25+semantic recall
-//	winze_recall_raw(query, limit?)              — hybrid BM25+semantic search
-//	                        over raw.jsonl, returning verbatim source text,
-//	                        never a claim
 //	winze_update(var, note, title?)              — revise a Brief in place
 //	winze_link(from, to, rationale, relation?)   — a typed edge between two
 //	                        memories, written as winze's own Conjecture
@@ -55,12 +52,6 @@ func runServe(args []string) {
 		mcp.WithNumber("limit", mcp.Description("Max memories to return (default 5).")),
 		mcp.WithNumber("brief_chars", mcp.Description("Truncate each brief to this many chars to keep results compact (default 240). Set 0 for full briefs — pair with a small limit so the result stays under the tool-result size cap.")),
 	), handleRecall)
-
-	s.AddTool(mcp.NewTool("winze_recall_raw",
-		mcp.WithDescription("Search the raw-evidence log: verbatim, timestamped text from every winze_remember/winze_update call, before dedup or typing. Same hybrid BM25+semantic fusion winze_recall uses. Returns source text, never a typed claim — use when winze_recall's curated briefs miss something that might still be sitting in the raw tier (a dedup-blocked note, a truncated brief, a fact winze never got around to typing). See docs/raw-evidence-retrieval.md."),
-		mcp.WithString("query", mcp.Required(), mcp.Description("What to search for (natural language or keywords).")),
-		mcp.WithNumber("limit", mcp.Description("Max hits to return (default 5).")),
-	), handleRecallRaw)
 
 	s.AddTool(mcp.NewTool("winze_update",
 		mcp.WithDescription("Revise an existing memory's Brief (and optionally its title/Name) in place, through the build gate, then auto-commit. Use when a remembered fact changed or should be refined — this is what to do instead of storing a near-duplicate when winze_remember reports one."),
@@ -133,7 +124,6 @@ func handleRemember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	if !ok || strings.TrimSpace(note) == "" {
 		return mcp.NewToolResultError("note: required string argument"), nil
 	}
-	appendRawLog("remember", "", note)
 	role := "Concept"
 	if r, ok := req.GetArguments()["role"].(string); ok && strings.TrimSpace(r) != "" {
 		role = strings.TrimSpace(r)
@@ -207,8 +197,9 @@ type dedupDecision struct {
 // duplicate is noise the operator can see and merge; a refusal deletes the
 // second occurrence and leaves the first standing as though it were the only
 // one, so the store ends up confidently wrong rather than merely cluttered.
-// The raw tier softens that -- appendRawLog runs before this gate -- but a
-// fact recoverable only by grepping raw.jsonl is not in the store.
+// A block isn't a pure loss, though: handleRemember attaches the refused
+// text as a Documented claim on the entity it collided with, so it's
+// recoverable via --hybrid/--fulltext rather than simply discarded.
 //
 // No upper ceiling re-enables the refusal at very high cosine. Nothing
 // measured on this store exceeds 0.74, so a ceiling would be an invented
@@ -305,7 +296,6 @@ func handleUpdate(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 		return mcp.NewToolResultError("note: required string argument"), nil
 	}
 	varName = strings.TrimSpace(varName)
-	appendRawLog("update", varName, note)
 	title := ""
 	if t, ok := req.GetArguments()["title"].(string); ok {
 		title = strings.TrimSpace(t)

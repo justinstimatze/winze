@@ -82,17 +82,6 @@ implementation that drifts.
   of the failure, the hint fixed the other half. Together they took the same
   8-question cold-recall test from 0/8 to 8/8. See
   `docs/agent-identity-integration.md`'s precondition 1.
-- **`winze_recall_raw(query, limit?)`** — hybrid BM25 + semantic + temporal
-  search over the raw evidence tier (`raw.jsonl`, below), returning verbatim
-  source text — `{time, tool, var, note, score}` — never a typed claim. Use
-  when `winze_recall`'s curated briefs miss something that might still be
-  sitting in the raw tier: a dedup-blocked note, a fact truncated out of a
-  `Brief`, a session detail winze never got around to typing. Read-only — no
-  dedup gate, no onsetter check, no build gate, no commit, because nothing
-  here is encoded as anything — but not deterministic: the semantic channel
-  depends on a local ollama instance the same way `winze_recall` does.
-  Shells out to `winze-query --raw`, the same pattern `winze_recall` uses
-  against `--hybrid`. See `docs/raw-evidence-retrieval.md`.
 - **`winze_update(var, note)`** — revise a memory's `Brief` in place, through
   the gate. The alternative it exists to prevent is storing a near-duplicate
   and leaving both.
@@ -101,30 +90,20 @@ implementation that drifts.
   so it is written as a `Conjecture` and carries no source quote by
   construction. `winze-query --schema <store>` lists the predicates.
 
-`winze_remember` and `winze_update` also append the raw note text, verbatim,
-to `raw.jsonl` beside `memory.go` — before dedup, before the onsetter check,
-before the typed write even attempts. One shared file for the whole store
-today (no per-nick session files exist yet; see
-`docs/agent-identity-integration.md`). This is the MemPalace-shaped recovery
-path: a note that gets dedup-blocked, fails the build gate, or lands in a
-`Brief` a later `brief_chars` truncates is not gone, it is one grep away in
-this file. Best-effort by construction — a write failure here never blocks
-the real tool response — and it carries no schema and no build gate, so it
-costs nothing to have and nothing to maintain (`cmd/agent/rawlog.go`).
-
-**As of the `Documented` claim (phase 1 of retiring `raw.jsonl`'s recovery
-role), the typed store no longer needs raw.jsonl for the same job going
-forward.** Every entity `winze_remember` creates gets a `Documented` claim
-carrying its exact note text as a real `Provenance` (`Quote`, `Origin`,
-`IngestedAt`) — not just a `Brief` summary. `winze_update` snapshots the
-outgoing `Brief` into its own `Documented` claim before overwriting it, so a
-revision doesn't erase the prior text. And a dedup-blocked write no longer
-just vanishes: its text is attached as a `Documented` claim on the entity it
-collided with, so it's retrievable via `--hybrid`/`--fulltext` like anything
-else, not only by grepping `raw.jsonl`. `raw.jsonl` itself is unchanged for
-now — it still writes on every call — since existing stores' pre-phase-1
-history hasn't been backfilled yet; see
-`docs/raw-evidence-retrieval.md`.
+`winze_remember` and `winze_update` used to also append the raw note text,
+verbatim, to a write-only `raw.jsonl` recovery log beside `memory.go` — a
+second copy of everything kept in case dedup, the build gate, or a `Brief`
+truncation lost the original. That log, `winze_recall_raw`, and
+`winze-query --raw` are gone as of phase 3 of retiring the raw-evidence tier
+(`docs/raw-evidence-retrieval.md`): every entity `winze_remember` creates now
+gets a `Documented` claim carrying its exact note text as a real
+`Provenance` (`Quote`, `Origin`, `IngestedAt`) — not just a `Brief` summary.
+`winze_update` snapshots the outgoing `Brief` into its own `Documented`
+claim before overwriting it, so a revision doesn't erase the prior text. And
+a dedup-blocked write doesn't just vanish: its text is attached as a
+`Documented` claim on the entity it collided with, retrievable via
+`--hybrid`/`--fulltext` like anything else. One write path, one retrieval
+path, nothing kept in a second, unqueryable file "just in case."
 
 `winze_remember` and `winze_update` also run the note past onsetter's ask
 engine before committing — advisory, never blocking — so a rule-shaped memory

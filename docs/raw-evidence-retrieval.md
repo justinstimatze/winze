@@ -1,5 +1,10 @@
 # Raw-evidence retrieval: `winze_recall_raw` and `--raw`
 
+**Retired as of phase 3 below.** `winze_recall_raw`, `--raw`, and
+`raw.jsonl` no longer exist — everything through "What's new" describes a
+mechanism that shipped and was later deleted once `Documented` claims made
+it redundant. Kept as the historical record the retirement was based on.
+
 Every memory system this project has checked — winze included — retrieves
 over something authored first: promoted, extracted, or hand-written. Nobody
 does automatic, derived retrieval over raw session history with no authoring
@@ -226,16 +231,36 @@ into the existing file instead, once `cmd/add`'s any-role resolution
 (`anyRoleSlots`, which only ever reads `predicates.go`, never other files)
 made clear it couldn't live anywhere else either.
 
+**Phase 3 (shipped): delete, not demote.** A repo-wide sweep (via `defn`'s
+call-graph search, not assumption) confirmed `cmd/meld`, `cmd/memtool`,
+`cmd/observatory`, `cmd/benchmark`, `cmd/mcp`, and `cmd/edit` had zero
+raw-tier references — only `cmd/agent/mcp.go` (the two `appendRawLog` call
+sites, the `winze_recall_raw` tool registration), `cmd/agent/call.go` (its
+CLI dispatch case), and `cmd/query/main.go` (the `--raw` flag) did. All
+three were edited rather than deleted wholesale; `appendRawLog`,
+`rawLogPath`, `rawLogEntry`, `handleRecallRaw`, `buildRawFTIndex`,
+`loadRawDocs`, `runRawHybrid`, `rrfFuseRaw`, `semanticRankRaw`,
+`parseTemporalRange`, and `temporalRank` — and the files that existed only
+to hold them (`cmd/agent/rawlog.go`, `cmd/agent/recall_raw.go`,
+`cmd/query/rawfulltext.go`/`rawhybrid.go`/`rawtemporal.go`) — are gone. One
+real dependency the phase-2 plan hadn't anticipated: the self-recall
+benchmark harness (`cmd/longmemeval/selfrecall_corpus_test.go`) ran every
+probe against `winze_recall_raw` as a second, comparable channel — the
+mechanism behind the 40.0%/40.8% comparison below. Once the tool is gone,
+calling it fails the test outright — there's no graceful skip — so
+`probeAll` was simplified back to a single-tier probe and
+`assertRawTier`/`rawRankOf`/
+`bestRawRankOf`/`rawHits` were deleted outright rather than stubbed —
+no live failure mode was left to justify keeping a comparison against a
+retrieval path that no longer exists. The one real store's `raw.jsonl`
+(`~/Documents/winze-memory`, 13 lines) was deleted after two separate
+runs of the same check — every line's note text against every current
+`Brief` and every `Documented` claim's `Quote` — both came back 13/13
+covered, zero missing.
+
 **Not yet built:**
-- Fix `winze_recall`'s `score: 0` bug (README's Known problems) — unrelated
-  mechanically, worth closing before phase 3.
-- **Phase 3: delete, not demote.** Check every other `raw.jsonl` reader
-  (meld, memtool, observatory, benchmark are candidates) for a
-  non-retrieval use before removing `appendRawLog`, this tier's retrieval
-  files (`rawfulltext.go`/`rawhybrid.go`/`rawtemporal.go`), `winze_recall_raw`/
-  `--raw`, and the `raw.jsonl` files themselves. The end state has exactly
-  one write path and one retrieval path — the point of doing this, rather
-  than settling for a thinner version of the pair being replaced.
+- Fix `winze_recall`'s `score: 0` bug (README's Known problems) — still
+  open, unrelated to this tier's retirement.
 
 ## See also
 

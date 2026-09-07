@@ -95,7 +95,6 @@ func main() {
 	expand := flag.Bool("expand", false, "with --hybrid: show each result's typed claim neighborhood (reasoning-ready context)")
 	includeSuperseded := flag.Bool("include-superseded", false, "with --hybrid: include superseded entities at their natural rank instead of downranking them")
 	dupes := flag.String("dupes", "", "show entities structurally near-identical to NAME (shared claim-neighborhood) — the coin-time dedup query")
-	raw := flag.String("raw", "", "hybrid BM25 + semantic search over the store's raw.jsonl evidence log, fused with reciprocal rank fusion — verbatim source text, not a typed claim (see docs/raw-evidence-retrieval.md)")
 	docsRecall := flag.String("docs-recall", "", "semantic recall over docs/*.md: given a prompt, print the file#anchor sections it implicates (for the per-prompt hook)")
 	docsTopN := flag.Int("docs-top", 0, "with --docs-recall: max sections to surface (default 3)")
 	docsFloor := flag.Float64("docs-floor", -1, "with --docs-recall: cosine floor for a section to surface (default 0.30)")
@@ -137,13 +136,6 @@ func main() {
 	}
 	if *docsRecall != "" {
 		runDocsRecall(dir, *docsRecall, *docsTopN, *docsFloor, *jsonOut)
-		return
-	}
-
-	// --raw reads raw.jsonl, not the corpus — same early-dispatch treatment:
-	// raw-evidence retrieval never depends on whether the typed corpus builds.
-	if *raw != "" {
-		runRawHybrid(dir, *raw, *jsonOut)
 		return
 	}
 

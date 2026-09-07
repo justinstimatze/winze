@@ -34,11 +34,6 @@ const selfRecallN = 20
 // written into any note -- real text from the same session, in wording the
 // store has never seen, which is the shape a cold agent actually arrives with.
 //
-// Both probes also run against winze_recall_raw (docs/raw-evidence-retrieval.md),
-// giving a directly comparable raw-tier number alongside the typed-store one --
-// the measurement the raw-evidence retrieval tier's README roadmap entry
-// promised rather than asserted.
-//
 // A dedup rejection is DATA, not an error. The first run of this measured 20
 // writes and 2 rejections at cosine 0.73-0.74 -- against other session notes
 // in the same replay, not against semantic duplicates -- while every note that
@@ -123,7 +118,6 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	// Replay oldest-first so each note is written into a store holding every
 	// earlier note and none of the later ones -- the growth the design doc asks for.
 	varSets, noteSets, rejected, attempted := writeSessions(t, run, picked)
-	assertRawTier(t, store, attempted, rejected)
 
 	// Give the store real winze_link claim edges before probing -- see
 	// linkRelatedSessions's doc comment (linkbuilder_test.go) for why this runs
@@ -133,10 +127,10 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 		linked, len(picked), linkSuggestScoreMirror, linkSuggestMaxMirror)
 
 	// The store is now at full size, with real claim edges. Probe each session
-	// twice per tier; see probeAll's doc comment for what TITLE, LATER, and the
-	// raw-tier pair each establish, and for why a session can own more than one
-	// var under WINZE_NOTE_SHAPE=claims.
-	title, later, rawTitle, rawLater, noLater := probeAll(t, run, picked, varSets, noteSets, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
+	// twice; see probeAll's doc comment for what TITLE and LATER each
+	// establish, and for why a session can own more than one var under
+	// WINZE_NOTE_SHAPE=claims.
+	title, later, noLater := probeAll(t, run, picked, varSets, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
 	if title.found == 0 {
 		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", title.miss)
 	}
@@ -149,15 +143,6 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 		t.Logf("LATER PROBE: %d/%d recalled from text never written into a note, mean rank %.2f, "+
 			"%d never surfaced, %d sessions had no second ask",
 			later.found, later.found+later.miss, later.meanRank(), later.miss, noLater)
-	}
-	t.Logf("RAW TITLE PROBE: %d/%d recalled, mean rank %.2f, %d never surfaced",
-		rawTitle.found, rawTitle.found+rawTitle.miss, rawTitle.meanRank(), rawTitle.miss)
-	if rawLater.found == 0 {
-		t.Logf("RAW LATER PROBE: nothing surfaced across %d probes (%d sessions had no second ask)",
-			rawLater.miss, noLater)
-	} else {
-		t.Logf("RAW LATER PROBE: %d/%d recalled from raw-evidence text, mean rank %.2f, %d never surfaced",
-			rawLater.found, rawLater.found+rawLater.miss, rawLater.meanRank(), rawLater.miss)
 	}
 	t.Logf("write-rejection rate %d/%d (%.0f%%) at %d attempted writes for %d sessions",
 		len(rejected), attempted, 100*float64(len(rejected))/float64(attempted), attempted, len(picked))
@@ -335,32 +320,6 @@ func (p probeStats) meanRank() float64 {
 	return float64(p.rankSum) / float64(p.found)
 }
 
-func assertRawTier(t *testing.T, store string, attempted int, rejected []string) {
-	t.Helper()
-	rawPath := filepath.Join(store, "raw.jsonl")
-	rawBytes, err := os.ReadFile(rawPath)
-	if err != nil {
-		t.Fatalf("raw tier absent at %s: %v", rawPath, err)
-	}
-	rawLines := strings.Count(strings.TrimSpace(string(rawBytes)), "\n") + 1
-	if rawLines != attempted {
-		t.Errorf("raw tier holds %d entries, want %d (one per attempted write)", rawLines, attempted)
-	}
-	for _, r := range rejected {
-		start := strings.IndexByte(r, '"')
-		if start < 0 {
-			t.Errorf("rejected entry %q has no quoted note text to check", r)
-			continue
-		}
-		title, _, _ := strings.Cut(r[start+1:], `"`)
-		if !strings.Contains(string(rawBytes), title) {
-			t.Errorf("rejected note %q is not in the raw tier — it is genuinely lost", title)
-		}
-	}
-	t.Logf("raw tier: %d entries for %d attempted writes; all %d rejected notes recoverable",
-		rawLines, attempted, len(rejected))
-}
-
 // probeAll runs both probes (title, then LaterAsk) against every stored
 // session and optionally dumps a manifest -- pulled out of
 // TestSelfRecallDecaysWithCorpusGrowth, which had grown to interleave the
@@ -372,16 +331,10 @@ func assertRawTier(t *testing.T, store string, attempted int, rejected []string)
 // a hit says retrieval bridged from wording the store has never seen. That
 // second number is the one worth having; the first is its control.
 //
-// rawTitle/rawLater run the identical two queries against winze_recall_raw
-// (BM25 over raw.jsonl) instead of winze_recall, matched by note content via
-// bestRawRankOf rather than by var -- the comparable pair this exists to
-// produce: does the raw-evidence tier find what the typed store misses.
-//
 // varSets holds one slice of entity vars per session (length 1 for
 // "open"/"arc", length N for "claims"): a hit counts if the probe surfaces
-// ANY of a session's vars, via bestRankOf. noteSets is the same shape but
-// holds the exact attempted note/fact text, which bestRawRankOf matches on.
-func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, varSets [][]string, noteSets [][]string, manifestPath string) (title, later, rawTitle, rawLater probeStats, noLater int) {
+// ANY of a session's vars, via bestRankOf.
+func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, varSets [][]string, manifestPath string) (title, later probeStats, noLater int) {
 	t.Helper()
 	probe := func(query string, want []string) (int, error) {
 		payload := fmt.Sprintf(`{"query":%s,"limit":%d,"brief_chars":0}`, mustJSON(query), len(picked)*6)
@@ -394,18 +347,6 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 			return 0, fmt.Errorf("unparseable JSON: %v\n%s", err, out)
 		}
 		return bestRankOf(hits, want), nil
-	}
-	rawProbe := func(query string, notes []string) (int, error) {
-		payload := fmt.Sprintf(`{"query":%s,"limit":%d}`, mustJSON(query), len(picked)*6)
-		out, err := run("call", "winze_recall_raw", payload)
-		if err != nil {
-			return 0, fmt.Errorf("%v\n%s", err, out)
-		}
-		var hits rawHits
-		if err := json.Unmarshal([]byte(out), &hits); err != nil {
-			return 0, fmt.Errorf("unparseable JSON: %v\n%s", err, out)
-		}
-		return bestRawRankOf(hits, notes), nil
 	}
 
 	// WINZE_SELFRECALL_MANIFEST, when set, dumps one JSON line per session with
@@ -422,7 +363,7 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 		defer manifest.Close()
 	}
 
-	t.Logf("%-4s %-12s %-6s %-4s %-6s %-6s %-8s %-8s %s", "idx", "date", "after", "n", "title", "later", "raw-ttl", "raw-ltr", "session")
+	t.Logf("%-4s %-12s %-6s %-4s %-6s %-6s %s", "idx", "date", "after", "n", "title", "later", "session")
 	for i, s := range picked {
 		if len(varSets[i]) == 0 {
 			continue
@@ -434,15 +375,7 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 		}
 		title.record(titleRank)
 
-		rawTitleRank, err := rawProbe(s.Title, noteSets[i])
-		if err != nil {
-			t.Errorf("raw title probe %d: %v", i, err)
-			continue
-		}
-		rawTitle.record(rawTitleRank)
-
 		laterRank, laterLabel := 0, "n/a"
-		rawLaterRank, rawLaterLabel := 0, "n/a"
 		if q := s.LaterAsk(); q != "" {
 			if len(q) > 400 {
 				q = q[:400]
@@ -454,20 +387,11 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 			}
 			laterLabel = rankLabel(laterRank)
 			later.record(laterRank)
-
-			rawLaterRank, err = rawProbe(q, noteSets[i])
-			if err != nil {
-				t.Errorf("raw later probe %d: %v", i, err)
-				continue
-			}
-			rawLaterLabel = rankLabel(rawLaterRank)
-			rawLater.record(rawLaterRank)
 		} else {
 			noLater++
 		}
-		t.Logf("%-4d %-12s %-6d %-4d %-6s %-6s %-8s %-8s %s", i, s.Start.Format("2006-01-02"),
-			len(picked)-1-i, len(varSets[i]), rankLabel(titleRank), laterLabel,
-			rankLabel(rawTitleRank), rawLaterLabel, s.Title)
+		t.Logf("%-4d %-12s %-6d %-4d %-6s %-6s %s", i, s.Start.Format("2006-01-02"),
+			len(picked)-1-i, len(varSets[i]), rankLabel(titleRank), laterLabel, s.Title)
 		if manifest != nil {
 			laterQ := s.LaterAsk()
 			if len(laterQ) > 400 {
@@ -476,12 +400,11 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 			rec, _ := json.Marshal(map[string]any{
 				"idx": i, "date": s.Start.Format("2006-01-02"), "title": s.Title, "vars": varSets[i],
 				"title_rank": titleRank, "later_rank": laterRank, "later_ask": laterQ,
-				"raw_title_rank": rawTitleRank, "raw_later_rank": rawLaterRank,
 			})
 			manifest.Write(append(rec, '\n'))
 		}
 	}
-	return title, later, rawTitle, rawLater, noLater
+	return title, later, noLater
 }
 
 // writeSessions replays picked sessions oldest-first through winze_remember,
@@ -489,9 +412,9 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 // the probe phase are each one readable function instead of one long one.
 //
 // noteSets tracks every attempted note/fact's exact text alongside varSets'
-// entity vars -- needed because appendRawLog (cmd/agent/rawlog.go) writes to
-// raw.jsonl with an empty var (it fires before execAdd assigns one), so a
-// raw-tier probe can only match a session's evidence by content, never by var.
+// entity vars -- linkRelatedSessions (linkbuilder_test.go) uses each
+// session's first note as the query text for its --semantic link-suggestion
+// pass.
 func writeSessions(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession) (varSets [][]string, noteSets [][]string, rejected []string, attempted int) {
 	t.Helper()
 	varSets = make([][]string, len(picked))
@@ -581,41 +504,4 @@ func bestRankOf(hits recallHits, vars []string) int {
 		}
 	}
 	return best
-}
-
-// bestRawRankOf mirrors bestRankOf for the raw tier: the best (lowest) rank
-// among a session's attempted note texts, or 0 if none surfaced.
-func bestRawRankOf(hits rawHits, notes []string) int {
-	best := 0
-	for _, n := range notes {
-		if n == "" {
-			continue
-		}
-		if r := rawRankOf(hits, n); r != 0 && (best == 0 || r < best) {
-			best = r
-		}
-	}
-	return best
-}
-
-// rawHits is the shape winze_recall_raw returns.
-type rawHits struct {
-	Matched int `json:"matched"`
-	Hits    []struct {
-		Note string `json:"note"`
-	} `json:"hits"`
-}
-
-// rawRankOf returns the 1-based position of a raw log entry whose Note
-// matches note exactly, or 0 when the raw-tier search did not surface it.
-// Raw hits carry no entity var -- winze_remember appends to raw.jsonl before
-// execAdd assigns one (see cmd/agent/rawlog.go's appendRawLog call site) --
-// so content is the only signal a raw-tier probe has to match against.
-func rawRankOf(hits rawHits, note string) int {
-	for i, h := range hits.Hits {
-		if h.Note == note {
-			return i + 1
-		}
-	}
-	return 0
 }
