@@ -3,11 +3,8 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/justinstimatze/winze/internal/cliutil"
 )
 
 // buildRawFTIndex indexes each raw log entry's Note as a document, reusing
@@ -72,48 +69,6 @@ func loadRawDocs(dir string) ([]rawDoc, error) {
 		return nil, err
 	}
 	return docs, nil
-}
-
-// runRawFulltext answers --raw: BM25 search over a store's raw.jsonl
-// evidence log. Unlike every other query mode, this does not need the typed
-// corpus index at all -- raw.jsonl is written independently of whether the
-// corpus builds -- so main dispatches this before buildIndex, the same
-// early-dispatch treatment --docs-recall already gets.
-func runRawFulltext(dir, query string, jsonOut bool) {
-	docs, err := loadRawDocs(dir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "query --raw: %v\n", err)
-		os.Exit(1)
-	}
-	fi := buildRawFTIndex(docs)
-	hits := fi.search(query, 15)
-
-	if jsonOut {
-		out := make([]map[string]any, 0, len(hits))
-		for _, h := range hits {
-			d := docs[h.ref]
-			out = append(out, map[string]any{
-				"score": h.score,
-				"time":  d.Time,
-				"tool":  d.Tool,
-				"var":   d.Var,
-				"note":  d.Note,
-			})
-		}
-		printJSON(map[string]any{"query": query, "count": len(hits), "hits": out})
-		return
-	}
-
-	if len(hits) == 0 {
-		fmt.Printf("No raw-evidence matches for %q\n", query)
-		return
-	}
-	fmt.Printf("Raw-evidence matches for %q (%d):\n\n", query, len(hits))
-	for _, h := range hits {
-		d := docs[h.ref]
-		fmt.Printf("  [%.2f] %s  %s (%s)\n", h.score, d.Time, d.Tool, d.Var)
-		fmt.Printf("        %s\n", cliutil.Truncate(d.Note, 200))
-	}
 }
 
 // rawDoc mirrors cmd/agent/rawlog.go's rawLogEntry wire shape by field name,

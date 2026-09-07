@@ -4,9 +4,8 @@ Every memory system this project has checked — winze included — retrieves
 over something authored first: promoted, extracted, or hand-written. Nobody
 does automatic, derived retrieval over raw session history with no authoring
 step (see `docs/sota-memory-systems-survey-2026-08-31.md`'s comparison
-table). This is winze's first move toward closing that gap, scoped narrowly
-on purpose: deterministic keyword search over evidence that already existed,
-returning source text, never a claim.
+table). This is winze's move toward closing that gap: retrieval over
+evidence that already existed, returning source text, never a claim.
 
 ## What already existed
 
@@ -24,14 +23,15 @@ recovery log — useful to a human running `grep`, invisible to an agent.
 
 ## What's new
 
-- **`winze-query --raw <query> <dir>`** (`cmd/query/rawfulltext.go`): BM25
-  keyword search over `raw.jsonl`'s `Note` field, reusing the same engine
-  `--fulltext`/`--hybrid` already use (`cmd/query/fulltext.go`'s
-  `ftIndex`/`search`/`tokenize`) — a raw log entry is a third document
-  `kind` alongside `"entity"` and `"provenance"`, with zero changes to the
-  existing entity/provenance path. Runs before the typed corpus index is
-  built (like `--docs-recall`), since raw-evidence retrieval never depends on
-  whether the corpus itself compiles.
+- **`winze-query --raw <query> <dir>`** (`cmd/query/rawfulltext.go`,
+  `cmd/query/rawhybrid.go`): hybrid BM25 + semantic search over `raw.jsonl`'s
+  `Note` field, fused by reciprocal rank fusion — the same pipeline
+  `--hybrid` uses over the typed corpus, reused rather than reimplemented.
+  `cmd/query/fulltext.go`'s `ftIndex`/`search` (BM25) and
+  `cmd/query/semantic.go`'s `embedSegments`/`vecCache` (embeddings, cached by
+  content hash) are both fully generic over an opaque document index; a raw
+  log entry slots in as a document exactly the way an entity or a provenance
+  record already does, with zero changes to either path.
 - **`winze_recall_raw(query, limit?)`** (`cmd/agent/recall_raw.go`): the MCP
   surface, shelling out to `winze-query --raw` the same way `winze_recall`
   shells out to `--hybrid`. Returns `{time, tool, var, note, score}` per hit —
@@ -67,46 +67,60 @@ object class, not a new way to populate the existing one.
 
 - **One shared `raw.jsonl` per store**, same as today — no per-session
   partition. `docs/agent-identity-integration.md`'s `session_<nick>.go` shape
-  would need to land first; not this plan's job to unblock.
-- **BM25 keyword only.** Eywa's read path fuses four channels (vector, BM25,
-  temporal, entity-graph) with weighted reciprocal rank fusion. Building all
-  four for a tier that didn't exist in any form yet was over-scoped for a
-  first cut — BM25 is deterministic (no LLM, no embedding call), reuses
-  machinery already in this repo, and is enough to measure whether raw-tier
-  retrieval moves the self-recall number at all. Semantic, temporal, and
-  entity-graph channels remain candidate next milestones.
+  would need to land first; not this doc's job to unblock.
 - **Not build-gated, not typed, by design.** There is nothing to type-check —
   a raw hit carries no relationship to any other entity, on purpose.
+- **No longer fully deterministic.** Milestone 1 shipped BM25-only
+  specifically because it needed no LLM call and no embedding call. Adding
+  the semantic channel (below) trades that purity for recall — the same
+  trade `--hybrid` already made for the typed corpus, extended to a second
+  surface. `--raw` now depends on a local ollama instance the way `--hybrid`
+  and `--semantic` already do, and fails hard rather than silently degrading
+  to BM25-only if it's unreachable.
+- **Temporal and entity-graph channels remain unbuilt.** Eywa's read path
+  fuses four channels (vector, BM25, temporal, entity-graph); this tier now
+  has two of the four.
 
 ## The number
 
-Measured 2026-09-07 against the same self-recall harness that produced the
-57%/47.5% later-probe hit rates already in `README.md`'s Known-problems
-section (`TestSelfRecallDecaysWithCorpusGrowth`, `cmd/longmemeval`,
+Measured against the same self-recall harness that produced the 57%/47.5%
+later-probe hit rates already in `README.md`'s Known-problems section
+(`TestSelfRecallDecaysWithCorpusGrowth`, `cmd/longmemeval`,
 `WINZE_SELFRECALL_N=150`, one-note-per-session, 150 real transcript
-sessions): the raw tier recalled 41/125 (32.8%, mean rank 5.85) on the later
-probe, against 51/125 (40.8%, mean rank 5.35) for the existing typed-store
-hybrid search over the same sessions and questions in the same run.
+sessions), across two runs on the identical sessions and questions:
 
-**It doesn't close the gap — not yet, and the reason is legible from the
-number itself.** `winze_recall` fuses BM25 and semantic (embedding) search
-with reciprocal rank fusion; this first cut of the raw tier is BM25 only,
-exactly as scoped above. Hybrid retrieval beat keyword-only retrieval on this
-corpus regardless of which tier it ran over, which makes this a measurement
-of retrieval method, not of typed claim versus raw text. Eywa's own
-architecture fuses four channels for exactly this reason. The honest
-milestone-2 candidate this result names directly: add semantic ranking to
-`buildRawFTIndex`'s output (reusing `cmd/query/hybrid.go`'s existing
-`semanticRank`/`rrfFuse`, the same machinery `--hybrid` already uses) before
-drawing any conclusion about whether removing the authoring step helps or
-hurts recall on its own merits.
+| | later-probe hit rate | mean rank (found) |
+|---|---|---|
+| Raw tier, BM25 only (2026-09-07) | 41/125 — 32.8% | 5.85 |
+| Raw tier, BM25 + semantic (2026-09-07) | 50/125 — 40.0% | 5.16 |
+| Typed store, BM25 + semantic (2026-09-07) | 51/125 — 40.8% | 5.35 |
+
+Adding the semantic channel closed nearly the entire gap: 32.8% → 40.0%, a
+7.2-point jump from one change. Against the typed store's 40.8%, the
+remaining 0.8-point gap (one question out of 125) is well inside binomial
+noise at this sample size — on this measure, at this scale, raw-evidence
+retrieval and the typed claim graph now perform indistinguishably. The raw
+tier's mean rank among the questions it *did* surface (5.16) is marginally
+better than the typed store's (5.35).
+
+**What this does and doesn't settle.** It resolves the retrieval-method
+confound the first number had: once both tiers use the same fusion
+mechanism, object class (typed claim vs. raw text) stops being the
+explanation for the gap, because there mostly isn't one left. It does not
+yet settle whether raw retrieval is *sufficient on its own* — this was
+measured with the raw tier's per-line documents (one `winze_remember` note
+per line), not against a larger, less-curated raw corpus, and the temporal
+and entity-graph channels Eywa's own architecture also uses are still
+missing from both tiers equally. Worth an independent read before leaning on
+this number for anything beyond "the authoring step is not obviously
+buying accuracy that the retrieval mechanism doesn't already provide."
 
 ## See also
 
-- `docs/agent.md` — the four (now five) `winze-agent` tools.
+- `docs/agent.md` — the `winze-agent` tools.
 - `docs/query.md` — the full `winze-query` command list.
 - `docs/memory-first-repositioning-2026-09-07.md` — the repositioning memo
-  this plan closes the roadmap item from (local, untracked; not linked
-  publicly since it also discusses a private sibling project).
+  this closes the roadmap item from (local, untracked; not linked publicly
+  since it also discusses a private sibling project).
 - `docs/sota-memory-systems-survey-2026-08-31.md` — the field comparison that
   first named this gap.

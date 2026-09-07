@@ -21,8 +21,9 @@ import (
 //	winze_remember(note, role?, title?, force?)  — store a note as a typed
 //	                        memory (build-gated, auto-committed to the store)
 //	winze_recall(query, limit?, brief_chars?)    — hybrid BM25+semantic recall
-//	winze_recall_raw(query, limit?)              — BM25 search over raw.jsonl,
-//	                        returning verbatim source text, never a claim
+//	winze_recall_raw(query, limit?)              — hybrid BM25+semantic search
+//	                        over raw.jsonl, returning verbatim source text,
+//	                        never a claim
 //	winze_update(var, note, title?)              — revise a Brief in place
 //	winze_link(from, to, rationale, relation?)   — a typed edge between two
 //	                        memories, written as winze's own Conjecture
@@ -53,8 +54,8 @@ func runServe(args []string) {
 	), handleRecall)
 
 	s.AddTool(mcp.NewTool("winze_recall_raw",
-		mcp.WithDescription("Search the raw-evidence log: verbatim, timestamped text from every winze_remember/winze_update call, before dedup or typing. Returns source text, never a typed claim — use when winze_recall's curated briefs miss something that might still be sitting in the raw tier (a dedup-blocked note, a truncated brief, a fact winze never got around to typing). See docs/raw-evidence-retrieval.md."),
-		mcp.WithString("query", mcp.Required(), mcp.Description("What to search for (keywords — this is BM25, not semantic).")),
+		mcp.WithDescription("Search the raw-evidence log: verbatim, timestamped text from every winze_remember/winze_update call, before dedup or typing. Same hybrid BM25+semantic fusion winze_recall uses. Returns source text, never a typed claim — use when winze_recall's curated briefs miss something that might still be sitting in the raw tier (a dedup-blocked note, a truncated brief, a fact winze never got around to typing). See docs/raw-evidence-retrieval.md."),
+		mcp.WithString("query", mcp.Required(), mcp.Description("What to search for (natural language or keywords).")),
 		mcp.WithNumber("limit", mcp.Description("Max hits to return (default 5).")),
 	), handleRecallRaw)
 
