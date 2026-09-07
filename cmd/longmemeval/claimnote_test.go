@@ -7,7 +7,8 @@ import (
 
 func TestBestRankOfPicksTheBetterRank(t *testing.T) {
 	hits := recallHits{Hits: []struct {
-		VarName string `json:"var_name"`
+		VarName string  `json:"var_name"`
+		Score   float64 `json:"score"`
 	}{{VarName: "A"}, {VarName: "B"}, {VarName: "C"}}}
 	if got := bestRankOf(hits, []string{"C", "B"}); got != 2 {
 		t.Errorf("bestRankOf = %d, want 2 (B's rank, the better of B and C)", got)

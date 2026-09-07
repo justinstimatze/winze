@@ -104,6 +104,13 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
+	queryBin := filepath.Join(bin, "winze-query")
+	runQuery := func(args ...string) (string, error) {
+		cmd := exec.Command(queryBin, args...)
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
 
 	repo, err := filepath.Abs("../..")
 	if err != nil {
@@ -118,10 +125,17 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	varSets, noteSets, rejected, attempted := writeSessions(t, run, picked)
 	assertRawTier(t, store, attempted, rejected)
 
-	// The store is now at full size. Probe each session twice per tier; see
-	// probeAll's doc comment for what TITLE, LATER, and the raw-tier pair each
-	// establish, and for why a session can own more than one var under
-	// WINZE_NOTE_SHAPE=claims.
+	// Give the store real winze_link claim edges before probing -- see
+	// linkRelatedSessions's doc comment (linkbuilder_test.go) for why this runs
+	// once over the complete store rather than incrementally per write.
+	linked := linkRelatedSessions(t, run, runQuery, store, picked, varSets, noteSets)
+	t.Logf("LINK PASS: %d claim edge(s) created across %d sessions (floor %.2f, cap %d)",
+		linked, len(picked), linkSuggestScoreMirror, linkSuggestMaxMirror)
+
+	// The store is now at full size, with real claim edges. Probe each session
+	// twice per tier; see probeAll's doc comment for what TITLE, LATER, and the
+	// raw-tier pair each establish, and for why a session can own more than one
+	// var under WINZE_NOTE_SHAPE=claims.
 	title, later, rawTitle, rawLater, noLater := probeAll(t, run, picked, varSets, noteSets, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
 	if title.found == 0 {
 		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", title.miss)
@@ -257,7 +271,8 @@ func stratify(sessions []*transcriptSession, n int) []*transcriptSession {
 type recallHits struct {
 	Matched int `json:"matched"`
 	Hits    []struct {
-		VarName string `json:"var_name"`
+		VarName string  `json:"var_name"`
+		Score   float64 `json:"score"`
 	} `json:"hits"`
 }
 

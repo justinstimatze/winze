@@ -96,16 +96,23 @@ object class, not a new way to populate the existing one.
   graph walk over raw docs is `rawDoc.Var`, and `winze_remember` (the tool
   every self-recall-harness write goes through) always logs it empty — the
   var doesn't exist yet at the point the raw entry is written, by the same
-  before-typing invariant described above. Claim edges between memory
-  entities only exist once `winze_link` is actually called, and
-  `handleRemember`'s `suggestLinks` only ever *suggests* a `winze_link` call
-  for a human/agent to issue deliberately — it never auto-links. The
-  harness that would have to validate an entity-graph channel produces
-  neither Var-tagged raw entries nor linked entities, so shipping the
-  channel now would mean shipping something with no way to measure whether
-  it does anything. Building it starts with giving the harness real link
-  data to walk — a harness-design decision worth its own pass rather than
-  folding into this one.
+  before-typing invariant described above.
+- **Milestone 4 fixed half of that blocker, not both.** Claim edges between
+  memory entities only ever existed if `winze_link` was actually called, and
+  `handleRemember`'s `suggestLinks` only ever *suggests* a call for a
+  human/agent to issue deliberately — it never auto-links, so the harness
+  had zero edges to walk. Milestone 4 gave the harness real ones: a
+  post-write pass mirrors production's own link-suggestion mechanism
+  (`checkDedup` → `nearestMemories`, `cmd/agent/mcp.go` — cosine via
+  `--semantic`, not `--hybrid`) and calls `winze_link` for real, at
+  production's real 0.45 floor. Measured at N=150: 142 claim edges across
+  150 sessions. That unblocks an entity-graph channel for the **typed
+  store's** `--hybrid` — real edges now exist to walk. It does *not* unblock
+  one for **this raw tier**: `rawDoc.Var` is still always empty from
+  `winze_remember`, so a raw-tier entity-graph channel would need to resolve
+  entity mentions from `.Note` text directly rather than from `.Var`, a
+  different, still-unbuilt design. That's milestone 5's scope, not this
+  one's.
 
 ## The number
 
