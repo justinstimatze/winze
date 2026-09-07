@@ -305,16 +305,6 @@ func (p probeStats) meanRank() float64 {
 	return float64(p.rankSum) / float64(p.found)
 }
 
-// assertRawTier is Phase 3a's whole claim: appendRawLog runs on the fourth
-// line of handleRemember, before the dedup gate, so a note the gate refuses
-// is meant to survive anyway. Pulled out of TestSelfRecallDecaysWithCorpusGrowth
-// alongside writeSessions, which is the only caller that has a rejected list
-// worth checking this against.
-//
-// Takes attempted rather than inferring it from len(picked): under
-// WINZE_NOTE_SHAPE=claims a session can attempt several writes (one per
-// extracted fact), so the raw tier's expected line count is no longer 1:1
-// with session count.
 func assertRawTier(t *testing.T, store string, attempted int, rejected []string) {
 	t.Helper()
 	rawPath := filepath.Join(store, "raw.jsonl")
@@ -327,7 +317,12 @@ func assertRawTier(t *testing.T, store string, attempted int, rejected []string)
 		t.Errorf("raw tier holds %d entries, want %d (one per attempted write)", rawLines, attempted)
 	}
 	for _, r := range rejected {
-		title, _, _ := strings.Cut(strings.TrimPrefix(r[11:], `"`), `"`)
+		start := strings.IndexByte(r, '"')
+		if start < 0 {
+			t.Errorf("rejected entry %q has no quoted note text to check", r)
+			continue
+		}
+		title, _, _ := strings.Cut(r[start+1:], `"`)
 		if !strings.Contains(string(rawBytes), title) {
 			t.Errorf("rejected note %q is not in the raw tier — it is genuinely lost", title)
 		}
@@ -423,15 +418,6 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 	return title, later, noLater
 }
 
-// writeSessions replays picked sessions oldest-first through winze_remember,
-// pulled out of TestSelfRecallDecaysWithCorpusGrowth so the write phase and
-// the probe phase are each one readable function instead of one long one.
-//
-// Returns one var slice per session rather than one var: under
-// WINZE_NOTE_SHAPE=claims each session becomes several atomic entities (one
-// winze_remember call per extracted fact) instead of one blob, and the probe
-// phase needs to know which vars belong to which session to score a hit
-// against any of them. "open"/"arc" sessions just get a slice of length 1.
 func writeSessions(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession) (varSets [][]string, rejected []string, attempted int) {
 	t.Helper()
 	varSets = make([][]string, len(picked))
@@ -462,8 +448,8 @@ func writeSessions(t *testing.T, run func(args ...string) (string, error), picke
 				if v := createdVar(out); v != "" {
 					varSets[i] = append(varSets[i], v)
 				} else {
-					rejected = append(rejected, fmt.Sprintf("%s %q — %s",
-						s.Start.Format("2006-01-02"), fact, dedupReason(out)))
+					rejected = append(rejected, fmt.Sprintf("[%d] %s %q — %s",
+						i, s.Start.Format("2006-01-02"), fact, dedupReason(out)))
 				}
 			}
 		}
