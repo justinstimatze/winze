@@ -96,8 +96,8 @@ github.com/justinstimatze/defn v0.26.96 h1:It797a71hy4W029wG2GlugLrmSrL1CxtQk1gY
 github.com/justinstimatze/defn v0.26.96/go.mod h1:d8glyJxy7nr7RR/tPBOo1MvzyiyYH76TfNSsixAhyPQ=
 github.com/justinstimatze/gozim v0.2.1 h1:yQFGfxHsbkXE/iapxm7vHf/2U2H7bl2Xf9/1doi7/VI=
 github.com/justinstimatze/gozim v0.2.1/go.mod h1:/qRz7zUSgcxuFnnwRLegObS0tm7dVvRX/OQWa1eKGN0=
-github.com/justinstimatze/onsetter v0.6.0 h1:oSkXuR5Nu58KaGByy8baEn+IHmUVQ3pP21Yi0mocM74=
-github.com/justinstimatze/onsetter v0.6.0/go.mod h1:v2KnYWJSEJLNPVC0GkqdYz9aZBhZJYXvGfjW7pC377I=
+github.com/justinstimatze/onsetter v0.7.0 h1:l8aO03BcISMDf73za1f/fczNR1wUlVur7dnlDpqcIAk=
+github.com/justinstimatze/onsetter v0.7.0/go.mod h1:v2KnYWJSEJLNPVC0GkqdYz9aZBhZJYXvGfjW7pC377I=
 github.com/klauspost/compress v1.18.5 h1:/h1gH5Ce+VWNLSWqPzOVn6XBO+vJbCNGvjoaGBFW2IE=
 github.com/klauspost/compress v1.18.5/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=

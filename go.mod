@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/justinstimatze/defn v0.26.96
 	github.com/justinstimatze/gozim v0.2.1
-	github.com/justinstimatze/onsetter v0.6.0
+	github.com/justinstimatze/onsetter v0.7.0
 	github.com/mark3labs/mcp-go v0.48.0
 	golang.org/x/tools v0.49.0
 	gopkg.in/yaml.v2 v2.4.0
