@@ -107,10 +107,26 @@ import (
 // possessions, attempts and constraints with no temporal anchor at all — so a
 // session the retry rescued came back with a lossier schema than the pass it
 // replaced. Rule 3a restores it.
-const lensVersion = "v9"
+// v10: rule 2 (and the retry's rule 1) named only personal recommendations as
+// assistant-supplied specifics — a venue, a product, a colour. Measured on a
+// 189-question re-run (56 assistant + 133 multi-session, k=120) 2026-09-08:
+// 11 of 18 assistant-recall failures extracted ZERO facts, on sessions
+// discussing a novel's plot, a scientific paper's sample size, a chess game,
+// a historical cartoon, a technical paper's framerate number — none about the
+// user's own life, all a concrete, nameable detail the assistant stated.
+// Rule 2's own worked example ("recommended the Hotel Meridien in Lyon") is
+// personal-context shaped; neither prompt named "explained a fact from an
+// article" or "produced creative content on request" as the same kind of
+// specific. Both rules now say so explicitly.
+//
+// The number this bump answers for is the zero-fact count on the assistant
+// slice, not the score — same caution as v7: a fact arriving is necessary,
+// not sufficient, for the answerer to use it correctly.
+const lensVersion = "v10"
 
 // lensSystem is the extraction rulebook — identical across every session call,
-// so it rides an ephemeral cache_control block (marked in callLens).
+// so it rides an ephemeral cache_control block (marked in callLens). This is
+// the shared LLM seam: mark the boundary once, pay ~10% on the cached prefix.
 //
 // NOTE on that cache: as of the 2026-08-06 60-question run it does not hit.
 // The marker is applied correctly, but Haiku will not cache a prefix below
@@ -126,11 +142,13 @@ Rules:
    - STANDING facts: biographical facts, possessions, plans, stated preferences (e.g. graduation degree, home city, owning a car).
    - DATED EVENTS: specific one-time things the user did or that happened to them, tied to a day — visits, outings, purchases, milestones, helping someone, attending or preparing for an event (e.g. "visited MoMA", "helped my cousin pick out baby-shower gifts", "ran a charity 5K"). These are essential for questions about when things happened or in what order, so capture them even though they are one-time rather than durable.
    Mirror what was said; never infer or embellish.
-2. ALSO extract SPECIFICS THE ASSISTANT SUPPLIED that the user could later ask to be reminded of. A memory that cannot recall what it told someone is half a memory. Capture the concrete, nameable output — not the reasoning around it:
+2. ALSO extract SPECIFICS THE ASSISTANT SUPPLIED that the user could later ask to be reminded of — about the user's own situation, or about ANY OTHER TOPIC the assistant explained, discussed, or was asked about. A memory that cannot recall what it told someone is half a memory. Capture the concrete, nameable output — not the reasoning around it:
    - named things recommended or identified (a venue, a product, a title, a person, a place),
    - concrete values produced (a schedule slot, a quantity, a date, a price, a measurement),
-   - specific attributes described (a colour, a material, a size) where the description is the answer someone would come back for.
-   Skip the generic explanation, the caveats, and the reasoning that surrounded them. "Here are three things to consider when choosing a hotel" is not a fact; "recommended the Hotel Meridien in Lyon" is.
+   - specific attributes described (a colour, a material, a size) where the description is the answer someone would come back for,
+   - facts, findings, quotes, statistics, rules, or moves stated while explaining or discussing a book, article, game, technical paper, or any other subject matter — even when it has nothing to do with the user's own life,
+   - specific content produced on request (a line from a script, poem, or song; a game move; a recipe step) — the user asking "what did you write/say" about this is exactly the case this rule exists for.
+   Skip the generic explanation, the caveats, and the reasoning that surrounded them. "Here are three things to consider when choosing a hotel" is not a fact; "recommended the Hotel Meridien in Lyon" is. Likewise "explained the study's findings" is not a fact; "the study found a 38-subject sample showed significant reductions" is.
 3. One fact per line. Skip small talk and puzzle-solving — but a concrete thing the user did on a given day is a fact, not small talk, and a concrete thing you named for them is a fact, not an explanation.
 3a. NEVER COLLAPSE AN ENUMERATION. When the content is a list, a table, a ranking, a schedule, or a set of items each with their own attributes, emit ONE LINE PER ELEMENT — not one line summarising that a list was given. "provided a shift rotation sheet" is worthless to someone who later asks who works Sunday; the row for each person and day is the fact. Split rather than compress, and never drop a name, number, or date to keep the output short. Specifically:
    - Tables and schedules: one line per cell that carries meaning, with the coordinates in the ATTRIBUTE (e.g. shift_admon_sunday, refinery_lake_charles_processes).
@@ -425,10 +443,11 @@ const lensRetrySystem = `A first extraction pass over this session returned noth
 Extract what YOU, the assistant, produced. A memory that cannot recall what it told someone is half a memory, and the user will come back asking for it by name, by position, or by attribute.
 
 Rules:
-1. Capture the concrete, nameable output — not the reasoning around it:
+1. Capture the concrete, nameable output — not the reasoning around it. This is not limited to the user's own situation: it equally covers a fact, quote, statistic, finding, rule, or move stated while explaining or discussing any subject matter, and any content produced on request (a script, poem, song, or recipe).
    - named things you recommended or identified (a venue, a product, a title, a person, a place),
    - concrete values you produced (a schedule slot, a quantity, a date, a price, a measurement),
-   - specific attributes you described (a colour, a material, a size) where the description is what someone would come back for.
+   - specific attributes you described (a colour, a material, a size) where the description is what someone would come back for,
+   - facts, findings, quotes, or statistics you stated while explaining or discussing a book, article, game, paper, or any other topic — including ones unrelated to the user's own life.
    Skip the generic explanation, the caveats and the hedging.
 2. NEVER COLLAPSE AN ENUMERATION. If you produced a list, a table, a ranking or a set of described things, emit ONE LINE PER ELEMENT. "provided a list of jobs" is worthless to someone who later asks what the seventh one was.
    - Ordered or numbered lists: keep the position in the ATTRIBUTE, because people ask by index (e.g. wfh_job_7).

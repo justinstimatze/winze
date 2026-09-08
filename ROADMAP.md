@@ -575,3 +575,61 @@ path) — none of which currently apply to a single-user store. Until then:
 park this, don't chase zero-LLM-retrieval as a goal in itself, and the
 extraction-gap fix stands as the next work, unchanged from the verdict
 above.
+
+### The extraction-gap fix, measured — 2026-09-08
+
+Acted on the priority above rather than reasoning from the aggregate:
+re-ran the exact slice the gap lives in (56 assistant-recall + 133
+multi-session, `k=120`) fresh, read the real failing question/gold/answer
+triples instead of the fact counts, and found two genuinely separate,
+independently fixable defects — not one diffuse "extraction is bad."
+
+**Assistant-recall (18 of 56 failures, 11 of them zero-fact extractions):**
+the lens's own worked examples for "specifics the assistant supplied" were
+all personal-recommendation shaped — "a venue, a product, a colour." The
+failing sessions were about something else entirely: a novel's plot (the
+Library of Babel), a paper's sample size, a chess move, a historical
+cartoon, a technical paper's framerate number — none about the user's own
+life, all a concrete, nameable detail the assistant stated. Neither
+`lensSystem` rule 2 nor `lensRetrySystem` rule 1 named "explained a fact
+from an article" or "produced content on request" as the same kind of
+specific, so the lens read these sessions as having nothing worth keeping.
+Fixed by broadening both rules explicitly (`lensVersion` v9→v10,
+`cmd/longmemeval/lens.go`).
+
+**Multi-session (25 of 133 failures, mostly the "everything was already in
+context and still lost" cohort):** most are genuine miscounts, unresolved
+cross-session duplicates, and stale-vs-updated value confusion — a harder,
+still-open population. But a real, separate, mechanical defect sat in
+`judgeSystem`'s rubric: "INCORRECT if... it says it doesn't know," with no
+carve-out for a question whose *gold answer itself* is an abstention ("the
+information provided is not enough"). Measured: 8 of 12 abstention
+questions passed anyway (the judge is an LLM applying the rubric with some
+independent judgment, not a literal string match), but at least one
+(`eeda8a6d_abs`) was a clean case of a correct abstention marked wrong.
+Also fixed: a gold answer offering more than one acceptable value
+("Pilsner or Lager") now accepts either — a real failure, `16c90bf4`,
+named only "Pilsner" and was marked incorrect.
+
+**Net effect, same 189-question set, cold, before vs. after
+(`cmd/longmemeval/baselines/v10-k120-asst-multi.jsonl`):** 146/189 (77%)
+→ 164/189 (87%). Per-type: assistant-recall 38/56→52/56 (zero-fact count
+11→2), multi-session 108/133→112/133, abstention questions 8/12→9/12.
+Question-level: 25 recovered, 7 regressed — net +18, checked individually
+rather than just netted away. Six of the seven regressions read as
+ordinary run-to-run answerer/extraction variance, the same non-determinism
+already documented elsewhere on this page (`Temperature: 0` is not
+bit-identical on the Anthropic API); one (`3249768e`) is a real, narrow
+side effect of broadening extraction — a second, unrelated enumerated list
+in the same session got captured this time, and the answerer picked the
+wrong one. Worth watching if the pattern recurs, not worth reverting the
+fix over a single case against 25 recoveries.
+
+**Not yet done:** re-measuring at `k=120` on the full 500-question oracle
+set. This fix was diagnosed and measured on the assistant+multi-session
+189-question slice only; knowledge-update, temporal, single-user, and
+preference were untouched by these prompt changes and should be
+unaffected, but that is an assumption, not yet checked. The number that
+actually answers whether winze closed *the* gap this section opened with
+is the full-500 re-run against the raw-context-dump control (431/500 vs
+443/500) — not yet run.
