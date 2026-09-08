@@ -212,7 +212,7 @@ section's table.
 
 `TestSelfRecallDecaysWithCorpusGrowth` (`cmd/longmemeval`) is the multi-session,
 multi-day version this section asked for. It replays 20 real sessions
-stratified across 104 days of the `~/Documents` project into a scratch store,
+stratified across 104 days of a real multi-project transcript pool into a scratch store,
 oldest-first, so each note is written into a store holding every earlier note
 and none of the later ones. Then it probes each note with its own session title
 once the store is at full size. No answerer and no judge: rank is deterministic,

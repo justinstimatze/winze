@@ -1,7 +1,7 @@
 # SOTA memory/continuity systems — survey (2026-08-31)
 
-Compiled while scoping wanigan's own continuity claim
-(`~/Documents/wanigan/CONTINUITY-PLAN.md` §1a/§4); cross-posted here since
+Compiled while scoping a sibling private project's own continuity claim;
+cross-posted here since
 winze faces the adjacent question of where an *authored*, curated memory
 store sits relative to the field. Every row below reflects a doc/source
 actually checked on 2026-08-31, not general training-time recall — confidence

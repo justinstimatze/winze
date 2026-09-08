@@ -206,7 +206,7 @@ left open — whether the raw tier earns a permanent place, or is standing in
 for a gap the typed store could close at the source. The acid test came
 down on the second answer: two of three `raw.jsonl` lines behind one
 existing memory
-(`DedupBlocksRecurrenceNotJustDuplication` in `~/Documents/winze-memory`) —
+(`DedupBlocksRecurrenceNotJustDuplication`, in a live private store) —
 two earlier `winze_remember` attempts at the same finding, reworded — exist
 nowhere in the typed store, confirmed by direct `grep`. Only the third
 attempt, a `winze_update`, survived, and only because it happened to become
@@ -271,8 +271,8 @@ calling it fails the test outright — there's no graceful skip — so
 `assertRawTier`/`rawRankOf`/
 `bestRawRankOf`/`rawHits` were deleted outright rather than stubbed —
 no live failure mode was left to justify keeping a comparison against a
-retrieval path that no longer exists. The one real store's `raw.jsonl`
-(`~/Documents/winze-memory`, 13 lines) was deleted after two separate
+retrieval path that no longer exists. The one real (private) store's `raw.jsonl`
+(13 lines) was deleted after two separate
 runs of the same check — every line's note text against every current
 `Brief` and every `Documented` claim's `Quote` — both came back 13/13
 covered, zero missing.

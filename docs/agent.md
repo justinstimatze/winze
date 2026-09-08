@@ -188,7 +188,7 @@ The collision was not only a reading problem. Every other binary in this repo
 is named for what it does — `winze-query`, `winze-lint`, `winze-edit`,
 `winze-meld` — and `winze-mem` was the only one named after a store, which it
 was going to collide with the moment a second store existed. One did:
-`~/Documents/publicai-memory` serves aipotluck.org and agent-service.
+a second private store serves two other projects.
 
 It also fooled the repo's own documentation gate. `TestDocsCoverageThisRepo`
 requires every `cmd/` to be named in a doc, and it checks with a substring
