@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,33 +17,6 @@ import (
 // build gate (~2s), so this is the knob between a minute of wall clock and ten.
 const selfRecallN = 20
 
-// TestSelfRecallDecaysWithCorpusGrowth is Phase 3b's first measurement, and it
-// spends nothing: no answerer, no judge, no API calls.
-//
-// docs/agent-identity-integration.md's open question is whether a memory an
-// agent wrote about its own session stays findable once the store keeps
-// growing around it. That is a retrieval-rank question before it is a
-// comprehension question, and rank is deterministic. Adding an LLM answerer
-// here would put a second, noisier system between the write and the number,
-// and would cost real money to discover a ranking bug a sort could have shown.
-// Promote to answer+judge only if this curve bends.
-//
-// Two probes per note, because one of them is too easy. Querying by the
-// session title asks the store to find a note by the note's own opening words,
-// which is close to a lookup; it is kept as the control. The probe that
-// carries the result is a mid-session user turn (LaterAsk) that was never
-// written into any note -- real text from the same session, in wording the
-// store has never seen, which is the shape a cold agent actually arrives with.
-//
-// A dedup rejection is DATA, not an error. The first run of this measured 20
-// writes and 2 rejections at cosine 0.73-0.74 -- against other session notes
-// in the same replay, not against semantic duplicates -- while every note that
-// did land came back at rank 1. Counting a rejection as a test failure would
-// bury the one number worth having behind a red result.
-//
-// Skips without the corpus or the built binaries, so it is an instrument
-// rather than a CI gate -- the same status TestAskOnceReplayAgainstTheRealLog
-// carries.
 func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -134,15 +108,15 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	if title.found == 0 {
 		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", title.miss)
 	}
-	t.Logf("TITLE PROBE: %d/%d recalled, mean rank %.2f, %d never surfaced",
-		title.found, title.found+title.miss, title.meanRank(), title.miss)
+	t.Logf("TITLE PROBE: %d/%d recalled, mean rank %.2f, median rank %.1f, hit@5 %.0f%%, %d never surfaced",
+		title.found, title.found+title.miss, title.meanRank(), title.medianRank(), 100*title.hitRateWithin(5), title.miss)
 	if later.found == 0 {
 		t.Logf("LATER PROBE: nothing surfaced across %d probes (%d sessions had no second ask)",
 			later.miss, noLater)
 	} else {
-		t.Logf("LATER PROBE: %d/%d recalled from text never written into a note, mean rank %.2f, "+
+		t.Logf("LATER PROBE: %d/%d recalled from text never written into a note, mean rank %.2f, median rank %.1f, hit@5 %.0f%%, "+
 			"%d never surfaced, %d sessions had no second ask",
-			later.found, later.found+later.miss, later.meanRank(), later.miss, noLater)
+			later.found, later.found+later.miss, later.meanRank(), later.medianRank(), 100*later.hitRateWithin(5), later.miss, noLater)
 	}
 	t.Logf("write-rejection rate %d/%d (%.0f%%) at %d attempted writes for %d sessions",
 		len(rejected), attempted, 100*float64(len(rejected))/float64(attempted), attempted, len(picked))
@@ -297,11 +271,9 @@ func selfRecallCount() int {
 	return selfRecallN
 }
 
-// probeStats tallies one probe's outcomes across the replay -- pulled out of
-// TestSelfRecallDecaysWithCorpusGrowth so the per-session loop has one thing
-// to update instead of three counters threaded through by hand.
 type probeStats struct {
 	found, miss, rankSum int
+	ranks                []int // rank of every found hit -- feeds medianRank/hitRateWithin, which meanRank alone can't answer
 }
 
 func (p *probeStats) record(rank int) {
@@ -310,6 +282,7 @@ func (p *probeStats) record(rank int) {
 	} else {
 		p.found++
 		p.rankSum += rank
+		p.ranks = append(p.ranks, rank)
 	}
 }
 
@@ -504,4 +477,39 @@ func bestRankOf(hits recallHits, vars []string) int {
 		}
 	}
 	return best
+}
+
+// hitRateWithin reports the fraction of all probes (found and missed) that
+// ranked at or within k. k=5 matches recallDefaultLimit (cmd/agent/mcp.go) --
+// the number that answers whether a live winze_recall caller, not this
+// harness's much larger measurement window, would actually have seen the hit.
+func (p probeStats) hitRateWithin(k int) float64 {
+	total := p.found + p.miss
+	if total == 0 {
+		return 0
+	}
+	within := 0
+	for _, r := range p.ranks {
+		if r <= k {
+			within++
+		}
+	}
+	return float64(within) / float64(total)
+}
+
+// medianRank returns the median of every found rank. meanRank alone can't
+// tell a symmetric spread from a few very-deep hits dragging the average up
+// while most hits already rank low -- exactly the ambiguity a costrel
+// consult (2026-09-07) flagged as unresolved before recommending a build.
+func (p probeStats) medianRank() float64 {
+	if len(p.ranks) == 0 {
+		return 0
+	}
+	sorted := append([]int(nil), p.ranks...)
+	sort.Ints(sorted)
+	mid := len(sorted) / 2
+	if len(sorted)%2 == 0 {
+		return float64(sorted[mid-1]+sorted[mid]) / 2
+	}
+	return float64(sorted[mid])
 }
