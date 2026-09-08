@@ -63,8 +63,16 @@ That cross-session referential integrity is the thing an Obsidian vault of
 | gate race (concurrent `go build .` in one tree) | one session sees another's half-written append | each session in its own worktree -> gate runs isolated |
 
 Worktree-per-session is the *conflict-free* path: disjoint files and isolated
-gates mean zero contention. Gas Town polecats already clone into
-`polecats/<name>/winze/`.
+gates mean zero contention. This is not hypothetical: a separate real
+project runs it today — 11 concurrent git worktrees, each `git config
+winze.store` pointed at one shared store, 58 real commits across distinct
+work threads — confirmed 2026-09-08, not a config stub. (An earlier
+version of this doc cited Gas Town polecats here; that integration was
+dropped 2026-07-22 for unrelated reasons and never actually exercised this
+path.) One honest limit on what this proves: every commit in that store
+carries the same git author — concurrent *sessions* writing into one store
+without corrupting it is demonstrated; concurrent *distinct human
+contributors* is not, yet.
 
 ### Sharing one worktree: the corpus lock
 

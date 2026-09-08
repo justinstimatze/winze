@@ -457,3 +457,79 @@ saturday, ettle, and winze. The field-framing claims above (named
 hard problems, paper titles) come from a single search pass the same day,
 not primary-source reads — treat them as a pointer to check, not a verified
 survey, until someone reads the actual papers.
+
+### The real benchmark says winze isn't in the ballpark yet — measured 2026-09-08
+
+Everything above reasoned about SOTA from architecture and a self-authored
+dogfood harness. `docs/benchmark.md` already had the actual number and it
+had gone unquoted here: on LongMemEval's oracle set (distractors removed,
+the *easy* tier, `k=120`, 2026-08-07 sweep), winze scores **431/500** —
+and a raw control that skips winze entirely and hands the chat history
+straight to the answerer scores **443/500**. Winze currently loses to
+doing nothing, on the cheap tier of its own chosen benchmark, by 12 net —
+well outside the doc's own ~10-question noise floor. The full
+`longmemeval_s` haystack (the actual hard test, with distractors) has
+never been scored at all; it prices at ~$138 and ~5.6h at concurrency 8,
+and paying for it before clearing the raw control on oracle would just be
+buying a confirmation of the same result for free money.
+
+It isn't a uniform loss. Per-type, winze *beats* the raw control on
+knowledge-update (71/78 vs 67/78) and temporal (121/133 vs 115/133) — where
+typed structure and supersession help — and loses badly on assistant-recall
+(39/56 vs 53/56) and multi-session (107/133 vs up to 133), where the answer
+is a verbatim quote or scattered raw text a typed `Fact` representation is
+lossy for. Of the multi-session failures where every needed fact was
+*already* in the answerer's context, 0-1 of 16 recover at any window
+size — an extraction-quality problem, not a retrieval one, per the doc's
+own `k`-sweep analysis.
+
+A third costrel consult (fable) on "given the note-shape axis is plateaued,
+what's next" landed on: **drop "close the authoring-gap" as a spending
+axis entirely.** Not because two dogfood-harness attempts (the retired
+raw-evidence tier, today's `claims` multi-unit test) both tied rather than
+beat their baselines — that alone wouldn't settle it — but because winning
+that axis is unclaimable under a cheap/fast/scalable constraint regardless:
+the field's own yardstick for "closed the gap" is a LoCoMo/LongMemEval
+score, and this doc's own survey already ruled porting those numbers onto
+a single-user deployment "a fabricated comparison, not a measurement." A
+dogfood-harness number moving has never been able to support that claim
+either way. The oracle-set number above makes the same point more sharply
+without needing the argument: winze doesn't need a philosophical reason to
+stop claiming SOTA on retrieval — it's currently behind a dumb baseline on
+the actual benchmark, measured.
+
+Proposed replacement, not yet built: a **revision/temporal probe** on the
+existing self-recall harness — a fact stated in session N, updated in
+session N+j, probed at N+k, checking whether recall returns the current
+version and beats naive most-recent-match. Targets the one thing the real
+benchmark already confirms is winze's actual edge (knowledge-update,
+temporal), rather than the axis (verbatim/multi-session) where a raw dump
+keeps winning. The typed `Supersedes` graph this would exercise has never
+been measured this way.
+
+**Corrected from an earlier draft of this session's own conversation, not
+this doc:** multi-writer shared memory is not a hypothetical winze doesn't
+have proof of yet. It's running now: a separate real project shares one
+winze store across 11 concurrent git worktrees, 58 real commits across
+distinct work threads — confirmed directly 2026-09-08, not a config stub,
+and not the Gas Town citation `docs/multi-session-write-shape.md` used to
+carry (that integration was dropped 2026-07-22 and never actually
+exercised this path; see that doc for the corrected citation, kept
+deliberately without the other project's internal paths/codenames/ticket
+IDs — none of that specificity is load-bearing for the claim). None of the
+five systems in this section's own survey (Letta, mem0, Claude Code's own
+memory, Anthropic's tool, Cursor/Windsurf) are multi-writer at all, so this
+is a real, running, currently-uncontested differentiator — with one honest
+limit: every commit in that store carries the same git author, so
+concurrent *sessions* writing safely is demonstrated, concurrent *distinct
+human contributors* is not, yet.
+
+**Where this leaves priority, given both findings together:** the
+highest-leverage next work is fixing the diagnosed oracle-set gap
+(assistant-recall's verbatim-quote representation, the multi-session
+extraction-quality cohort that already had every fact in context and
+still lost) — a real, measured deficit with a named root cause, not
+another dogfood-harness note-shape tweak and not the expensive full-
+haystack run yet. The multiplayer angle is a second, separate, real
+differentiator worth writing up on its own terms; it doesn't compete with
+the extraction fix for the same next slot of work.
