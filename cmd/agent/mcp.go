@@ -99,9 +99,9 @@ func handleRecall(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	// see rerankFused's doc for why the WINZE_RERANK env var alone can't scope
 	// this to winze_recall without also reranking currentBrief's write-path
 	// identity lookup, which shares the same --hybrid mode and process env.
-	res, ok := runQueryJSON("--hybrid", query, "--limit", strconv.Itoa(limit), "--rerank")
-	if !ok {
-		return mcp.NewToolResultError(recallFailureMessage()), nil
+	res, err := runQueryJSON("--hybrid", query, "--limit", strconv.Itoa(limit), "--rerank")
+	if err != nil {
+		return mcp.NewToolResultError(recallFailureMessage(err)), nil
 	}
 	if len(res.Hits) == 0 {
 		return mcp.NewToolResultText("no memories matched — nothing recalled."), nil
@@ -407,8 +407,8 @@ func deriveLinkName(relation, from, to string) string {
 // to text, best first. Empty when the store is empty or the embedder is
 // unavailable — dedup and link suggestion then simply don't fire (fail-open).
 func nearestMemories(text string, n int) []queryHit {
-	res, ok := runQueryJSON("--semantic", text)
-	if !ok || len(res.Hits) == 0 {
+	res, err := runQueryJSON("--semantic", text)
+	if err != nil || len(res.Hits) == 0 {
 		return nil
 	}
 	if len(res.Hits) > n {
@@ -511,19 +511,29 @@ func gitCommitMemory(note string) (string, error) {
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // recallFailureMessage explains a failed recall by naming the resolved store
-// first.
+// first, then the real subprocess error when one is available.
 //
 // The message this replaced blamed the binary and the embedder. Those are
 // almost always both fine: the overwhelmingly common cause is that the calling
 // directory never opted in, so storeRoot fell through to ~/winze-memory and
 // nothing is there. The wanigan session lost a detour to exactly that — it
 // verified winze-query was built and ollama was up, because the text told it
-// to, and neither was the problem.
-func recallFailureMessage() string {
+// to, and neither was the problem. But the store-hint guess isn't always
+// right either: confirmed live (2026-09-08), a stale $PATH-resolved
+// winze-query rejected a flag it predated, and the resulting exit-2/usage-dump
+// error used to be discarded entirely (runQueryJSON returned a bare bool),
+// leaving "the store is not readable" as the only explanation offered for a
+// failure that had nothing to do with the store. err, when non-nil, is
+// appended so the real cause is visible instead of guessed.
+func recallFailureMessage(err error) string {
 	root := storeRoot()
-	return fmt.Sprintf("recall failed: store %q — %s. "+
+	msg := fmt.Sprintf("recall failed: store %q — %s. "+
 		"(If the path is right, check winze-query is built and ollama is up for --hybrid.)",
 		root, storeHint(root))
+	if err != nil {
+		msg += fmt.Sprintf("\nunderlying error: %v", err)
+	}
+	return msg
 }
 
 // storeHint names which of the three failure shapes a store path is in.
@@ -602,8 +612,8 @@ func truncateWithHint(s string, max int) string {
 // snapshot that can't be taken doesn't block the update it would have
 // annotated.
 func currentBrief(varName string) string {
-	res, ok := runQueryJSON("--hybrid", varName)
-	if !ok {
+	res, err := runQueryJSON("--hybrid", varName)
+	if err != nil {
 		return ""
 	}
 	for _, h := range res.Hits {

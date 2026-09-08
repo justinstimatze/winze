@@ -77,8 +77,8 @@ func runRecallHook() {
 // If the embedder (ollama) is down the query fails and the hook stays silent —
 // recall degrades, it never blocks a prompt.
 func emitAssociativeRecall(prompt string) {
-	res, ok := runQueryJSON("--semantic", prompt)
-	if !ok || len(res.Hits) == 0 {
+	res, err := runQueryJSON("--semantic", prompt)
+	if err != nil || len(res.Hits) == 0 {
 		return
 	}
 	floor := recallMinScore
@@ -123,33 +123,43 @@ func emitDigest() {
 	fmt.Printf("winze-memory: %s (associative recall fires per-prompt; winze_recall/winze_remember to query/add)\n", strings.TrimSpace(line))
 }
 
-// runQueryJSON execs winze-query with --json and decodes the result. stderr is
-// discarded (winze-query prints embed-cache chatter there).
-func runQueryJSON(mode, arg string, extra ...string) (queryResult, bool) {
+// runQueryJSON execs winze-query with --json and decodes the result,
+// returning the real error on failure rather than collapsing it to a bool --
+// see runQueryRaw's doc for why that detail (winze-query's own stderr) is
+// worth keeping.
+func runQueryJSON(mode, arg string, extra ...string) (queryResult, error) {
 	args := append([]string{mode, arg}, extra...)
 	args = append(args, "--json")
 	out, err := runQueryRaw(args...)
 	if err != nil {
-		return queryResult{}, false
+		return queryResult{}, err
 	}
 	// --json may be preceded by nothing on stdout; decode directly.
 	var res queryResult
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
-		return queryResult{}, false
+		return queryResult{}, fmt.Errorf("unparseable JSON: %w", err)
 	}
-	return res, true
+	return res, nil
 }
 
 // runQueryRaw execs winze-query <mode> [arg] [flags...] <storeRoot> and returns
-// stdout. The memory root is always the final positional arg.
+// stdout. The memory root is always the final positional arg. stderr is
+// captured but only surfaced on failure -- winze-query prints embed-cache
+// chatter there on a normal run, which stays discarded, but on failure that
+// same stream is the actual diagnostic (a flag-mismatch usage dump, a corpus
+// build error, a panic) that recallFailureMessage used to have no way to
+// see.
 func runQueryRaw(args ...string) (string, error) {
 	full := append([]string{}, args...)
 	full = append(full, storeRoot())
 	cmd := exec.Command(queryBin(), full...)
-	var stdout bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
-	cmd.Stderr = nil // discard embed-cache chatter
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return "", fmt.Errorf("%w: %s", err, msg)
+		}
 		return "", err
 	}
 	return stdout.String(), nil

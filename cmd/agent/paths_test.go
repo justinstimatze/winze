@@ -204,3 +204,38 @@ func TestOnsetterClaudeMDResolutionOrder(t *testing.T) {
 		t.Errorf("with onsetterCheckOverride set: onsetterClaudeMD() = %q, want /forced/CLAUDE.md", got)
 	}
 }
+
+func TestResolveSiblingBinFallsBackOnDirectory(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "winze-agent")
+	if err := os.Mkdir(filepath.Join(dir, "winze-query"), 0o755); err != nil {
+		t.Fatalf("making directory sibling: %v", err)
+	}
+	got := resolveSiblingBin(exe, "winze-query")
+	if got != "winze-query" {
+		t.Fatalf("resolveSiblingBin(%q, %q) = %q, want bare name %q (a directory isn't a binary)", exe, "winze-query", got, "winze-query")
+	}
+}
+
+func TestResolveSiblingBinFallsBackWhenMissing(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "winze-agent")
+	// No winze-query written into dir at all.
+	got := resolveSiblingBin(exe, "winze-query")
+	if got != "winze-query" {
+		t.Fatalf("resolveSiblingBin(%q, %q) = %q, want bare name %q", exe, "winze-query", got, "winze-query")
+	}
+}
+
+func TestResolveSiblingBinPrefersSibling(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "winze-agent")
+	sibling := filepath.Join(dir, "winze-query")
+	if err := os.WriteFile(sibling, []byte("fake binary"), 0o755); err != nil {
+		t.Fatalf("writing fake sibling: %v", err)
+	}
+	got := resolveSiblingBin(exe, "winze-query")
+	if got != sibling {
+		t.Fatalf("resolveSiblingBin(%q, %q) = %q, want %q", exe, "winze-query", got, sibling)
+	}
+}

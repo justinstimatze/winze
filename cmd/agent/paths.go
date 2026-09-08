@@ -43,11 +43,27 @@ func storeRoot() string {
 	return filepath.Join(home(), "winze-memory")
 }
 
-// binName resolves a winze tool binary: joined under WINZE_BIN when set, else
-// the bare name so it resolves via PATH (e.g. after `make install`).
+// binName resolves a winze tool binary, most explicit first:
+//
+//  1. $WINZE_BIN -- a caller that names a bin dir outright always wins.
+//  2. A sibling binary next to this process's own executable, via
+//     resolveSiblingBin. `make build`/`make install` produce every winze-*
+//     binary into the same directory in one pass, so a process invoked from
+//     wherever it was built almost always wants the tool sitting right next
+//     to it, not whatever a separately-synced $PATH entry resolves to.
+//     Confirmed live (2026-09-08): a winze-query installed via a bare
+//     `go install` weeks earlier, never resynced, silently shadowed a
+//     freshly built ./bin/winze-query on $PATH -- it failed on a flag
+//     (`-limit`) the stale binary predated, and recallFailureMessage's
+//     store-path heuristic blamed the store, not the real cause.
+//  3. The bare name, resolved via $PATH (e.g. after `make install` from a
+//     working directory with no local bin/ sibling).
 func binName(name string) string {
 	if v := os.Getenv("WINZE_BIN"); v != "" {
 		return filepath.Join(v, name)
+	}
+	if exe, err := os.Executable(); err == nil {
+		return resolveSiblingBin(exe, name)
 	}
 	return name
 }
@@ -126,4 +142,18 @@ func onsetterClaudeMD() string {
 		return ""
 	}
 	return p
+}
+
+// resolveSiblingBin is binName's testable core: given the path to a running
+// executable, prefer a file of the given name sitting in the same directory
+// over the bare name (left for $PATH resolution). Falls back to the bare
+// name when no such file exists, or when the same name resolves to a
+// directory rather than a file -- a directory can't be exec'd, and treating
+// it as a hit would be a worse failure than falling through to $PATH.
+func resolveSiblingBin(exePath, name string) string {
+	sibling := filepath.Join(filepath.Dir(exePath), name)
+	if fi, err := os.Stat(sibling); err == nil && !fi.IsDir() {
+		return sibling
+	}
+	return name
 }
