@@ -180,7 +180,8 @@ typed-extraction model itself — and both are now fixed defaults/discipline
 rather than open questions.
 
 **Status: precondition 2 (perf) substantially cleared; precondition 1
-(memory-confidence) measured and NOT cleared.** The design is fixed enough that
+(memory-confidence) measured and NOT cleared, but re-run with corrected
+numbers before trusting the 57% below.** The design is fixed enough that
 the pointer question is answered and won't churn, and with ingest corpus-scoped
 the wake-time read is viable. Precondition 1 is a different story: the
 multi-session, multi-day test this section asked for has now run three times.
@@ -191,6 +192,21 @@ were both asking an easier question than a cold agent asks. See the three
 Measured sections below in order; each supersedes the previous one's headline
 except the third, which is a failed attempt to beat the second, not a
 replacement for it.
+
+**Correction, 2026-09-08 — read this before citing 57%/52% above.** Both
+figures were measured under a harness bug, fixed 2026-09-07 and recorded in
+`ROADMAP.md`'s Known-problems section: a hardcoded result cap was hiding true
+ranks past 15, corrupting hit-rate and mean-rank together. Post-fix,
+under a different note shape (`outcome`, not `arc`) and with LLM reranking
+now on by default, the current LATER-PROBE numbers are 51-53% single-note vs
+**50%** multi-claim (`claims`) — statistically tied, not "worse on both axes."
+The *directional* finding here (multi-claim didn't beat single-note, dedup
+rejection at similar ~12-13% both times) replicated cleanly across the bug
+fix; the specific percentages and the "worse, not better" framing did not.
+Precondition 1's gate — do not implement this document's design yet — still
+holds, since neither the old nor the corrected number clears a real
+confidence bar, but cite `ROADMAP.md` for the current figures, not this
+section's table.
 
 ### Measured 2026-09-02: retrieval does not decay; the write gate does
 

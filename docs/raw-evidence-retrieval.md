@@ -122,10 +122,16 @@ object class, not a new way to populate the existing one.
 ## The number
 
 Measured against the same self-recall harness that produced the 57%/47.5%
-later-probe hit rates already in `README.md`'s Known-problems section
+later-probe hit rates reported at the time
 (`TestSelfRecallDecaysWithCorpusGrowth`, `cmd/longmemeval`,
 `WINZE_SELFRECALL_N=150`, one-note-per-session, 150 real transcript
-sessions), across three runs on the identical sessions and questions:
+sessions), across three runs on the identical sessions and questions.
+Two things have moved since: those figures live in `ROADMAP.md`'s
+Known-problems section now, not `README.md` (moved 2026-09-08); and
+`ROADMAP.md` itself flags 57%/47.5% as measured under a since-fixed
+result-cap bug (2026-09-07) — the comparison below is internal to this
+tier's own three runs and still holds, but don't cite 57%/47.5% as a
+current number from anywhere but `ROADMAP.md`:
 
 | | later-probe hit rate | mean rank (found) |
 |---|---|---|
