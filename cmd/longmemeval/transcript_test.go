@@ -232,3 +232,46 @@ func TestCleanAskStripsTaskNotifications(t *testing.T) {
 		t.Errorf("cleanAsk = %q, want %q", got, want)
 	}
 }
+
+// TestMidpointOutcomeReturnsLastAssistantTurnBeforeProbe covers the safety
+// property the whole point of this method rests on: it must return the most
+// recent assistant turn strictly before LaterAsk's probe turn, never one
+// from after it (which would leak the answer into the note) and never an
+// earlier one when a later-but-still-safe one exists (which would waste the
+// richer signal a real winze_remember call would have had available).
+func TestMidpointOutcomeReturnsLastAssistantTurnBeforeProbe(t *testing.T) {
+	s := &transcriptSession{Turns: []Turn{
+		{Role: "user", Content: "opening ask, long enough to clear the length floor easily for real"},
+		{Role: "assistant", Content: "reply A, superseded by reply B before the probe turn arrives"},
+		{Role: "user", Content: "arc ask one is long enough to clear the length floor for counting"},
+		{Role: "assistant", Content: "reply B is the one that should be returned by midpointOutcome"},
+		{Role: "user", Content: "arc ask two is the probe long enough to clear the length floor yes"},
+		{Role: "assistant", Content: "reply C must never appear since it comes after the probe turn"},
+		{Role: "user", Content: "arc ask three also long enough to clear the length floor for real"},
+	}}
+	got := s.midpointOutcome()
+	if !strings.HasPrefix(got, "reply B") {
+		t.Errorf("midpointOutcome = %q, want reply B (last assistant turn strictly before the probe)", got)
+	}
+}
+
+func TestMidpointOutcomeEmptyWhenNoAssistantTurnPrecedesProbe(t *testing.T) {
+	s := &transcriptSession{Turns: []Turn{
+		{Role: "user", Content: "opening ask, long enough to clear the length floor easily for real"},
+		{Role: "user", Content: "arc ask one is the probe, long enough to clear the length floor too"},
+		{Role: "assistant", Content: "reply after the probe must never be returned by midpointOutcome"},
+	}}
+	if got := s.midpointOutcome(); got != "" {
+		t.Errorf("midpointOutcome = %q, want empty when no assistant turn precedes the probe", got)
+	}
+}
+
+func TestMidpointOutcomeEmptyWhenNoLaterAsk(t *testing.T) {
+	s := &transcriptSession{Turns: []Turn{
+		{Role: "user", Content: "the only ask in the session, long enough to clear the length floor"},
+		{Role: "assistant", Content: "a reply, but there is no second substantial ask to probe with here"},
+	}}
+	if got := s.midpointOutcome(); got != "" {
+		t.Errorf("midpointOutcome = %q, want empty when LaterAsk itself is empty", got)
+	}
+}

@@ -155,8 +155,8 @@ func mustJSON(s string) string {
 	return string(b)
 }
 
-// noteFor renders the memory note for a session, in one of two shapes chosen
-// by $WINZE_NOTE_SHAPE.
+// noteFor renders the memory note for a session, in one of three shapes
+// chosen by $WINZE_NOTE_SHAPE.
 //
 // "open" (default) is title plus the operator's first ask -- the cheapest note
 // that could work, and the shape the first 140-session run measured.
@@ -169,8 +169,32 @@ func mustJSON(s string) string {
 // store cannot bridge unseen wording" from "the note did not describe the
 // session" -- which the first run could not tell apart.
 //
-// Both shapes cost nothing: every word is already on disk.
+// "outcome" replaces the opening ask with the assistant's own most recent
+// substantial response from strictly before the probe turn (midpointOutcome,
+// transcript.go) -- an already-reached conclusion rather than the question
+// that started the session. Real winze-memory Briefs measured 2026-09-08
+// (median 571 chars, dense with dates/commits/outcomes) read nothing like a
+// raw opening question, so "open"'s own shape may be a pessimistic proxy for
+// what a real winze_remember call actually writes -- this shape tests that
+// without re-feeding the transcript to a model (same zero-extra-cost
+// principle "open"/"arc" already use: the text is already on disk).
+//
+// All three shapes cost nothing: every word is already on disk.
 func noteFor(s *transcriptSession) string {
+	if os.Getenv("WINZE_NOTE_SHAPE") == "outcome" {
+		if out := s.midpointOutcome(); out != "" {
+			if len(out) > 1200 {
+				out = out[:1200] + "…"
+			}
+			return fmt.Sprintf("Session %s (%s): %s\n\n%s",
+				s.Start.Format("2006-01-02"), s.ID[:8], s.Title, out)
+		}
+		// No assistant turn precedes the probe (e.g. the probe is the second
+		// turn overall) -- fall through to "open" rather than emit an empty
+		// outcome, so this shape never produces a strictly worse note than
+		// the default.
+	}
+
 	ask := s.OpeningAsk()
 	if len(ask) > 1200 {
 		ask = ask[:1200] + "…"
