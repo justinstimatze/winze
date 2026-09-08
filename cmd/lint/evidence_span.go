@@ -11,22 +11,6 @@ import (
 	"github.com/justinstimatze/winze/internal/corpusparse"
 )
 
-// evidenceSpanRule checks every named, top-level Provenance var whose
-// EvidenceHash is set: the archived evidence/<hash>.txt file exists, its
-// content hashes to its own filename (catches corruption/truncation), and
-// Quote appears verbatim within it (catches a Quote that drifted from what
-// was actually archived after the fact). Mirrors codeRefSpanRule's shape
-// and return-code convention (0 clean, 1 rule failure, 2 hard error), but
-// simpler: evidence is always local to this repo, so there is no --clients
-// resolution axis to gate on.
-//
-// Only a named var is visible here at all -- ParseCorpusFull's Provenance
-// list comes from tryParseProvenance, which only recognizes a top-level
-// `var X = Provenance{...}` declaration, not one inlined directly inside a
-// claim's own composite literal (renderClaim's default authoring mode, see
-// docs/authoring.md). That is a deliberate scope boundary, not a gap this
-// rule tries to work around: EvidenceHash is only meaningful on a Provenance
-// worth naming and reusing in the first place.
 func evidenceSpanRule(dir string) int {
 	corpus, err := corpusparse.ParseCorpusFull(dir)
 	if err != nil {
@@ -52,19 +36,8 @@ func evidenceSpanRule(dir string) int {
 
 	var bad []string
 	for _, p := range archived {
-		path := filepath.Join(storeRoot, "evidence", p.EvidenceHash+".txt")
-		content, err := os.ReadFile(path)
-		if err != nil {
-			bad = append(bad, fmt.Sprintf("%s: evidence/%s.txt: %v", p.VarName, p.EvidenceHash, err))
-			continue
-		}
-		sum := sha256.Sum256(content)
-		if hex.EncodeToString(sum[:]) != p.EvidenceHash {
-			bad = append(bad, fmt.Sprintf("%s: evidence/%s.txt content does not hash to its own filename (corrupted?)", p.VarName, p.EvidenceHash))
-			continue
-		}
-		if !strings.Contains(string(content), p.Quote) {
-			bad = append(bad, fmt.Sprintf("%s: Quote not found verbatim in evidence/%s.txt (drifted from what was archived)", p.VarName, p.EvidenceHash))
+		if msg, ok := checkArchivedProvenance(storeRoot, p); !ok {
+			bad = append(bad, msg)
 		}
 	}
 
@@ -76,4 +49,20 @@ func evidenceSpanRule(dir string) int {
 		fmt.Println("   ", b)
 	}
 	return 1
+}
+
+func checkArchivedProvenance(storeRoot string, p corpusparse.Provenance) (msg string, ok bool) {
+	path := filepath.Join(storeRoot, "evidence", p.EvidenceHash+".txt")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Sprintf("%s: evidence/%s.txt: %v", p.VarName, p.EvidenceHash, err), false
+	}
+	sum := sha256.Sum256(content)
+	if hex.EncodeToString(sum[:]) != p.EvidenceHash {
+		return fmt.Sprintf("%s: evidence/%s.txt content does not hash to its own filename (corrupted?)", p.VarName, p.EvidenceHash), false
+	}
+	if !strings.Contains(string(content), p.Quote) {
+		return fmt.Sprintf("%s: Quote not found verbatim in evidence/%s.txt (drifted from what was archived)", p.VarName, p.EvidenceHash), false
+	}
+	return "", true
 }
