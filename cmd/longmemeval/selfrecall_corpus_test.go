@@ -113,7 +113,7 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	// twice; see probeAll's doc comment for what TITLE and LATER each
 	// establish, and for why a session can own more than one var under
 	// WINZE_NOTE_SHAPE=claims.
-	title, later, noLater := probeAll(t, run, picked, varSets, boiler, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
+	title, later, noLater := probeAll(t, run, picked, varSets, noteSets, boiler, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
 	if title.found == 0 {
 		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", title.miss)
 	}
@@ -277,24 +277,7 @@ func (p probeStats) meanRank() float64 {
 	return float64(p.rankSum) / float64(p.found)
 }
 
-// probeAll runs both probes (title, then LaterAsk) against every stored
-// session and optionally dumps a manifest -- pulled out of
-// TestSelfRecallDecaysWithCorpusGrowth, which had grown to interleave the
-// probe calls, the manifest dump, and three counters in one loop.
-//
-// TITLE is the note's own first line, so a hit says the store can find a
-// memory by its own words -- necessary, but nearer a lookup than a recall.
-// LATER is a mid-session user turn that was never written into any note, so
-// a hit says retrieval bridged from wording the store has never seen. That
-// second number is the one worth having; the first is its control. boiler
-// (flagBoilerplateAsks) excludes candidates that recur, paraphrased, across
-// other sessions -- see laterAskAvoiding's doc for why those can't fairly
-// test this session's recall.
-//
-// varSets holds one slice of entity vars per session (length 1 for
-// "open"/"arc", length N for "claims"): a hit counts if the probe surfaces
-// ANY of a session's vars, via bestRankOf.
-func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, varSets [][]string, boiler map[string]bool, manifestPath string) (title, later probeStats, noLater int) {
+func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, varSets, noteSets [][]string, boiler map[string]bool, manifestPath string) (title, later probeStats, noLater int) {
 	t.Helper()
 	probe := func(query string, want []string) (int, error) {
 		payload := fmt.Sprintf(`{"query":%s,"limit":%d,"brief_chars":0}`, mustJSON(query), len(picked)*6)
@@ -313,6 +296,12 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 	// the exact query text used for each probe and its var name -- the detail a
 	// summary line can't carry, needed to replay one session's probe by hand
 	// against the persistent store (WINZE_SELFRECALL_STORE) after the test exits.
+	// "note" is the exact text written for the session (noteSets[i][0] for
+	// "open"/"arc"/"outcome"; joined for "claims"' multi-fact shape) -- a
+	// coverage-vs-retrieval miss audit needs it to check whether a miss's
+	// LaterAsk content ever reached the note at all, not just that it ranked
+	// poorly. Used 2026-09-08 for exactly that: 39 coverage misses vs 4
+	// retrieval misses out of 56, on the outcome+rerank N=150 run.
 	var manifest *os.File
 	if manifestPath != "" {
 		var err error
@@ -360,6 +349,7 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 			rec, _ := json.Marshal(map[string]any{
 				"idx": i, "date": s.Start.Format("2006-01-02"), "title": s.Title, "vars": varSets[i],
 				"title_rank": titleRank, "later_rank": laterRank, "later_ask": laterQ,
+				"note": strings.Join(noteSets[i], "\n---\n"),
 			})
 			manifest.Write(append(rec, '\n'))
 		}
