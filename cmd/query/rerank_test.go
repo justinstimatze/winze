@@ -54,7 +54,7 @@ func TestRerankFusedDisabledReturnsUnchanged(t *testing.T) {
 	os.Unsetenv("WINZE_RERANK")
 	kb := &kbIndex{Entities: []entityRecord{{Name: "A", Brief: "b"}}}
 	fused := []fusedHit{{idx: 0}}
-	out := rerankFused(".", fused, kb, "q")
+	out := rerankFused(".", fused, kb, "q", false)
 	if len(out) != 1 || out[0].idx != 0 {
 		t.Fatalf("expected unchanged output when disabled, got %v", out)
 	}
@@ -74,7 +74,7 @@ func TestRerankFusedNoAPIKeyReturnsUnchanged(t *testing.T) {
 	fused := []fusedHit{{idx: 0}}
 	// t.TempDir() is outside any git worktree, so loadDotEnv's git-worktree
 	// fallback finds nothing and this stays genuinely network-free.
-	out := rerankFused(t.TempDir(), fused, kb, "q")
+	out := rerankFused(t.TempDir(), fused, kb, "q", false)
 	if len(out) != 1 || out[0].idx != 0 {
 		t.Fatalf("expected unchanged output with no API key, got %v", out)
 	}
@@ -181,5 +181,32 @@ func TestRerankTopKDefaultAndOverride(t *testing.T) {
 	os.Setenv("WINZE_RERANK_TOPK", "not-a-number")
 	if got := rerankTopK(); got != 40 {
 		t.Fatalf("expected fallback to 40 on invalid override, got %d", got)
+	}
+}
+
+func TestRerankShouldRun(t *testing.T) {
+	cases := []struct {
+		name  string
+		envOn bool
+		force bool
+		want  bool
+	}{
+		{"env off, force off", false, false, false},
+		{"env off, force on", false, true, true},
+		{"env on, force off", true, false, true},
+		{"env on, force on", true, true, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.envOn {
+				os.Setenv("WINZE_RERANK", "1")
+				defer os.Unsetenv("WINZE_RERANK")
+			} else {
+				os.Unsetenv("WINZE_RERANK")
+			}
+			if got := rerankShouldRun(c.force); got != c.want {
+				t.Fatalf("rerankShouldRun(%v) with env=%v = %v, want %v", c.force, c.envOn, got, c.want)
+			}
+		})
 	}
 }

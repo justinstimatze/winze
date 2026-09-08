@@ -66,7 +66,7 @@ func rrfFuse(lexRank, semRank, graphRank map[int]int) []fusedHit {
 	return out
 }
 
-func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, includeSuperseded bool, limit int) {
+func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, includeSuperseded bool, limit int, forceRerank bool) {
 	canonRole := ""
 	if typeFilter != "" {
 		var ok bool
@@ -126,11 +126,12 @@ func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, incl
 		fused = kept
 	}
 
-	// LLM listwise rerank over the top of the fused pool -- opt-in (WINZE_RERANK),
-	// fails open to this same fused order on any error. Runs BEFORE the staleness
-	// downrank below so a reorder can never re-promote a superseded entity past
-	// that demotion; downrankSuperseded must always get the last word.
-	fused = rerankFused(dir, fused, kb, query)
+	// LLM listwise rerank over the top of the fused pool -- opt-in (WINZE_RERANK
+	// env, or forceRerank from a caller's explicit --rerank flag), fails open to
+	// this same fused order on any error. Runs BEFORE the staleness downrank
+	// below so a reorder can never re-promote a superseded entity past that
+	// demotion; downrankSuperseded must always get the last word.
+	fused = rerankFused(dir, fused, kb, query, forceRerank)
 
 	// Staleness downrank: a superseded entity stays in the result set (this is
 	// retrieval, not deletion) but sinks below every non-superseded hit, so a

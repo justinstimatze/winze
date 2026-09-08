@@ -95,7 +95,11 @@ func handleRecall(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	if v, ok := req.GetArguments()["brief_chars"].(float64); ok && v >= 0 {
 		briefChars = int(v)
 	}
-	res, ok := runQueryJSON("--hybrid", query, "--limit", strconv.Itoa(limit))
+	// --rerank forces the LLM listwise rerank on for this call specifically --
+	// see rerankFused's doc for why the WINZE_RERANK env var alone can't scope
+	// this to winze_recall without also reranking currentBrief's write-path
+	// identity lookup, which shares the same --hybrid mode and process env.
+	res, ok := runQueryJSON("--hybrid", query, "--limit", strconv.Itoa(limit), "--rerank")
 	if !ok {
 		return mcp.NewToolResultError(recallFailureMessage()), nil
 	}

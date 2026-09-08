@@ -103,10 +103,17 @@ func rerankEnabled() bool { return os.Getenv("WINZE_RERANK") != "" }
 
 // rerankFused is the thin production wrapper: resolves gating, the API key
 // (loadDotEnv, mirroring surfaceFormsFor), and the client, then delegates to
-// rerankTop. Returns fused unchanged whenever the feature is off or
+// rerankTop. force bypasses the WINZE_RERANK env check for a single
+// invocation -- the scoping fix for cmd/agent's --hybrid callers: handleRecall
+// (winze_recall) passes --rerank explicitly, while currentBrief's identity
+// lookup (called from the write-path handleUpdate) does not, so a
+// process-wide env var is never the only thing standing between "read path
+// reranks" and "every write pays an LLM call too" -- both share the same
+// winze-query subprocess environment via runQueryRaw, which has no per-call
+// env override. Returns fused unchanged whenever the feature is off or
 // unusable -- callers need no branching.
-func rerankFused(dir string, fused []fusedHit, kb *kbIndex, query string) []fusedHit {
-	if !rerankEnabled() {
+func rerankFused(dir string, fused []fusedHit, kb *kbIndex, query string, force bool) []fusedHit {
+	if !rerankShouldRun(force) {
 		return fused
 	}
 	key := os.Getenv("ANTHROPIC_API_KEY")
@@ -211,4 +218,13 @@ func rerankTopK() int {
 type rerankCandidate struct {
 	id          int // fusedHit.idx -- index into kb.Entities
 	name, brief string
+}
+
+// rerankShouldRun is rerankFused's gate, pulled out so it's testable without
+// entangling env state with the API-key/client-construction branches below it
+// -- "disabled" and "force=true but no key" both return fused unchanged from
+// rerankFused, indistinguishable by output alone, so the gate itself needs
+// its own direct test.
+func rerankShouldRun(force bool) bool {
+	return rerankEnabled() || force
 }
