@@ -129,9 +129,22 @@ sessions), across three runs on the identical sessions and questions.
 Two things have moved since: those figures live in `ROADMAP.md`'s
 Known-problems section now, not `README.md` (moved 2026-09-08); and
 `ROADMAP.md` itself flags 57%/47.5% as measured under a since-fixed
-result-cap bug (2026-09-07) — the comparison below is internal to this
-tier's own three runs and still holds, but don't cite 57%/47.5% as a
-current number from anywhere but `ROADMAP.md`:
+result-cap bug — don't cite 57%/47.5% as a current number from anywhere
+but `ROADMAP.md`.
+
+**Correction, 2026-09-08 — the comparison below does NOT still hold as
+stated.** Checked directly: all three raw-tier runs and the retirement
+decision below landed 2026-09-07 between 11:30 and 14:32 (`48a3afb`,
+`d8b5115`, `04e88e3`); the result-cap fix landed the same evening at
+20:40 (`a49fe0e`). So this comparison — raw tier vs. typed store,
+40.0% vs. 40.8%, "statistically indistinguishable" — was measured under
+the same bug already flagged as invalidating 57%/47.5%, not after it.
+"Indistinguishable" is not a confirmed post-fix fact; a costrel consult
+(fable, 2026-09-08) flagged this gap and it checked out. The retirement
+itself still stands on its other stated ground — a second retrieval
+surface for no *confirmed* gain is still a real maintenance cost even
+without a solid parity number to cite — but raw-plus-rerank was never
+measured, and this table should not be read as having settled that.
 
 | | later-probe hit rate | mean rank (found) |
 |---|---|---|
