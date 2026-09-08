@@ -156,71 +156,22 @@ func mustJSON(s string) string {
 }
 
 // noteFor renders the memory note for a session, in one of three shapes
-// chosen by $WINZE_NOTE_SHAPE.
-//
-// "open" (default) is title plus the operator's first ask -- the cheapest note
-// that could work, and the shape the first 140-session run measured.
-//
-// "arc" adds the session's later asks, minus the one LaterAsk holds out as the
-// probe. That holdout is the whole point: dropping every ask into the note
-// would make the later probe a title probe in different clothes, and the run
-// would report a retrieval win that was really the answer being written into
-// the question. Comparing the two shapes at the same store size separates "the
-// store cannot bridge unseen wording" from "the note did not describe the
-// session" -- which the first run could not tell apart.
-//
-// "outcome" replaces the opening ask with the assistant's own most recent
-// substantial response from strictly before the probe turn (midpointOutcome,
-// transcript.go) -- an already-reached conclusion rather than the question
-// that started the session. Real winze-memory Briefs measured 2026-09-08
-// (median 571 chars, dense with dates/commits/outcomes) read nothing like a
-// raw opening question, so "open"'s own shape may be a pessimistic proxy for
-// what a real winze_remember call actually writes -- this shape tests that
-// without re-feeding the transcript to a model (same zero-extra-cost
-// principle "open"/"arc" already use: the text is already on disk).
-//
-// All three shapes cost nothing: every word is already on disk.
+// chosen by $WINZE_NOTE_SHAPE: "open" (default, openNote), "arc" (arcNote),
+// or "outcome" (outcomeNote, falling back to openNote when no assistant
+// turn precedes the probe). All three cost nothing: every word is already
+// on disk. See each helper's own doc comment for what it tests and why.
 func noteFor(s *transcriptSession) string {
-	if os.Getenv("WINZE_NOTE_SHAPE") == "outcome" {
-		if out := s.midpointOutcome(); out != "" {
-			if len(out) > 1200 {
-				out = out[:1200] + "…"
-			}
-			return fmt.Sprintf("Session %s (%s): %s\n\n%s",
-				s.Start.Format("2006-01-02"), s.ID[:8], s.Title, out)
+	switch os.Getenv("WINZE_NOTE_SHAPE") {
+	case "outcome":
+		if note := outcomeNote(s); note != "" {
+			return note
 		}
-		// No assistant turn precedes the probe (e.g. the probe is the second
-		// turn overall) -- fall through to "open" rather than emit an empty
-		// outcome, so this shape never produces a strictly worse note than
-		// the default.
+		return openNote(s)
+	case "arc":
+		return arcNote(s)
+	default:
+		return openNote(s)
 	}
-
-	ask := s.OpeningAsk()
-	if len(ask) > 1200 {
-		ask = ask[:1200] + "…"
-	}
-	note := fmt.Sprintf("Session %s (%s): %s\n\nOpened with: %s",
-		s.Start.Format("2006-01-02"), s.ID[:8], s.Title, ask)
-	if os.Getenv("WINZE_NOTE_SHAPE") != "arc" {
-		return note
-	}
-	held := s.LaterAsk()
-	var arc []string
-	budget := 1500
-	for _, a := range s.ArcAsks() {
-		if a == held || budget <= 0 {
-			continue
-		}
-		if len(a) > 300 {
-			a = a[:300] + "…"
-		}
-		arc = append(arc, a)
-		budget -= len(a)
-	}
-	if len(arc) == 0 {
-		return note
-	}
-	return note + "\n\nWent on to: " + strings.Join(arc, " / ")
 }
 
 // rankLabel renders a rank, with 0 meaning the recall never surfaced the note.
@@ -548,4 +499,67 @@ func (p probeStats) medianRank() float64 {
 		return float64(sorted[mid-1]+sorted[mid]) / 2
 	}
 	return float64(sorted[mid])
+}
+
+// arcNote adds the session's later asks, minus the one LaterAsk holds out as
+// the probe. That holdout is the whole point: dropping every ask into the
+// note would make the later probe a title probe in different clothes, and
+// the run would report a retrieval win that was really the answer being
+// written into the question. Comparing this shape against openNote at the
+// same store size separates "the store cannot bridge unseen wording" from
+// "the note did not describe the session" -- which the first run could not
+// tell apart.
+func arcNote(s *transcriptSession) string {
+	note := openNote(s)
+	held := s.LaterAsk()
+	var arc []string
+	budget := 1500
+	for _, a := range s.ArcAsks() {
+		if a == held || budget <= 0 {
+			continue
+		}
+		if len(a) > 300 {
+			a = a[:300] + "…"
+		}
+		arc = append(arc, a)
+		budget -= len(a)
+	}
+	if len(arc) == 0 {
+		return note
+	}
+	return note + "\n\nWent on to: " + strings.Join(arc, " / ")
+}
+
+// openNote is title plus the operator's first ask -- the cheapest note that
+// could work, and the shape the first 140-session run measured.
+func openNote(s *transcriptSession) string {
+	ask := s.OpeningAsk()
+	if len(ask) > 1200 {
+		ask = ask[:1200] + "…"
+	}
+	return fmt.Sprintf("Session %s (%s): %s\n\nOpened with: %s",
+		s.Start.Format("2006-01-02"), s.ID[:8], s.Title, ask)
+}
+
+// outcomeNote replaces the opening ask with the assistant's own most recent
+// substantial response from strictly before the probe turn (midpointOutcome)
+// -- an already-reached conclusion rather than the question that started the
+// session. Real winze-memory Briefs measured 2026-09-08 (median 571 chars,
+// dense with dates/commits/outcomes) read nothing like a raw opening
+// question, so openNote's own shape may be a pessimistic proxy for what a
+// real winze_remember call actually writes -- this tests that without
+// re-feeding the transcript to a model (same zero-extra-cost principle
+// openNote/arcNote already use: the text is already on disk). Returns ""
+// when no assistant turn precedes the probe, so callers can fall back to
+// openNote rather than emit an empty note.
+func outcomeNote(s *transcriptSession) string {
+	out := s.midpointOutcome()
+	if out == "" {
+		return ""
+	}
+	if len(out) > 1200 {
+		out = out[:1200] + "…"
+	}
+	return fmt.Sprintf("Session %s (%s): %s\n\n%s",
+		s.Start.Format("2006-01-02"), s.ID[:8], s.Title, out)
 }

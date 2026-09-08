@@ -444,15 +444,6 @@ func (s *transcriptSession) laterAskAvoiding(boiler map[string]bool) string {
 	return asks[len(asks)/2]
 }
 
-// midpointOutcome returns the assistant's most recent substantial response
-// from strictly before LaterAsk's position in the session -- temporally safe
-// by construction (nothing after the probe turn can leak in, since the walk
-// stops the moment it reaches that turn), and closer to what a real
-// winze_remember call actually captures: an outcome already reached, not
-// the question that opened the session. Same zero-cost principle
-// OpeningAsk/ArcAsks already establish: this text is already on disk, no
-// LLM call re-derives or summarizes it. Returns "" when there is no later
-// probe (mirrors LaterAsk's own empty case) or no assistant turn precedes it.
 func (s *transcriptSession) midpointOutcome() string {
 	held := s.LaterAsk()
 	if held == "" {
@@ -461,19 +452,12 @@ func (s *transcriptSession) midpointOutcome() string {
 	seenFirstUser := false
 	var best string
 	for _, turn := range s.Turns {
-		if turn.Role == "user" {
-			if !seenFirstUser {
-				seenFirstUser = true
-				continue
-			}
-			if c := cleanAsk(turn.Content); len(c) >= 40 {
-				if c == held {
-					break
-				}
-			}
-			continue
-		}
-		if turn.Role == "assistant" && len(turn.Content) >= 40 {
+		switch {
+		case turn.Role == "user" && !seenFirstUser:
+			seenFirstUser = true
+		case turn.Role == "user" && cleanAsk(turn.Content) == held:
+			return best
+		case turn.Role == "assistant" && len(turn.Content) >= 40:
 			best = turn.Content
 		}
 	}
