@@ -8,17 +8,18 @@ import (
 )
 
 // Provenance is a sourced attribution record: `var fooSource = Provenance{...}`.
-// It mirrors winze.Provenance minus the type-system guarantees — this package
+// It mirrors winze.Provenance minus the type-system guarantees -- this package
 // AST-scrapes rather than type-checks, so a field the walker cannot resolve to
 // a literal (early corpus vars built by string concatenation) comes back empty
 // rather than wrong.
 type Provenance struct {
-	VarName    string
-	Origin     string
-	IngestedAt string
-	IngestedBy string
-	Quote      string
-	File       string
+	VarName      string
+	Origin       string
+	IngestedAt   string
+	IngestedBy   string
+	Quote        string
+	EvidenceHash string
+	File         string
 }
 
 // Conjecture is winze's OWN generation backing a claim — the uncitable half of
@@ -94,6 +95,8 @@ func provenanceFields(varName string, cl *ast.CompositeLit, file string) Provena
 			p.IngestedBy = stringLit(val)
 		case "Quote":
 			p.Quote = stringLit(val)
+		case "EvidenceHash":
+			p.EvidenceHash = stringLit(val)
 		}
 	}
 	return p

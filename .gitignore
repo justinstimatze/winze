@@ -129,6 +129,11 @@ bin/
 # semantic search embedding cache (cmd/query --semantic)
 .winze-embed/
 
+# evidence/ (content-addressed archives backing Provenance.EvidenceHash,
+# docs/lint-rules.md#evidence-span) is INTENTIONALLY NOT listed here.
+# It is tracked, not a cache -- the archive is the durability mechanism
+# evidence-span verifies against. Do not add it by reflex.
+
 # script/selfrecall.sh output (scratch stores + logs)
 .selfrecall-runs/
 

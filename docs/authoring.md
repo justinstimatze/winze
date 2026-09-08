@@ -27,7 +27,12 @@ as the gate. Reverts the file on failure. Use `--unary` for `UnaryClaim`
 predicates (omit `--object`); `--dry-run` to preview the render without
 touching the file. `--provenance-var <name>` reuses an existing `Provenance`
 var instead of inlining one (mutually exclusive with `--quote`/`--origin`);
-the build gate validates that the named var exists. `--conjecture` (with a
+the build gate validates that the named var exists. A named `Provenance` var
+can also carry an `EvidenceHash` (hand-authored, no flag for it here — see
+`docs/lint-rules.md#evidence-span`), a content-addressed archived copy of
+its `Quote` that `cmd/lint` verifies hasn't drifted; the inline `--quote`
+mode above cannot carry one, since it nests the literal inside the claim
+rather than declaring it as a var. `--conjecture` (with a
 required `--rationale`, and optional `--generated-by`) attributes the claim as a
 `Conjecture` — winze's OWN assertion, carrying no source `Quote` — for claims
 winze generates rather than ingests (e.g. a memory-to-memory link). The three

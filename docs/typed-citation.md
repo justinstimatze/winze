@@ -10,7 +10,15 @@ Three references in the KB are the same shape:
 - **concept → concept** — a claim's `Subject`/`Object` name other entities. Put
   the wrong entity type in a slot and it does not compile.
 - **claim → source** — every claim carries `Provenance{Quote, Origin}`; a claim
-  without a source is not a valid record.
+  without a source is not a valid record. A named `Provenance` var can
+  additionally carry `EvidenceHash`, a content-addressed archived copy of
+  `Quote` that `cmd/lint`'s `evidence-span` rule re-hashes and checks `Quote`
+  still appears in verbatim — the same lint-time, not compiler-time,
+  enforcement `Client`/`Span` already accepts below for a citation that
+  outgrows what the type system alone can check. Not a fourth citation
+  shape: it strengthens this one, since `Quote` remains the audit record
+  either way — `EvidenceHash` just gives it something independent to be
+  checked against instead of standing alone.
 - **doc → code** — a documentation entity cites a live code symbol *by value*
   (`internal/…` symbol held in a field), so renaming or deleting the symbol
   breaks the build.

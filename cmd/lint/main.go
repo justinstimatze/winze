@@ -1031,9 +1031,11 @@ func main() {
 	rc14 := codeRefSpanRule(dir, clients)
 	fmt.Println()
 	rc15 := codeRefExistenceRule(dir, clients)
+	fmt.Println()
+	rc16 := evidenceSpanRule(dir)
 
 	worst := rc1
-	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11, rc12, rc13, rc14, rc15} {
+	for _, rc := range []int{rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11, rc12, rc13, rc14, rc15, rc16} {
 		if rc > worst {
 			worst = rc
 		}

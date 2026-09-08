@@ -6,7 +6,7 @@ for the LLM contradiction check.
 The rules: naming-oracle, orphan-report, value-conflict, contested-concept,
 brief-check, provenance-split, llm-contradiction, brief-drift, structural-dedup,
 lexicon-fence, thin-conjecture, dated-measurement, coderef-mutual-exclusion,
-coderef-span, coderef-existence.
+coderef-span, coderef-existence, evidence-span.
 
 ## structural-dedup
 
@@ -182,3 +182,52 @@ above), same posture — skips cleanly with nothing configured.
 package-level declarations, not methods (`(*Foo).Bar`) — fine for the
 motivating case (a plain function), a real gap if a method citation shows up
 later. Not solved speculatively; extend when a real citation needs it.
+
+## evidence-span
+
+`evidence-span` is `coderef-span`'s content-hash mechanism applied to a
+claim's own source text rather than cited code: `Provenance.EvidenceHash`
+(`corpus/schema.go`) optionally names a content-addressed archive,
+`evidence/<hash>.txt` at the store's root, holding an exact byte-for-byte
+copy of that `Provenance`'s `Quote`. The rule checks three things for every
+`Provenance` with `EvidenceHash` set: the archive file exists, its content
+really hashes to its own filename (catches corruption or truncation
+independent of `Quote`), and `Quote` appears verbatim somewhere inside it
+(catches a `Quote` that drifted away from what was actually archived — an
+edit that touched `Quote` but not the archive). Hard failure (exit 1) on any
+of the three; a `Provenance` with no `EvidenceHash` is untouched, so this is
+fully additive — no migration, no cost on the existing corpus.
+
+Unlike `coderef-span`, there is no `--clients` axis: the archive always
+lives in this store's own `evidence/` directory, never a cross-repo
+checkout, so nothing is gated on external configuration.
+
+**Only a named, top-level `Provenance` var is visible to this rule.**
+`cmd/add`'s default (`--quote`/`--origin`, no `--provenance-var`) nests
+`Prov: Provenance{...}` directly inside the claim's own composite literal
+(`renderClaim`, `cmd/add/main.go`) — the AST walker this rule's data comes
+from (`internal/corpusparse.ParseCorpusFull` → `tryParseProvenance`) only
+recognizes a top-level `var X = Provenance{...}` declaration, by design (its
+own doc comment: `` `var fooSource = Provenance{...}` ``). `EvidenceHash` set
+on an inline literal is silently invisible to this rule — not a bug to work
+around, but the reason archiving is scoped to a *named, reusable* source in
+the first place (`docs/authoring.md`'s `--provenance-var` shape): the corpus's
+own real `...Source` vars — `apopheniaSource`, `tunguskaSource`, and dozens
+more — are already the population this pays off for, since one archive then
+backs every claim that reuses the var.
+
+**Authoring an evidence archive**: no `cmd/add` flag, same posture as
+`coderef-span`'s `Span` citations — hand-author it directly:
+
+```
+echo -n "the exact Quote text" | sha256sum
+# then write that same text, byte for byte, to evidence/<hash>.txt, and set
+# EvidenceHash: "<hash>" on the named Provenance var.
+```
+
+Two claims quoting the same fragment (or reusing the same named
+`Provenance` var) share one archive file for free — content-addressing
+dedups by construction. If a third occurrence of hand-computing this by
+hand becomes real friction, promote it to a `cmd/add`/`cmd/lint`
+convenience flag then, per this project's own third-occurrence promotion
+discipline — not before.

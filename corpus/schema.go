@@ -90,10 +90,19 @@ type OpenQuestion struct {
 // corpus name, a URL, a conversation timestamp, a book citation. It is
 // never required to resolve to a live file.
 type Provenance struct {
-	Origin     string // human hint: "Wikipedia 2025-12 / Tunguska_event", "conversation 2026-04-11"
-	IngestedAt string // ISO-8601 date of ingest
-	IngestedBy string // worker id or author name
-	Quote      string // the specific source fragment the claim was extracted from
+	Origin       string // human hint: "Wikipedia 2025-12 / Tunguska_event", "conversation 2026-04-11"
+	IngestedAt   string // ISO-8601 date of ingest
+	IngestedBy   string // worker id or author name
+	Quote        string // the specific source fragment the claim was extracted from
+	EvidenceHash string // optional: sha256 (hex) of evidence/<hash>.txt, a content-addressed
+	// archived copy of Quote's exact text. "" = not archived (the common case --
+	// additive, no migration). cmd/lint's evidence-span rule checks the file
+	// exists, is self-consistent (its content really hashes to its own
+	// filename), and contains Quote verbatim -- catching a Quote that drifted
+	// from what was actually archived. Only meaningful on a named, top-level
+	// Provenance var (docs/authoring.md's --provenance-var shape): an inline
+	// Prov: Provenance{...} literal isn't visible to the corpus parser this
+	// rule uses, so this field is a no-op there.
 }
 
 // Attribution is the epistemic backing of a claim. Every claim is either
