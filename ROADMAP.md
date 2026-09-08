@@ -539,3 +539,39 @@ another dogfood-harness note-shape tweak and not the expensive full-
 haystack run yet. The multiplayer angle is a second, separate, real
 differentiator worth writing up on its own terms; it doesn't compete with
 the extraction fix for the same next slot of work.
+
+### The rerank-vs-Eywa tension, resolved without a consult — 2026-09-08
+
+Before the extraction-gap work started, a real tension surfaced and got
+resolved directly rather than dispatched: the survey above (2026-08-31,
+expanded 09-07) names Eywa's "zero LLM calls inside retrieval" as
+concretely ahead of winze. The same week, independently, winze shipped an
+LLM listwise reranker into `winze_recall`'s default path (`6e800fa`,
+`dde0c9c`, `72163ec`, `f634aa7`) for a large measured win — LATER-PROBE
+hit@5 14%→34%, later 51% with richer note-shapes. Two decisions pointing
+opposite directions, never weighed against each other in one place.
+
+Reconciled: Eywa's abstract frames the payoff as retrieval and
+answer-generation being decoupled, so the same retrieved set holds
+regardless of which model answers from it. Winze's rerank already has
+that property — it runs once, before any answer model sees anything, and
+doesn't vary by which model is chosen downstream. What it does *not* have
+is bit-for-bit determinism of the ranking call itself (`Temperature: 0`
+already documented above as not fully deterministic on the Anthropic
+API). That's a real but much smaller gap than "swappable answer models,"
+and not one worth trading a measured 14%→51% hit@5 gain to close.
+
+The doc's own stated reason for an Anthropic call over a local one —
+"Ollama has no rerank endpoint and Cohere/Voyage have no self-host
+option" — is true but not the full search: Hugging Face's
+`text-embeddings-inference` self-hosts cross-encoder rerank models
+(e.g. `bge-reranker`) behind a `/rerank` endpoint, no Ollama involved.
+**Unverified, recalled from training, not checked against their repo/docs
+this session** — flagged here so a future session doesn't have to
+re-derive it from scratch, not presented as confirmed. Worth a real A/B
+only if a concrete reason to want local/deterministic reranking shows up
+(cost at scale, offline operation, killing the fail-open-on-API-down
+path) — none of which currently apply to a single-user store. Until then:
+park this, don't chase zero-LLM-retrieval as a goal in itself, and the
+extraction-gap fix stands as the next work, unchanged from the verdict
+above.
