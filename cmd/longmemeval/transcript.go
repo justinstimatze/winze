@@ -331,3 +331,115 @@ func (s *transcriptSession) ArcAsks() []string {
 // operator's own words -- so a turn starting with it is dropped whole rather
 // than partially cleaned.
 const compactionResumePreamble = "This session is being continued from a previous conversation"
+
+// boilerplateJaccardThreshold is the token-overlap ratio (|A∩B| / |A∪B|,
+// over words >=4 chars) above which two ArcAsks candidates from DIFFERENT
+// sessions are judged the same recurring personal ritual (e.g. "pick a
+// name, check for collisions") rather than session-distinguishing content.
+// Chosen by hand against the actual 2026-09-07 miss set, not derived --
+// recalibrate if it starts flagging genuinely distinct content.
+const boilerplateJaccardThreshold = 0.3
+
+// contentTokens is tokenizeBrief's normalization (cmd/metabolism/trip.go),
+// copied rather than imported since it lives in a different main package:
+// lowercase, split on non-alphanumerics, drop tokens under 4 chars. Built
+// for dense Brief prose, reused here for casual probe text -- it will not
+// catch every generic phrase (short common words like "kind"/"thing" clear
+// the length bar), but it's enough signal for the cross-session overlap
+// check below.
+func contentTokens(s string) map[string]bool {
+	out := map[string]bool{}
+	var cur strings.Builder
+	flush := func() {
+		if cur.Len() == 0 {
+			return
+		}
+		tok := strings.ToLower(cur.String())
+		cur.Reset()
+		if len(tok) >= 4 {
+			out[tok] = true
+		}
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			cur.WriteRune(r)
+		default:
+			flush()
+		}
+	}
+	flush()
+	return out
+}
+
+// flagBoilerplateAsks marks every ArcAsks candidate that shares at least
+// boilerplateJaccardThreshold token overlap with ANY candidate from a
+// DIFFERENT session -- evidence of a recurring personal ritual (found
+// 2026-09-08: "pick a name, check for collisions" recurred, paraphrased,
+// across 5 of 150 replayed sessions) rather than wording that could
+// distinguish this session from the rest of the corpus. A probe built from
+// a flagged candidate can't fairly test recall: it's more similar to OTHER
+// sessions' ritual turns than to its own session's actual note.
+//
+// O(n^2) over ArcAsks candidates, not sessions -- fine at this harness's
+// scale (a few hundred candidates for N=150), not meant to scale further.
+func flagBoilerplateAsks(picked []*transcriptSession) map[string]bool {
+	type cand struct {
+		session int
+		text    string
+		tokens  map[string]bool
+	}
+	var all []cand
+	for i, s := range picked {
+		for _, ask := range s.ArcAsks() {
+			all = append(all, cand{i, ask, contentTokens(ask)})
+		}
+	}
+	boiler := map[string]bool{}
+	for i := range all {
+		for j := i + 1; j < len(all); j++ {
+			if all[i].session == all[j].session {
+				continue
+			}
+			if jaccardOverlap(all[i].tokens, all[j].tokens) >= boilerplateJaccardThreshold {
+				boiler[all[i].text] = true
+				boiler[all[j].text] = true
+			}
+		}
+	}
+	return boiler
+}
+
+// jaccardOverlap is |A∩B| / |A∪B| over two token sets. Empty on either side
+// scores 0 rather than dividing by zero.
+func jaccardOverlap(a, b map[string]bool) float64 {
+	if len(a) == 0 || len(b) == 0 {
+		return 0
+	}
+	inter := 0
+	for t := range a {
+		if b[t] {
+			inter++
+		}
+	}
+	union := len(a) + len(b) - inter
+	return float64(inter) / float64(union)
+}
+
+// laterAskAvoiding is LaterAsk (see its doc for the midpoint rationale) with
+// boilerplate-flagged candidates excluded before picking the midpoint.
+// Returns "" when every substantial candidate for this session is
+// boilerplate, same as LaterAsk returns "" when there are no candidates
+// at all.
+func (s *transcriptSession) laterAskAvoiding(boiler map[string]bool) string {
+	var asks []string
+	for _, a := range s.ArcAsks() {
+		if !boiler[a] {
+			asks = append(asks, a)
+		}
+	}
+	if len(asks) == 0 {
+		return ""
+	}
+	return asks[len(asks)/2]
+}

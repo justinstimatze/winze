@@ -100,11 +100,20 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	t.Logf("LINK PASS: %d claim edge(s) created across %d sessions (floor %.2f, cap %d)",
 		linked, len(picked), linkSuggestScoreMirror, linkSuggestMaxMirror)
 
+	// Flag later-ask candidates that recur, paraphrased, across other
+	// sessions (a personal ritual like "pick a name, check for collisions")
+	// before probing -- see flagBoilerplateAsks's doc for why those can't
+	// fairly test this session's recall.
+	boiler := flagBoilerplateAsks(picked)
+	if len(boiler) > 0 {
+		t.Logf("BOILERPLATE FILTER: %d later-ask candidate(s) flagged as cross-session ritual, excluded from probing", len(boiler))
+	}
+
 	// The store is now at full size, with real claim edges. Probe each session
 	// twice; see probeAll's doc comment for what TITLE and LATER each
 	// establish, and for why a session can own more than one var under
 	// WINZE_NOTE_SHAPE=claims.
-	title, later, noLater := probeAll(t, run, picked, varSets, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
+	title, later, noLater := probeAll(t, run, picked, varSets, boiler, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
 	if title.found == 0 {
 		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", title.miss)
 	}
@@ -302,12 +311,15 @@ func (p probeStats) meanRank() float64 {
 // memory by its own words -- necessary, but nearer a lookup than a recall.
 // LATER is a mid-session user turn that was never written into any note, so
 // a hit says retrieval bridged from wording the store has never seen. That
-// second number is the one worth having; the first is its control.
+// second number is the one worth having; the first is its control. boiler
+// (flagBoilerplateAsks) excludes candidates that recur, paraphrased, across
+// other sessions -- see laterAskAvoiding's doc for why those can't fairly
+// test this session's recall.
 //
 // varSets holds one slice of entity vars per session (length 1 for
 // "open"/"arc", length N for "claims"): a hit counts if the probe surfaces
 // ANY of a session's vars, via bestRankOf.
-func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, varSets [][]string, manifestPath string) (title, later probeStats, noLater int) {
+func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, varSets [][]string, boiler map[string]bool, manifestPath string) (title, later probeStats, noLater int) {
 	t.Helper()
 	probe := func(query string, want []string) (int, error) {
 		payload := fmt.Sprintf(`{"query":%s,"limit":%d,"brief_chars":0}`, mustJSON(query), len(picked)*6)
@@ -349,7 +361,7 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 		title.record(titleRank)
 
 		laterRank, laterLabel := 0, "n/a"
-		if q := s.LaterAsk(); q != "" {
+		if q := s.laterAskAvoiding(boiler); q != "" {
 			if len(q) > 400 {
 				q = q[:400]
 			}
@@ -366,7 +378,7 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 		t.Logf("%-4d %-12s %-6d %-4d %-6s %-6s %s", i, s.Start.Format("2006-01-02"),
 			len(picked)-1-i, len(varSets[i]), rankLabel(titleRank), laterLabel, s.Title)
 		if manifest != nil {
-			laterQ := s.LaterAsk()
+			laterQ := s.laterAskAvoiding(boiler)
 			if len(laterQ) > 400 {
 				laterQ = laterQ[:400]
 			}
