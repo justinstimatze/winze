@@ -633,3 +633,43 @@ unaffected, but that is an assumption, not yet checked. The number that
 actually answers whether winze closed *the* gap this section opened with
 is the full-500 re-run against the raw-context-dump control (431/500 vs
 443/500) — not yet run.
+
+### The full-500 re-run, fair comparison — 2026-09-08
+
+Both sides re-run under the current code (`k=120`, concurrency 4, same
+fixed `judgeSystem` on both — the old 443/500 control number was scored
+under the buggy rubric too, so it needed re-scoring, not just winze):
+`cmd/longmemeval/baselines/v10-k120-full500.jsonl` (winze) and
+`v10-raw-control-full500.jsonl` (control).
+
+**winze: 444/500 (88.8%). Raw control: 452/500 (90.4%).** Still losing,
+by a narrower margin than before (net −8 vs. the old −12) — winze is not
+past this line yet. Per-type, winze vs. control: knowledge-update
+72/78 vs 66/78 (+6), single-user 69/70 vs 67/70 (+2), preference 28/30 vs
+27/30 (+1), multi-session 113/133 vs 114/133 (≈even), assistant-recall
+51/56 vs 56/56 (−5, the control's ceiling — raw transcript access beats a
+`Fact` representation on verbatim recall by construction), **temporal
+111/133 vs 122/133 (−11)**.
+
+**The temporal number is a reversal worth flagging plainly, not
+attributing to today's fix.** The 2026-08-07 sweep had winze *beating*
+the control on temporal, 121/133 vs 115/133 — a documented edge. Today
+that edge is gone and reversed. Checked before writing this down: the
+harness's retrieval (`syncAndRetrieve`/`rankFacts`) is plain term-overlap
+ranking, unchanged, and does **not** go through `winze_recall`'s LLM
+reranker at all — that's a different tool on a different code path, so
+the reranker shipped this week is not a candidate explanation. Reading
+the actual failures: almost all are answerer-side date arithmetic ("Nov
+29 − Nov 15 = 14 days" when the source says "a week before," multi-step
+relative-date subtraction, chronological-ordering mistakes across many
+facts) — not extraction gaps shaped like anything today's lens change
+touched. But the comparison against the 2026-08-07 baseline is confounded
+by every lens version between then and now (v7→v10, not just today's
+bump), so **this is not a clean isolated measurement of today's fix** —
+only the 189-question assistant+multi-session result above is. Whether
+temporal got worse specifically *because* of v10, or was already this
+weak before v10 and the 2026-08-07 number reflected a different, since-
+changed pipeline, is an open question. Next step, not yet done: hold
+today's code fixed and check whether reverting just `lensVersion` to v9
+changes the temporal score — the controlled test this finding needs
+before assigning it a cause.
