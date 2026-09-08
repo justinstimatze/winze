@@ -126,6 +126,12 @@ func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, incl
 		fused = kept
 	}
 
+	// LLM listwise rerank over the top of the fused pool -- opt-in (WINZE_RERANK),
+	// fails open to this same fused order on any error. Runs BEFORE the staleness
+	// downrank below so a reorder can never re-promote a superseded entity past
+	// that demotion; downrankSuperseded must always get the last word.
+	fused = rerankFused(dir, fused, kb, query)
+
 	// Staleness downrank: a superseded entity stays in the result set (this is
 	// retrieval, not deletion) but sinks below every non-superseded hit, so a
 	// deliberately-replaced memory does not outrank its current replacement.
