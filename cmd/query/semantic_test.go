@@ -64,7 +64,7 @@ func TestVecCacheRoundTrip(t *testing.T) {
 	c.dirty = true
 	c.save()
 
-	if _, err := os.Stat(filepath.Join(dir, embedCacheDir, embedModel+".gob")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, embedCacheDir, embedModel()+".gob")); err != nil {
 		t.Fatalf("cache file not written: %v", err)
 	}
 	reloaded := loadVecCache(dir)
@@ -159,5 +159,27 @@ func TestBestCosineTakesTheMaxNotTheMean(t *testing.T) {
 	}
 	if bestCosine(q, nil) != 0 {
 		t.Error("bestCosine(nil) must be 0, not a panic — an unembeddable entity is skipped, not ranked")
+	}
+}
+
+func TestQueryTextDocTextAddPrefixOnlyForAsymmetricModels(t *testing.T) {
+	if got := queryText("hello"); got != "hello" {
+		t.Errorf("default model: queryText(%q) = %q, want unprefixed", "hello", got)
+	}
+	if got := docText("hello"); got != "hello" {
+		t.Errorf("default model: docText(%q) = %q, want unprefixed", "hello", got)
+	}
+
+	t.Setenv("WINZE_EMBED_MODEL", "nomic-embed-text")
+	if got, want := queryText("hello"), "search_query: hello"; got != want {
+		t.Errorf("nomic-embed-text: queryText(%q) = %q, want %q", "hello", got, want)
+	}
+	if got, want := docText("hello"), "search_document: hello"; got != want {
+		t.Errorf("nomic-embed-text: docText(%q) = %q, want %q", "hello", got, want)
+	}
+
+	t.Setenv("WINZE_EMBED_MODEL", "some-other-model")
+	if got := queryText("hello"); got != "hello" {
+		t.Errorf("unlisted model: queryText(%q) = %q, want unprefixed", "hello", got)
 	}
 }

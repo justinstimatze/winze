@@ -23,7 +23,7 @@ func TestFulltextRanking(t *testing.T) {
 		{VarName: "B", Name: "Consciousness", Brief: "the hard problem of subjective experience"},
 		{VarName: "C", Name: "Noise", Brief: "random unstructured signal"},
 	}}
-	hits := buildFTIndex(kb).search("pattern detection", 0)
+	hits := buildFTIndex(kb, nil).search("pattern detection", 0)
 	if len(hits) == 0 {
 		t.Fatal("expected hits for 'pattern detection'")
 	}
@@ -42,7 +42,7 @@ func TestFulltextIncludesProvenance(t *testing.T) {
 	kb := &kbIndex{Provenance: []provRecord{
 		{VarName: "P1", Origin: "Sagan 1995", Quote: "extraordinary claims require extraordinary evidence"},
 	}}
-	hits := buildFTIndex(kb).search("extraordinary evidence", 0)
+	hits := buildFTIndex(kb, nil).search("extraordinary evidence", 0)
 	if len(hits) != 1 || hits[0].kind != "provenance" {
 		t.Fatalf("expected one provenance hit, got %+v", hits)
 	}
@@ -50,7 +50,7 @@ func TestFulltextIncludesProvenance(t *testing.T) {
 
 func TestFulltextEmptyQuery(t *testing.T) {
 	kb := &kbIndex{Entities: []entityRecord{{VarName: "A", Brief: "x y z"}}}
-	if hits := buildFTIndex(kb).search("   ,  ", 0); hits != nil {
+	if hits := buildFTIndex(kb, nil).search("   ,  ", 0); hits != nil {
 		t.Fatalf("empty/punctuation-only query should return no hits, got %+v", hits)
 	}
 }

@@ -129,6 +129,9 @@ bin/
 # semantic search embedding cache (cmd/query --semantic)
 .winze-embed/
 
+# script/selfrecall.sh output (scratch stores + logs)
+.selfrecall-runs/
+
 # cmd/lint --clients-file default: machine-local client repo paths, never committed
 .winze-clients.json
 

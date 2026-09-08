@@ -7,7 +7,7 @@ import "testing"
 func TestRRFRewardsAgreement(t *testing.T) {
 	lex := map[int]int{10: 1, 20: 2, 30: 3} // BM25 order
 	sem := map[int]int{20: 1, 30: 2, 40: 3} // embedding order
-	got := rrfFuse(lex, sem)
+	got := rrfFuse(lex, sem, nil)
 
 	// 20 is #2 lexical + #1 semantic; 10 is #1 lexical only. Agreement wins.
 	if got[0].idx != 20 {
@@ -20,7 +20,7 @@ func TestRRFRewardsAgreement(t *testing.T) {
 
 // A document present in only one list still surfaces, scored from that list.
 func TestRRFSingleListSurvives(t *testing.T) {
-	got := rrfFuse(map[int]int{99: 1}, map[int]int{})
+	got := rrfFuse(map[int]int{99: 1}, map[int]int{}, nil)
 	if len(got) != 1 || got[0].idx != 99 || got[0].sem != 0 {
 		t.Fatalf("single-list doc lost: %+v", got)
 	}
@@ -31,7 +31,7 @@ func TestRRFSingleListSurvives(t *testing.T) {
 }
 
 func TestRRFEmpty(t *testing.T) {
-	if got := rrfFuse(map[int]int{}, map[int]int{}); len(got) != 0 {
+	if got := rrfFuse(map[int]int{}, map[int]int{}, nil); len(got) != 0 {
 		t.Fatalf("empty inputs should fuse to nothing, got %+v", got)
 	}
 }
@@ -70,5 +70,70 @@ func TestNeighborhoodDirectionAndRole(t *testing.T) {
 	}
 	if got[1]["label"] != "IsPolyvalentTerm (unary)" {
 		t.Errorf("unary edge label = %q", got[1]["label"])
+	}
+}
+
+func TestCapHybridResultsDefaultsToFifteen(t *testing.T) {
+	fused := make([]fusedHit, 20)
+	for i := range fused {
+		fused[i] = fusedHit{idx: i}
+	}
+	if got := capHybridResults(fused, 0); len(got) != 15 {
+		t.Fatalf("limit<=0 should default to 15, got %d", len(got))
+	}
+	if got := capHybridResults(fused, -1); len(got) != 15 {
+		t.Fatalf("negative limit should default to 15, got %d", len(got))
+	}
+}
+
+func TestCapHybridResultsRespectsCustomLimit(t *testing.T) {
+	fused := make([]fusedHit, 20)
+	for i := range fused {
+		fused[i] = fusedHit{idx: i}
+	}
+	if got := capHybridResults(fused, 100); len(got) != 20 {
+		t.Fatalf("limit above input length should return everything, got %d", len(got))
+	}
+	if got := capHybridResults(fused, 3); len(got) != 3 {
+		t.Fatalf("limit below input length should truncate to it, got %d", len(got))
+	}
+	if got := capHybridResults(fused, 3); got[0].idx != 0 || got[2].idx != 2 {
+		t.Fatalf("truncation should keep the leading (highest-ranked) entries, got %+v", got)
+	}
+}
+
+// TestGraphNeighborRankEmptyWhenNoClaims confirms a claim-free kb produces
+// no graph candidates at all, not a spurious zero-value entry.
+func TestGraphNeighborRankEmptyWhenNoClaims(t *testing.T) {
+	kb := &kbIndex{Entities: []entityRecord{{VarName: "SEED", Name: "Seed"}}}
+	fused := []fusedHit{{idx: 0}}
+	if got := graphNeighborRank(kb, fused); len(got) != 0 {
+		t.Fatalf("expected no graph candidates with zero claims, got %+v", got)
+	}
+}
+
+// TestGraphNeighborRankPromotesDirectClaimNeighbor confirms a one-hop claim
+// neighbor of a top seed gets a rank, and an unconnected entity doesn't.
+func TestGraphNeighborRankPromotesDirectClaimNeighbor(t *testing.T) {
+	kb := &kbIndex{
+		Entities: []entityRecord{
+			{VarName: "SEED", Name: "Seed"},
+			{VarName: "NEIGHBOR", Name: "Neighbor"},
+			{VarName: "UNRELATED", Name: "Unrelated"},
+		},
+		Claims: []claimRecord{
+			{Predicate: "RelatesTo", Subject: "SEED", Object: "NEIGHBOR"},
+		},
+	}
+	fused := []fusedHit{{idx: 0}} // SEED is the only (top) seed
+	got := graphNeighborRank(kb, fused)
+	if _, ok := got[1]; !ok { // NEIGHBOR's index
+		t.Fatalf("expected NEIGHBOR to get a graph rank, got %+v", got)
+	}
+	if _, ok := got[2]; ok { // UNRELATED's index
+		t.Fatalf("UNRELATED should not appear, got %+v", got)
+	}
+	if got[1] <= 0 {
+		t.Fatalf("graph rank should be a positive 1-based rank, got %d", got[1])
 	}
 }

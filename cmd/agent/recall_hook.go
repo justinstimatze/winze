@@ -125,8 +125,10 @@ func emitDigest() {
 
 // runQueryJSON execs winze-query with --json and decodes the result. stderr is
 // discarded (winze-query prints embed-cache chatter there).
-func runQueryJSON(mode, arg string) (queryResult, bool) {
-	out, err := runQueryRaw(mode, arg, "--json")
+func runQueryJSON(mode, arg string, extra ...string) (queryResult, bool) {
+	args := append([]string{mode, arg}, extra...)
+	args = append(args, "--json")
+	out, err := runQueryRaw(args...)
 	if err != nil {
 		return queryResult{}, false
 	}

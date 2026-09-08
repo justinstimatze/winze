@@ -1,16 +1,5 @@
 package main
 
-// Semantic (embedding) search over entity prose via a local ollama model.
-// Complements --fulltext: BM25 is lexical (matches tokens, instant, no
-// word-sense disambiguation); this matches meaning, at the cost of one
-// embedding call per query (~42ms on all-minilm). Entity vectors are
-// content-addressed and cached to .winze-embed/ (gitignored), so the ~360-brief
-// index build is paid once and incrementally — only a changed Brief re-embeds.
-//
-// No new build dependency: net/http to a local ollama daemon. ollama is a
-// runtime requirement (`ollama serve` + `ollama pull all-minilm`), not a
-// compile-time one — absence degrades to a clear error, it never breaks build.
-
 import (
 	"bytes"
 	"crypto/sha256"
@@ -31,19 +20,25 @@ import (
 )
 
 const (
-	embedModel    = "all-minilm"
-	ollamaEmbed   = "http://localhost:11434/api/embeddings"
 	embedCacheDir = ".winze-embed"
-	// maxEmbedChars caps embed input. all-minilm truncates at ~256 tokens and
-	// ollama returns HTTP 500 (not a truncated vector) for input past that,
-	// which would fail the whole semantic pass because of one long Brief.
-	// Char count is only a proxy for token count — code-heavy prose (paths,
-	// snake_case, backticks) tokenizes far denser than plain English — so this
-	// is set conservatively and embed() also halves-and-retries on a 500. An
-	// embedding captures a Brief's gist from its opening prose, so tail loss is
-	// immaterial for recall. Truncated on a rune boundary (no split UTF-8).
 	maxEmbedChars = 512
+	ollamaEmbed   = "http://localhost:11434/api/embeddings"
 )
+
+// embedModel names the ollama model used for all embeddings. Defaults to
+// all-minilm; override with WINZE_EMBED_MODEL for a one-off measurement
+// (e.g. WINZE_EMBED_MODEL=nomic-embed-text go test ...). Never export this
+// into a login shell: cmd/agent's dedup gate, associative-recall hook, and
+// link suggestion all shell out to winze-query and ride whatever model this
+// names, and their cosine thresholds are calibrated to all-minilm's specific
+// score distribution -- see dupBlockScore/dupWarnScore/linkSuggestScore
+// (cmd/agent/mcp.go) and recallMinScore (cmd/agent/recall_hook.go).
+func embedModel() string {
+	if v := os.Getenv("WINZE_EMBED_MODEL"); v != "" {
+		return v
+	}
+	return "all-minilm"
+}
 
 func embed(text string) ([]float32, error) {
 	if len(text) > maxEmbedChars {
@@ -56,7 +51,7 @@ func embed(text string) ([]float32, error) {
 // over-length signal) so a denser-than-expected Brief degrades to a shorter
 // embedding rather than failing the whole semantic pass.
 func embedRetry(text string, tries int) ([]float32, error) {
-	body, _ := json.Marshal(map[string]string{"model": embedModel, "prompt": text})
+	body, _ := json.Marshal(map[string]string{"model": embedModel(), "prompt": text})
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Post(ollamaEmbed, "application/json", bytes.NewReader(body))
 	if err != nil {
@@ -67,7 +62,7 @@ func embedRetry(text string, tries int) ([]float32, error) {
 		if resp.StatusCode == http.StatusInternalServerError && tries > 1 && len(text) > 64 {
 			return embedRetry(truncateRunes(text, len(text)/2), tries-1)
 		}
-		return nil, fmt.Errorf("ollama embed status %d (have you run `ollama pull %s`?)", resp.StatusCode, embedModel)
+		return nil, fmt.Errorf("ollama embed status %d (have you run `ollama pull %s`?)", resp.StatusCode, embedModel())
 	}
 	var out struct {
 		Embedding []float32 `json:"embedding"`
@@ -118,7 +113,7 @@ func dot(a, b []float32) float64 {
 }
 
 func embedKey(text string) string {
-	h := sha256.Sum256([]byte(embedModel + "\x00" + text))
+	h := sha256.Sum256([]byte(embedModel() + "\x00" + text))
 	return fmt.Sprintf("%x", h[:16])
 }
 
@@ -129,7 +124,7 @@ type vecCache struct {
 }
 
 func loadVecCache(dir string) *vecCache {
-	c := &vecCache{path: filepath.Join(dir, embedCacheDir, embedModel+".gob"), m: map[string][]float32{}}
+	c := &vecCache{path: filepath.Join(dir, embedCacheDir, embedModel()+".gob"), m: map[string][]float32{}}
 	if f, err := os.Open(c.path); err == nil {
 		defer f.Close()
 		_ = gob.NewDecoder(f).Decode(&c.m)
@@ -161,8 +156,12 @@ type semHit struct {
 
 // semanticRank embeds every entity's prose (cached, incremental) plus the
 // query, then returns entities ranked by cosine similarity, highest first.
-// Shared by runSemantic and the hybrid fusion (runHybrid).
-func semanticRank(kb *kbIndex, query, dir string) ([]semHit, error) {
+// Shared by runSemantic and the hybrid fusion (runHybrid). forms holds any
+// generated surface-form questions per entity index (nil when
+// WINZE_SURFACE_FORMS is off); each form is embedded and folded into that
+// entity's segment list before bestCosine, so a real question can match a
+// generated form even when it doesn't match the entity's own Brief text.
+func semanticRank(kb *kbIndex, query, dir string, forms map[int][]string) ([]semHit, error) {
 	cache := loadVecCache(dir)
 
 	type ev struct {
@@ -182,6 +181,15 @@ func semanticRank(kb *kbIndex, query, dir string) ([]semHit, error) {
 		}
 		built += n
 		hit += len(segs) - n
+		for _, f := range forms[i] {
+			fsegs, fn, err := embedSegments(cache, f)
+			if err != nil {
+				return nil, err
+			}
+			segs = append(segs, fsegs...)
+			built += fn
+			hit += len(fsegs) - fn
+		}
 		vecs = append(vecs, ev{i, segs})
 	}
 	cache.save()
@@ -189,7 +197,7 @@ func semanticRank(kb *kbIndex, query, dir string) ([]semHit, error) {
 		fmt.Fprintf(os.Stderr, "embedded %d new segments, %d from cache\n", built, hit)
 	}
 
-	qv, err := embed(query)
+	qv, err := embedQuery(query)
 	if err != nil {
 		return nil, err
 	}
@@ -202,8 +210,13 @@ func semanticRank(kb *kbIndex, query, dir string) ([]semHit, error) {
 	return hits, nil
 }
 
+// runSemantic never enables surface forms -- --semantic is also dedup's
+// internal cosine-check path (nearestMemories, cmd/agent/mcp.go), which fires
+// on every winze_remember write, and a synchronous Haiku call there is
+// exactly the write-path regression WINZE_SURFACE_FORMS exists to avoid.
+// Only runHybrid (the read-only production retrieval path) computes forms.
 func runSemantic(kb *kbIndex, query, dir string, jsonOut bool) {
-	hits, err := semanticRank(kb, query, dir)
+	hits, err := semanticRank(kb, query, dir, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "semantic: %v\n", err)
 		os.Exit(1)
@@ -220,11 +233,11 @@ func runSemantic(kb *kbIndex, query, dir string, jsonOut bool) {
 				"var_name": e.VarName, "name": e.Name, "score": h.score, "brief": e.Brief, "file": e.File,
 			})
 		}
-		printJSON(map[string]any{"query": query, "model": embedModel, "count": len(hits), "hits": out})
+		printJSON(map[string]any{"query": query, "model": embedModel(), "count": len(hits), "hits": out})
 		return
 	}
 
-	fmt.Printf("Semantic matches for %q (%s):\n\n", query, embedModel)
+	fmt.Printf("Semantic matches for %q (%s):\n\n", query, embedModel())
 	for _, h := range hits {
 		e := kb.Entities[h.idx]
 		fmt.Printf("  [%.3f] %s (%s)  %s\n", h.score, e.Name, e.VarName, e.File)
@@ -300,7 +313,7 @@ func embedSegments(cache *vecCache, text string) ([][]float32, int, error) {
 			out = append(out, v)
 			continue
 		}
-		v, err := embed(s) // already normalized by embedRetry
+		v, err := embedDoc(s) // already normalized by embedRetry
 		if err != nil {
 			return nil, built, err
 		}
@@ -330,3 +343,30 @@ func bestCosine(qv []float32, segs [][]float32) float64 {
 	}
 	return best
 }
+
+func docText(text string) string {
+	if asymmetricPrefixModels[embedModel()] {
+		return "search_document: " + text
+	}
+	return text
+}
+
+// embedDoc embeds text as a retrieval document/passage -- see embedQuery.
+func embedDoc(text string) ([]float32, error) { return embed(docText(text)) }
+
+// embedQuery embeds text as a retrieval query -- see docText for why this
+// differs from embedDoc under an asymmetric encoder.
+func embedQuery(text string) ([]float32, error) { return embed(queryText(text)) }
+
+func queryText(text string) string {
+	if asymmetricPrefixModels[embedModel()] {
+		return "search_query: " + text
+	}
+	return text
+}
+
+// asymmetricPrefixModels need a task prefix baked into the input text
+// itself -- ollama's embeddings API has no separate field for it. all-minilm
+// has no such training and would just embed the literal prefix as noise
+// words, so this only fires for models that expect it.
+var asymmetricPrefixModels = map[string]bool{"nomic-embed-text": true}

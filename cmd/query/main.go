@@ -94,6 +94,7 @@ func main() {
 	typeFilter := flag.String("type", "", "with --hybrid: restrict results to a verified entity role (e.g. Hypothesis, Concept, Person)")
 	expand := flag.Bool("expand", false, "with --hybrid: show each result's typed claim neighborhood (reasoning-ready context)")
 	includeSuperseded := flag.Bool("include-superseded", false, "with --hybrid: include superseded entities at their natural rank instead of downranking them")
+	hybridLimit := flag.Int("limit", 15, "with --hybrid: max results returned")
 	dupes := flag.String("dupes", "", "show entities structurally near-identical to NAME (shared claim-neighborhood) — the coin-time dedup query")
 	docsRecall := flag.String("docs-recall", "", "semantic recall over docs/*.md: given a prompt, print the file#anchor sections it implicates (for the per-prompt hook)")
 	docsTopN := flag.Int("docs-top", 0, "with --docs-recall: max sections to surface (default 3)")
@@ -173,7 +174,7 @@ func main() {
 	case *dupes != "":
 		runDupes(dir, *dupes, *jsonOut)
 	case *hybrid != "":
-		runHybrid(kb, *hybrid, dir, *typeFilter, *expand, *jsonOut, *includeSuperseded)
+		runHybrid(kb, *hybrid, dir, *typeFilter, *expand, *jsonOut, *includeSuperseded, *hybridLimit)
 	case *reverie:
 		runReverie(kb, query, *jsonOut)
 	case *decisions:
@@ -243,7 +244,7 @@ func runSearch(kb *kbIndex, query string, jsonOut bool) {
 }
 
 func runFulltext(kb *kbIndex, query string, jsonOut bool) {
-	fi := buildFTIndex(kb)
+	fi := buildFTIndex(kb, nil)
 	hits := fi.search(query, 15)
 
 	if jsonOut {

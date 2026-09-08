@@ -73,15 +73,6 @@ func hybridFixtureKB() *kbIndex {
 	}, map[string]string{"OLD": "Old Decision", "NEW": "New Decision"})
 }
 
-func idxOf(kb *kbIndex, varName string) int {
-	for i, e := range kb.Entities {
-		if e.VarName == varName {
-			return i
-		}
-	}
-	return -1
-}
-
 func varNames(kb *kbIndex, hits []fusedHit) []string {
 	names := make([]string, len(hits))
 	for i, h := range hits {

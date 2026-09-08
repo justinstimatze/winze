@@ -249,7 +249,7 @@ func runDocsRecall(dir, query string, topN int, floor float64, jsonOut bool) {
 	}
 	cache.save()
 
-	qv, err := embed(query)
+	qv, err := embedQuery(query)
 	if err != nil {
 		return
 	}
@@ -284,7 +284,7 @@ func runDocsRecall(dir, query string, topN int, floor float64, jsonOut bool) {
 				"file": c.File, "anchor": c.Anchor, "heading": c.Heading, "score": r.score,
 			})
 		}
-		printJSON(map[string]any{"query": query, "model": embedModel, "count": len(top), "hits": out})
+		printJSON(map[string]any{"query": query, "model": embedModel(), "count": len(top), "hits": out})
 		return
 	}
 

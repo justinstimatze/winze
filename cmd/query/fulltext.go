@@ -46,9 +46,10 @@ type ftIndex struct {
 	avgLen float64
 }
 
-// buildFTIndex indexes each entity (Name + Brief + Aliases) and each
-// provenance record (Origin + Quote) as a document.
-func buildFTIndex(kb *kbIndex) *ftIndex {
+// buildFTIndex indexes each entity (Name + Brief + Aliases, plus any
+// generated surface-form questions in forms) and each provenance record
+// (Origin + Quote) as a document. forms may be nil (WINZE_SURFACE_FORMS off).
+func buildFTIndex(kb *kbIndex, forms map[int][]string) *ftIndex {
 	fi := &ftIndex{df: map[string]int{}}
 	total := 0
 
@@ -70,6 +71,9 @@ func buildFTIndex(kb *kbIndex) *ftIndex {
 
 	for i, e := range kb.Entities {
 		add("entity", i, e.Name+" "+e.Brief+" "+strings.Join(e.Aliases, " "))
+		for _, f := range forms[i] {
+			add("entity", i, f)
+		}
 	}
 	for i, p := range kb.Provenance {
 		add("provenance", i, p.Origin+" "+p.Quote)

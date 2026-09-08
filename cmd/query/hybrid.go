@@ -20,15 +20,15 @@ import (
 const rrfK = 60
 
 type fusedHit struct {
-	idx      int
-	rrf      float64
-	lex, sem int // 1-based rank in each list; 0 = absent from that list
+	idx             int
+	rrf             float64
+	lex, sem, graph int // 1-based rank in each list; 0 = absent from that list
 }
 
-// rrfFuse combines two entity rankings (map: entity index -> 1-based rank) into
+// rrfFuse combines three entity rankings (map: entity index -> 1-based rank) into
 // a fused list sorted by descending RRF score. Pure and deterministic — the
 // testable core of runHybrid, independent of BM25/embeddings.
-func rrfFuse(lexRank, semRank map[int]int) []fusedHit {
+func rrfFuse(lexRank, semRank, graphRank map[int]int) []fusedHit {
 	acc := map[int]*fusedHit{}
 	get := func(idx int) *fusedHit {
 		f, ok := acc[idx]
@@ -48,6 +48,11 @@ func rrfFuse(lexRank, semRank map[int]int) []fusedHit {
 		f.rrf += 1 / float64(rrfK+rank)
 		f.sem = rank
 	}
+	for idx, rank := range graphRank {
+		f := get(idx)
+		f.rrf += 1 / float64(rrfK+rank)
+		f.graph = rank
+	}
 	out := make([]fusedHit, 0, len(acc))
 	for _, f := range acc {
 		out = append(out, *f)
@@ -61,7 +66,7 @@ func rrfFuse(lexRank, semRank map[int]int) []fusedHit {
 	return out
 }
 
-func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, includeSuperseded bool) {
+func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, includeSuperseded bool, limit int) {
 	canonRole := ""
 	if typeFilter != "" {
 		var ok bool
@@ -72,12 +77,14 @@ func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, incl
 		}
 	}
 
+	forms := surfaceFormsFor(dir, kb)
+
 	// Lexical ranking over entities. buildFTIndex also ranks provenance, but the
 	// semantic side is entity-only, so fuse over the entity universe: take the
 	// entity hits in BM25 order and rank them 1..N.
 	lexRank := map[int]int{}
 	r := 0
-	for _, h := range buildFTIndex(kb).search(query, 0) {
+	for _, h := range buildFTIndex(kb, forms).search(query, 0) {
 		if h.kind != "entity" {
 			continue
 		}
@@ -87,7 +94,7 @@ func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, incl
 		}
 	}
 
-	semHits, err := semanticRank(kb, query, dir)
+	semHits, err := semanticRank(kb, query, dir, forms)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hybrid: %v\n", err)
 		os.Exit(1)
@@ -97,12 +104,18 @@ func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, incl
 		semRank[h.idx] = i + 1
 	}
 
-	fused := rrfFuse(lexRank, semRank)
+	// Seed the graph-proximity channel from the lex+sem fusion alone, then fold
+	// its output back in as a third signal -- see graphNeighborRank's doc comment.
+	seedFused := rrfFuse(lexRank, semRank, nil)
+	graphRank := graphNeighborRank(kb, seedFused)
+
+	fused := rrfFuse(lexRank, semRank, graphRank)
 
 	// Verified-type filter: applied to the RRF-sorted list before the top-N cut,
-	// so we keep the 15 best-ranked entities OF THE REQUESTED ROLE. The role was
-	// type-checked at build time, so this is an exact filter — no misclassified
-	// tag can leak the wrong kind in or a right one out.
+	// so we keep the best-ranked entities OF THE REQUESTED ROLE up to the
+	// requested limit. The role was type-checked at build time, so this is an
+	// exact filter — no misclassified tag can leak the wrong kind in or a
+	// right one out.
 	if canonRole != "" {
 		kept := fused[:0]
 		for _, f := range fused {
@@ -118,9 +131,7 @@ func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, incl
 	// deliberately-replaced memory does not outrank its current replacement.
 	fused = downrankSuperseded(kb, fused, includeSuperseded)
 
-	if len(fused) > 15 {
-		fused = fused[:15]
-	}
+	fused = capHybridResults(fused, limit)
 
 	if jsonOut {
 		recs := make([]map[string]any, 0, len(fused))
@@ -128,7 +139,7 @@ func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, incl
 			e := kb.Entities[f.idx]
 			rec := map[string]any{
 				"var_name": e.VarName, "name": e.Name, "role_type": e.RoleType, "rrf": f.rrf,
-				"lex_rank": f.lex, "sem_rank": f.sem, "brief": e.Brief, "file": e.File,
+				"lex_rank": f.lex, "sem_rank": f.sem, "graph_rank": f.graph, "brief": e.Brief, "file": e.File,
 			}
 			if expand {
 				rec["neighborhood"] = neighborhood(kb, e.VarName)
@@ -155,10 +166,10 @@ func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, incl
 	if canonRole != "" {
 		scope = ", type=" + canonRole
 	}
-	fmt.Printf("Hybrid (BM25 + %s, RRF%s) matches for %q:\n\n", embedModel, scope, query)
+	fmt.Printf("Hybrid (BM25 + %s, RRF%s) matches for %q:\n\n", embedModel(), scope, query)
 	for _, f := range fused {
 		e := kb.Entities[f.idx]
-		fmt.Printf("  [%.4f] %s (%s · %s)  [lex %s · sem %s]\n", f.rrf, e.Name, e.VarName, e.RoleType, rankStr(f.lex), rankStr(f.sem))
+		fmt.Printf("  [%.4f] %s (%s · %s)  [lex %s · sem %s · graph %s]\n", f.rrf, e.Name, e.VarName, e.RoleType, rankStr(f.lex), rankStr(f.sem), rankStr(f.graph))
 		if e.Brief != "" {
 			fmt.Printf("        %s\n", cliutil.Truncate(e.Brief, 200))
 		}
@@ -257,4 +268,71 @@ func downrankSuperseded(kb *kbIndex, fused []fusedHit, include bool) []fusedHit 
 		}
 	}
 	return append(kept, stale...)
+}
+
+// capHybridResults truncates fused to at most limit entries, defaulting
+// to 15 (the CLI's long-standing cap) when limit<=0. Pure and
+// deterministic — the same reason rrfFuse and downrankSuperseded are
+// split out of runHybrid.
+func capHybridResults(fused []fusedHit, limit int) []fusedHit {
+	if limit <= 0 {
+		limit = 15
+	}
+	if len(fused) > limit {
+		return fused[:limit]
+	}
+	return fused
+}
+
+// graphNeighborRank expands one claim-hop out from the top graphSeedCount
+// entities in fused (already ranked by lexical+semantic RRF), giving each
+// direct neighbor a rank of its best seed's rank + 1 hop. This is the
+// entity-graph retrieval channel Eywa's four-channel design calls for and
+// winze had nowhere: a later-ask whose wording matches nothing in the
+// target note directly can still surface it by riding a claim edge
+// (winze_link's RelatesTo, or any other predicate) from a note that DOES
+// match. Pure and deterministic -- the same reason rrfFuse and
+// downrankSuperseded are split out of runHybrid.
+func graphNeighborRank(kb *kbIndex, fused []fusedHit) map[int]int {
+	out := map[int]int{}
+	n := graphSeedCount
+	if n > len(fused) {
+		n = len(fused)
+	}
+	for seedRank, f := range fused[:n] {
+		seed := kb.Entities[f.idx]
+		for _, c := range claimsInvolving(kb, seed.VarName) {
+			if c.Object == "" { // unary: no neighbor to walk to
+				continue
+			}
+			neighborVar := c.Object
+			if c.Object == seed.VarName {
+				neighborVar = c.Subject
+			}
+			idx := idxOf(kb, neighborVar)
+			if idx < 0 {
+				continue
+			}
+			rank := seedRank + 2 // seedRank is 0-based; +1 for 1-based, +1 for the hop
+			if cur, ok := out[idx]; !ok || rank < cur {
+				out[idx] = rank
+			}
+		}
+	}
+	return out
+}
+
+// graphSeedCount bounds how many top RRF-fused entities seed the graph
+// expansion below -- kept small so a densely-connected entity doesn't
+// flood the result set with every claim neighbor it has.
+const graphSeedCount = 10
+
+// idxOf returns the index of varName in kb.Entities, or -1 if absent.
+func idxOf(kb *kbIndex, varName string) int {
+	for i, e := range kb.Entities {
+		if e.VarName == varName {
+			return i
+		}
+	}
+	return -1
 }

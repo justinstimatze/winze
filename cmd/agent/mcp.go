@@ -95,7 +95,7 @@ func handleRecall(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	if v, ok := req.GetArguments()["brief_chars"].(float64); ok && v >= 0 {
 		briefChars = int(v)
 	}
-	res, ok := runQueryJSON("--hybrid", query)
+	res, ok := runQueryJSON("--hybrid", query, "--limit", strconv.Itoa(limit))
 	if !ok {
 		return mcp.NewToolResultError(recallFailureMessage()), nil
 	}
@@ -103,16 +103,13 @@ func handleRecall(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 		return mcp.NewToolResultText("no memories matched — nothing recalled."), nil
 	}
 	hits := res.Hits
-	if len(hits) > limit {
-		hits = hits[:limit]
-	}
 	if briefChars > 0 {
 		for i := range hits {
 			hits[i].Brief = truncateWithHint(hits[i].Brief, briefChars)
 		}
 	}
 	out, _ := json.MarshalIndent(struct {
-		Matched int        `json:"matched"` // total hits before the limit cap
+		Matched int        `json:"matched"` // hits winze-query returned (already capped at limit)
 		Shown   int        `json:"shown"`
 		Hits    []queryHit `json:"hits"`
 	}{Matched: res.Count, Shown: len(hits), Hits: hits}, "", "  ")
