@@ -1055,3 +1055,91 @@ real, addressable population is smaller than the noise floor, and the fix
 that would actually reach it is broader than the two blanket changes this
 session already measured as net losses. Multi-session and preference stand
 exactly where the night started: 114/133 and 28/30.
+
+### The assistant-recall retry-prompt fix, tried and reverted — 2026-09-08
+
+The one gap left after the ranking-time close above: `single-session-
+assistant` sits at 50/56 against the reference control's 55/56. Read all 6
+real losses against actual session text and extracted facts (`e3fc4d6e`,
+`352ab8bd`, `18dcd5a5`, `dc439ea3`, `c8f1aeed`, `16c90bf4`), each a distinct
+mechanism. Two looked reachable without a primary-lens change:
+`352ab8bd` (a first-turn paper review, buried under revision requests that
+followed) and `e3fc4d6e` (facts stated in pasted article text, not the
+model's own prose) both zero-fact on the primary pass, both routed through
+`lensRetrySystem`. Added two rules there — pasted/quoted source material
+counts as fact-bearing on its own (1a), and a session's first substantive
+answer isn't displaced by a long tail of near-identical revisions after it
+(1b) — and bumped `lensVersion` `v11`→`v13`. Scoped to the retry prompt
+specifically because this session had already burned two primary-lens
+changes (v10, the reverted "v12" rule) on exactly this kind of regression.
+
+Narrow check on the 6 target qids looked clean: `18dcd5a5` flipped to
+correct, `e3fc4d6e` went from 0 to 5 extracted facts (still wrong, but
+moving), `352ab8bd` unchanged, the other three untouched as expected (they
+need a primary-lens change, not attempted). Established first that retry
+touches roughly 50 of 500 questions dataset-wide, so a full run was run
+before shipping rather than trusting the narrow six.
+
+**Full 500 came back 444/500, down from the v11 reference's 450.**
+Per-type against the v11 baseline (`cmd/longmemeval/baselines/v11-answersys-k120-full500.jsonl`):
+
+| type | v11 | v13 |
+|---|---|---|
+| knowledge-update | 74/78 | 72/78 |
+| multi-session | 114/133 | 117/133 |
+| single-session-assistant | **50/56** | **48/56** |
+| single-session-preference | 28/30 | 25/30 |
+| single-session-user | 66/70 | 66/70 |
+| temporal-reasoning | 118/133 | 116/133 |
+
+The one type this was built to fix moved backward. Diffed qid-by-qid
+against v11 (28 flips: 17 to wrong, 11 to correct) and split by whether the
+question's session actually routed through retry, using the per-question
+log lines:
+
+- **Retry-exposed flips, net −2**: 4 down (`1568498a`, `ceb54acb`,
+  `eaca4986`, `5a4f22c0`), 2 up (`18dcd5a5`, `ec81a493`). `ceb54acb` is the
+  clearest case — under v11's retry prompt it extracted 5 facts and
+  answered correctly; under v13's it extracted **0** and the answerer got
+  nothing. `1568498a` similarly dropped 4 facts to 2. Both previously-
+  working retry extractions, broken by the new rules, and neither is one of
+  the 6 sessions the rules were written for. `5a4f22c0` shows the same
+  regression reaching outside the target type entirely, into
+  knowledge-update.
+- **Non-retry flips, net −4**: 13 down, 9 up, none of them touching the
+  retry pass at all — pure primary-pass Haiku extraction landing
+  differently between runs. `lensVersion`'s cache key covers the whole
+  extraction (`sha256(lensVersion + model + sessionBody)`), so bumping it
+  busts and cold-reruns every session's primary extraction too, not just
+  the ~50 that ever reach retry. Haiku isn't perfectly deterministic on
+  identical primary-prompt text, and that alone reshuffled the k=120
+  ranking window on unrelated questions across knowledge-update,
+  preference, temporal, and multi-session in both directions.
+
+Two findings worth keeping past this one experiment:
+
+1. **"Retry-only is safe" was half right.** It's true a retry-only change
+   can't compete with an already-correct primary-pass session for the
+   k=120 window — that part held. What it doesn't protect against: some
+   retry-touched sessions were *already succeeding* under the old retry
+   prompt, and a retry-prompt change can regress those exactly the way a
+   primary-lens change regresses primary successes — same mechanism, just
+   bounded to the retry population (~50 questions) instead of all 500.
+   `ceb54acb` is that failure mode, not a coincidence.
+2. **A `lensVersion` bump is not a clean A/B for a retry-only prompt
+   change.** The shared-version cache key means every full-500 validation
+   after a version bump carries primary-pass re-extraction noise as a
+   baseline cost — measured here at −4 net, larger than the −2 the actual
+   rule change cost within its own scope. A future retry-only or otherwise
+   narrowly-scoped lens change needs either a repeat-run noise floor
+   (re-run the unchanged baseline once more under a fresh bust) or a
+   version key that can invalidate the retry path alone, before a single
+   full-500 run can be trusted to isolate the real effect.
+
+Reverted `lens.go` (`git checkout`, confirmed byte-clean diff against
+`HEAD`, `code(op:"sync")` to reconcile the graph, build gate clean).
+`single-session-assistant` stands at 50/56. `dc439ea3`, `c8f1aeed`, and
+`16c90bf4` remain the open losses, all needing a primary-lens change this
+session has now measured three separate times (v10, "v12", and the retry-
+population regression above) as more likely to cost than to gain — not
+attempted tonight.
