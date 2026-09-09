@@ -972,9 +972,31 @@ it helps, and the full 500 has been the only number in this file that's
 ever told the truth. What's left unresolved from this pass: 10 of the 19
 multi-session losses are still real, still confirmed against source text,
 still winze-specific — the aside-extraction problem is real, a narrow
-lens-prompt fix for it just isn't; fixing it without the k=120 collateral
-damage likely needs either a larger k specifically for multi-session
-questions, or a retrieval-time fix (rank asides higher when a session's
-main-topic facts are already well-represented) rather than an extraction-
-time one. Not attempted tonight — a costrel-shaped question for next time,
-not a quick follow-up.
+lens-prompt fix for it just isn't.
+
+### The multi-session k increase, tried and closed — 2026-09-08
+
+Named above as the next thing to try: a larger retrieval window specifically
+for multi-session questions, leaving `k=120` for everything else so no other
+type pays for it. Added `-k-multi` (`main.go`) — 0 by default, overrides `-k`
+only when `q.QuestionType == "multi-session"` — so this could be tested
+without repeating lens v10/rule 1a's mistake of a change that touches every
+type at once.
+
+Ran the 133 multi-session questions alone at `k=200` and `k=300` against
+today's pipeline (v11 lens, warm cache — extraction is `k`-independent, so
+this cost answer+judge only). **112/133 and 111/133, both worse than the
+114/133 reference at `k=120`.** This replicates `docs/benchmark.md`'s
+2026-08-07 finding — recovery non-monotone past ~120, extra slots
+displacing useful facts rather than adding capacity — on today's extraction,
+isolated so there's no possible confound from other types riding along.
+The ceiling here was never capacity; it's the term-overlap ranker admitting
+lower-relevance facts ahead of the one that matters as the window grows.
+More `k` cannot fix a ranking problem, scoped or not.
+
+**Closed, not open.** `-k-multi` stays in the code, off by default — real,
+harmless tooling even though the hypothesis it was built to test failed.
+The actual fix for the 10 confirmed aside-extraction losses is a genuine
+retrieval-time or ranking-time change (surface an aside-shaped fact higher
+when a session's main-topic facts are already well covered), not a window-
+size knob in either direction. Not attempted tonight.

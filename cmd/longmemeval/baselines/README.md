@@ -66,3 +66,11 @@ is not a memory failure, and a diff that shows one is misleading. Check the
   knowledge for a missing specific number. 441/500 — every type flat or down
   from the 450/500 reference, none improved. Isolates the answerSystem-only
   effect from the lens change above; both were reverted, see `ROADMAP.md`.
+- `v11-multi-only-k200.jsonl`, `v11-multi-only-k300.jsonl` — the 133
+  multi-session questions only, `-k-multi` scoped so no other type is
+  affected, testing whether a larger retrieval window helps multi-session
+  specifically. 112/133 and 111/133 against the 114/133 reference at k=120 —
+  worse at both points, replicating the 2026-08-07 k-sweep's non-monotone
+  finding (`docs/benchmark.md`) on today's pipeline. The `-k-multi` flag
+  stays in the code (off by default) since the tooling is real even though
+  the hypothesis it tests failed; see `ROADMAP.md`.

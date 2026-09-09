@@ -47,6 +47,7 @@ func main() {
 		nAsst      = flag.Int("assistant", 0, "number of single-session-assistant questions")
 		nPref      = flag.Int("preference", 0, "number of single-session-preference questions")
 		topK       = flag.Int("k", 120, "retrieval top-k facts fed to the answerer. History: 15 (no recorded rationale) -> 60 -> 120. The 2026-08-07 sweep over all 500 oracle questions, extraction held fixed, scored 421/431/424/427 at k=60/120/250/500, so 120 is the peak and the curve turns over rather than saturating. Do not read that as headroom found: recovery of the 15 multi-session failures that overflowed k=60 goes 1/7/4/5, and non-monotone recovery is impossible if capacity is the binding constraint, so past ~120 the extra slots are displacing useful facts rather than admitting them. Beware the noise floor when re-measuring — 10 of 500 questions flip between two runs at identical k and identical extraction, so only the total moves meaningfully, not a per-type story. Costs answerer input tokens only; retrieval searches the whole store either way. See docs/benchmark.md.")
+		kMulti     = flag.Int("k-multi", 0, "override -k for multi-session questions only; 0 = use -k for every type (default). Multi-session sessions have more distinct facts by construction (multiple sessions per question), so the same k=120 window that suits every other type may be the wrong ceiling specifically here — but the 2026-08-07 sweep already found a BLANKET k increase non-monotone and net-negative elsewhere (knowledge-update, preference), so this is scoped rather than raising -k for everyone. Extraction is k-independent (cached per session), so sweeping this costs answer+judge only, not re-extraction.")
 		dryRun     = flag.Bool("dry-run", false, "select subset and report shape only; no API calls")
 		probe      = flag.Bool("probe", false, "report whether gold answer turns survive renderSession truncation; no API calls")
 		batch      = flag.Bool("batch", false, "extract through the Message Batches API at 50% off before running. Asynchronous — the batch may take minutes to hours — so this is for large unattended runs, not the interactive loop. Extraction is 97% of a run's spend and every call is independent, so the discount is a straight halving with no effect on the model, the prompts or the sampling. Fills the same content-keyed cache the live path uses, then the run proceeds warm.")
@@ -152,7 +153,13 @@ func main() {
 		}
 	}
 
-	work := func(q Question) (resultRow, error) { return r.runQuestion(q, *topK) }
+	work := func(q Question) (resultRow, error) {
+		k := *topK
+		if *kMulti > 0 && q.QuestionType == "multi-session" {
+			k = *kMulti
+		}
+		return r.runQuestion(q, k)
+	}
 	if *raw {
 		fmt.Println("RAW CONTROL: no extraction, no store, no defn, no retrieval — chat history straight to the answerer")
 		work = r.runQuestionRaw
