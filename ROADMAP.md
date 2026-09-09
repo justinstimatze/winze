@@ -1408,3 +1408,57 @@ tuned further tonight given the net is strongly positive; a sharper
 selection criterion (something closer to "count only if the confidence and
 date match the question's own scope" rather than "scan everything") is the
 natural next refinement, not attempted.
+
+### Three named next-moves chased directly, all closed with a negative result — 2026-09-09
+
+All three checked against real data already on disk (jsonl diffs, one
+`-only` run), zero full-500 spend. None panned out as scoped; all three are
+now closed rather than left as open TODOs someone re-proposes later.
+
+**`gpt4_2f8be40d`'s "date confidence" fix, named just above, is wrong about
+the mechanism.** Ran `-only gpt4_2f8be40d` against the current shipped build
+and read the actual extracted facts (`facts.go` for the run), not just the
+answer text. There is no date-confidence signal to filter on at all: the
+overcount is two independent things. First, an entity-coreference gap —
+`attended_college_roommate_wedding` ("rooftop garden ceremony... in the
+city") and `friend_emily_wedding` ("married partner Sarah") are two facts
+from adjacent quotes in the same turn describing what the gold answer treats
+as one event (the roommate is Emily), extracted as two because nothing in
+either quote states the link explicitly. Second, a genuine distractor —
+`attended_cousin_emily_wedding` ("my cousin Emily's wedding in the city") is
+a different Emily, deliberately similar-sounding, and correctly excluded by
+gold. Neither is a prompt-level fix: the first needs cross-fact identity
+resolution during or after extraction, the second is already being read
+correctly as a distinct event by the model (which is exactly why it gets
+counted) — the model has no textual basis to know gold excludes it. Not a
+near-zero-cost fix. Dropped rather than force a rewrite at the wrong layer.
+
+**The hybrid retrieval trigger doesn't survive the full flip set.** The plan
+was: term overlap by default, LLM rerank only when a session's fact count
+exceeds `k` or scores are close. A fact-count threshold around 70-75 does
+separate the 5 named qids cleanly (wins at 78/88/151 facts, losses at 26/67)
+— but that's fitting a rule to 5 hand-picked examples. Diffed v14 vs. the
+full rerank run on every multi-session flip instead (16 total, not 5): fact
+counts are 20-135 on the LOSS side and 34-151 on the WIN side, fully
+overlapping, no threshold separates them. Question shape doesn't separate
+them either — both sides are dominated by "how many X" counting questions,
+with an arithmetic question on each side too (`aae3761f` loses, `a1cc6108`
+wins). There is no cheap, static per-question signal here; whether rerank
+helps a specific multi-session question looks like it depends on the actual
+content, not anything visible before running it. A real hybrid would need
+its own classification call, which is a different, bigger experiment than
+"a knob on the existing retrieval," not this session's scrappy check.
+Dropped in its scoped form.
+
+**The preference wobble (28/30 v10 -> 24/30 v11) reads as judge noise, not
+the rule-2 narrowing this file guessed at.** Diffed all 6 v10/v11 flips on
+`single-session-preference` directly (`caf03d32`, `54026fce`, `09d032c9`,
+`38146c39`, `95228167`, `b0479f84`). Four of the five DOWN flips
+(`caf03d32`, `38146c39`, `95228167`, `b0479f84`) are near-paraphrases of
+each other — same specific advice, same personalization, reworded — with no
+content a judge should score differently. This matches the noise pattern
+already named elsewhere in this file (10/500 questions flip at identical
+config; `58ef2f1c`/`66f24dbb` flipped on byte-identical answer text in the
+460 diff). Closing this as noise, not a live regression to chase; the
+"plausibly the same rule-2 narrowing" guess above was never checked until
+now, and checking it doesn't hold up.
