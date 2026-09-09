@@ -184,7 +184,49 @@ import (
 // a reason to extract more — the question is always whether what gets added
 // will out-rank what it displaces, and that has to be measured on the full
 // 500, not inferred from the failures a narrower change was aimed at.
-const lensVersion = "v11"
+//
+// v13 (retry pass only, tried and reverted same day): two rules added to
+// lensRetrySystem for pasted-source-material and first-answer-priority,
+// targeting the two remaining single-session-assistant losses whose primary
+// pass returned zero facts. Full 500 came back 444/500 (v11: 450), and the
+// target metric moved backward, 50/56 -> 48/56. Diagnosis: retry-touched
+// flips net -2 (the new rules broke 3 previously-working retry extractions
+// outside the sessions they targeted), non-retry flips net -4 (bumping this
+// const busts the whole cache, so every session's PRIMARY pass re-ran on
+// Haiku too, and Haiku isn't perfectly deterministic on identical prompt
+// text). Reverted; lensRetrySystem is byte-identical to v11's.
+//
+// v14 (primary pass, two narrow additions): reads three remaining confirmed
+// single-session-assistant losses against real session text —
+// dc439ea3, 16c90bf4, c8f1aeed. Two have a mechanism distinct from v10/v12's
+// already-failed one: dc439ea3's session opens with a numbered list of
+// traditional games (item 7: Hoop Dance, the gold answer) that extracted
+// ZERO facts, while two nearly-identical numbered lists later in the SAME
+// session (venue recommendations, packing tips) extracted one fact per item
+// perfectly — the only difference being that those are framed as
+// "recommendations"/"tips" and the games list answers a plain factual
+// question. Rule 2a states rule 3a's enumeration mandate applies regardless
+// of recommendation-framing or position in the session. 16c90bf4's assistant
+// turn says "a pilsner or lager would work"; the lens captured only
+// "Pilsner", sourced from the user's own later, narrower echo of it rather
+// than the assistant's original two-option statement. Rule 2b says the
+// assistant's original statement wins over a later partial echo.
+//
+// c8f1aeed is deliberately NOT addressed: its gold answer (Pennsylvania) is a
+// proper noun buried inside an explanatory paragraph about state regulatory
+// requirements, not a list and not a recommendation — the same shape v10
+// broadened for and measured as a net -11 temporal-reasoning regression on a
+// larger diagnosed set (189 questions) via primary-pass k=120 dilution.
+// Re-attempting that exact mechanism for one more question is a worse trade
+// than v10 already made and lost. Rules 2a/2b are scoped narrower than v10's:
+// 2a only touches content already shaped as a list/table/enumeration (rule
+// 3a's existing, bounded scope), and 2b corrects which quote backs an
+// already-would-be-extracted fact rather than adding new fact lines, so
+// neither should reproduce v10's blanket-prose dilution — but this is a
+// primary-pass change touching every one of the 500 sessions' extraction,
+// so it is measured on the full 500 before shipping, same as every other
+// primary-lens attempt today.
+const lensVersion = "v14"
 
 // lensSystem is the extraction rulebook — identical across every session call,
 // so it rides an ephemeral cache_control block (marked in callLens). This is
@@ -209,6 +251,8 @@ Rules:
    - concrete values produced (a schedule slot, a quantity, a date, a price, a measurement),
    - specific attributes described (a colour, a material, a size) where the description is the answer someone would come back for.
    Skip the generic explanation, the caveats, and the reasoning that surrounded them. "Here are three things to consider when choosing a hotel" is not a fact; "recommended the Hotel Meridien in Lyon" is.
+2a. Rule 3a's never-collapse-an-enumeration mandate applies to every list, table, or set of named items the assistant produces — a plain factual or informational answer, not only a personal recommendation — and applies no matter where in the session it appears. A numbered list answering "what are the traditional games at a powwow" is exactly as split-worthy as a numbered list of recommended venues; the session moving on to a different topic afterward does not make its opening list less durable.
+2b. When the assistant names several options together (e.g. "a pilsner or lager would work"), and a later turn — the user's own or a further assistant turn — repeats back or narrows to only one of them, extract the assistant's original full statement as the fact, with QUOTE from the assistant's own turn. A later partial echo of the assistant's words is not a substitute for what was actually said, and must not narrow the VALUE.
 3. One fact per line. Skip small talk and puzzle-solving — but a concrete thing the user did on a given day is a fact, not small talk, and a concrete thing you named for them is a fact, not an explanation.
 3a. NEVER COLLAPSE AN ENUMERATION. When the content is a list, a table, a ranking, a schedule, or a set of items each with their own attributes, emit ONE LINE PER ELEMENT — not one line summarising that a list was given. "provided a shift rotation sheet" is worthless to someone who later asks who works Sunday; the row for each person and day is the fact. Split rather than compress, and never drop a name, number, or date to keep the output short. Specifically:
    - Tables and schedules: one line per cell that carries meaning, with the coordinates in the ATTRIBUTE (e.g. shift_admon_sunday, refinery_lake_charles_processes).

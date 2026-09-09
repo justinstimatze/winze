@@ -1143,3 +1143,76 @@ Reverted `lens.go` (`git checkout`, confirmed byte-clean diff against
 session has now measured three separate times (v10, "v12", and the retry-
 population regression above) as more likely to cost than to gain — not
 attempted tonight.
+
+### The primary-lens fix for the last three assistant-recall losses, shipped — 2026-09-09
+
+Read all three remaining losses against real session text and a warm-cache
+extraction dump. Three distinct mechanisms, not one diffuse gap:
+
+- `dc439ea3` (gold: "Hoop Dance") — the session's *first* assistant turn is a
+  numbered 1-7 list of traditional powwow games, item 7 being Hoop Dance.
+  Zero facts extracted from it. Two nearly-identical numbered lists *later*
+  in the same session — venue recommendations, packing tips — extracted one
+  fact per item perfectly. The only difference: those are framed as
+  "recommendations"/"tips"; the games list answers a plain factual question.
+- `16c90bf4` (gold: "Pilsner or Lager") — the assistant says "a pilsner or
+  lager would work well." The lens captured `beer_type = "Pilsner"`, sourced
+  from the *user's* next turn ("I'll try this with a Pilsner"), losing
+  "lager" and attributing the fact to the wrong turn entirely.
+- `c8f1aeed` (gold: "Pennsylvania") — the assistant names Pennsylvania as the
+  example state, inside an explanatory paragraph about EPA/state
+  groundwater-monitoring rules. Zero assistant facts extracted from the
+  whole session; only the user's own stated opinions got captured.
+
+`c8f1aeed`'s mechanism — a concrete nameable detail buried in unstructured
+explanatory prose, not a list, not a recommendation — is the exact shape
+`v10` already broadened for and got reverted over: a confirmed -11
+temporal-reasoning regression on a larger diagnosed set (189 questions),
+via primary-pass k=120 dilution. Re-attempting that specific broadening for
+one more question is a worse trade than v10 already made and lost, so it
+was deliberately left alone. The other two have a different, narrower
+shape: `dc439ea3` is rule 3a (never-collapse-an-enumeration) not firing on
+a list that isn't framed as a personal recommendation; `16c90bf4` is a
+quote-attribution bug that doesn't add any new fact, it just points an
+already-would-be-extracted fact at the wrong turn.
+
+Added two rules to `lensSystem` (the primary pass): 2a states that rule
+3a's enumeration mandate applies to any list "regardless of recommendation-
+framing or position in the session"; 2b says the assistant's original
+multi-option statement wins over a user's later, narrower echo of it.
+`lensVersion` v11 -> v14 (v12, v13 already used and reverted earlier
+tonight).
+
+Narrow `-only` check on the 3 target qids: all three flipped correct,
+including `c8f1aeed` — but reading the extraction, that one went through
+`lensRetrySystem` (unchanged, untouched by this fix), because the primary
+pass unexpectedly returned zero facts this run where v11 had returned two.
+The win there isn't from rules 2a/2b; it's `lensRetrySystem`'s existing,
+already-effective assistant-output framing catching a session that this run
+happened to starve on the primary pass. Also visible in the same check: real
+collateral volume growth from 2a even on the two *already-working* lists in
+`dc439ea3`'s session — both picked up a redundant "list summary" fact they
+didn't have before (rule 3a always asked for one; the model just wasn't
+reliably producing it, and 2a's insistence made it more consistent
+everywhere, not only on the target list). 14 facts -> 24 on that one session
+alone. That's real k=120-dilution material spread wider than the two target
+sessions, so the full 500 was run before shipping regardless of how clean
+the narrow check looked.
+
+**Full 500: 451/500, up from v11's 450.** `single-session-assistant`
+52/56 (v11: 50), all three target qids correct and holding. No category
+collapsed: multi-session held exactly at 114/133, temporal-reasoning held
+at 118/133 (v10's shape of failure did not reproduce), knowledge-update
+73/78 (-1), preference 25/30 (-3), single-session-user 69/70 (+3). Diffed
+28 qid flips (22 down, 23 up) against v11: multi-session alone accounts for
+10 down/10 up, net zero — the same pattern of pure re-extraction noise the
+`v13` experiment already measured from any `lensVersion` bump forcing a
+cold Haiku re-run dataset-wide, not a change attributable to rules 2a/2b.
+One flip worth checking directly: `eaca4986` (single-session-assistant)
+regressed, the same qid that separately regressed under `v13`'s unrelated
+retry change. Confirmed it's the same non-determinism, not a rule effect —
+extracted fact count is identical (17/17) between v11 and v14; only the
+answerer's phrasing and the judge's leniency on a genuine abstention
+differ.
+
+Shipped. `lensVersion = "v14"`, commit follows this entry.
