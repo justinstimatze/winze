@@ -673,3 +673,129 @@ changed pipeline, is an open question. Next step, not yet done: hold
 today's code fixed and check whether reverting just `lensVersion` to v9
 changes the temporal score — the controlled test this finding needs
 before assigning it a cause.
+
+### The temporal regression, root-caused and fixed — 2026-09-08
+
+Ran the controlled test named above. Swapped `cmd/longmemeval/lens.go`
+back to its pre-v10 content (`git show 22fa3a5:cmd/longmemeval/lens.go`),
+built a separate binary, ran the same 133 temporal questions, everything
+else held fixed. **v9: 122/133 — matches the 2026-08-07 baseline almost
+exactly. v10: 111/133.** Paired on the identical questions: 12 regressed,
+1 improved. This confirms it, not just implicates it: today's v10 change
+caused the temporal regression, full stop, and the earlier "confounded by
+every version since 2026-08-07" hedge no longer applies to this specific
+finding.
+
+Mechanism, read from the actual extractions: v10's broadened rule 2 ran
+in the **primary** lens pass, which fires on every session — including
+temporal ones that already had real dated-event facts. So a temporal
+session now also picked up tangential content (recommendations,
+informational asides) it never used to, and that competed with the real
+events for the same `k=120` retrieval window. Regressed questions show
+materially more extracted facts under v10 (61→90, 71→96, 130→200 in
+three examples) with the wrong specific event surfacing in the answer.
+
+The fix (`lensVersion` v10→v11) is narrower than reverting v10 outright:
+revert the **primary** pass's rule 2 to its v9 wording, keep the **retry**
+pass's broadening. This isn't a guess — checked directly: of the 18
+original assistant-recall failures, 15 were rescued by `lensRetrySystem`
+specifically, which only fires when the primary pass returns nothing. A
+temporal session with real facts never reaches the retry path, so it was
+never the source of the assistant-recall gain and never needed the
+broadening it was paying for. Measured on the same 322 non-trivial
+questions (temporal + multi-session + assistant-recall), v11 vs v10:
+temporal 111→118 (nearly back to 122), assistant-recall held exactly at
+51/56, multi-session 113→111 (inside the noise floor). A full-500 re-run
+under v11 is in progress; the final number replaces the v10 line above
+once it lands.
+
+**The methodology question this raises, and the user's own answer to
+it:** should every `lensVersion` bump require a full-500 regression check
+before shipping, given a targeted fix silently broke a different question
+type six versions running and nothing caught it until today? Decided:
+not a blocking gate on every targeted fix — that's overkill for a cheap,
+narrow rediagnosis — but run the full 500 more often than "only when
+something feels off," which is the cadence that let this one ride for
+however many versions it actually rode for (still unknown; v7 through v9
+were never checked against the full set either).
+
+### What the field's numbers actually look like, and a cautionary tale — 2026-09-08
+
+Corrected a too-hasty finding from earlier today: a research pass first
+concluded no LongMemEval leaderboard exists at all (checked paperswithcode
+and the official GitHub repo, both genuinely empty of one). Pushed on
+directly — a real, if messy, *vendor self-comparison* culture exists that
+those two sources don't surface.
+
+**mem0's own 2026 leaderboard post** (mem0.ai/blog/ai-memory-benchmarks-in-2026,
+curled directly) publishes a table — ByteRover 92.8%, Mem0 94.4%, Zep
+71.2% — and the post itself is honest about what the table is worth:
+"None of these numbers were generated using the same model stack, judge
+model, or retrieval configuration... treat this table as a starting
+point, not a settled ranking." Mem0's own per-category LongMemEval
+breakdown: single-session-user 98.6, single-session-assistant 98.2,
+knowledge-update 93.6, multi-session 88.0 — temporal and preference
+aren't reported at all. Confirmed from their own text this is scored on
+the full `longmemeval_s` haystack (~40 sessions/user, ~115K tokens), not
+the oracle set.
+
+**OMEGA** (omegamax.co/benchmarks, another vendor's own page) reports
+95.4% "task-averaged" but 466/500 raw (93.2%) — the two numbers disagree
+because task-averaging weights a 30-question category equally with a
+133-question one, worth knowing before quoting either figure alone.
+Per-category, same haystack tier: single-session-recall 125/126,
+preference 30/30, multi-session 111/133 (83%), knowledge-update 75/78
+(96%), temporal 125/133 (94%). Their own comparison table lists Mastra
+94.9%, Emergence AI 86%, Zep 71.2%, and marks Mem0/Letta "N/A" — disputing
+mem0's self-reported number, not confirming it. Two vendors, two
+self-published tables, disagreeing with each other about a third vendor's
+score — that is the actual state of the field's "leaderboard."
+
+**The number that matters for winze: every one of these is scored on the
+full haystack. Winze has only ever scored the oracle set** (distractors
+removed — see "The real benchmark says winze isn't in the ballpark yet"
+above). The original paper's own Figure 3(b) shows oracle scores drop
+~30% relative to full-haystack for the same system. So winze's 444/500
+oracle number isn't just behind these — it isn't eligible for this
+comparison at all yet. Winze has never attempted the harder test. That is
+the honest headline, not a caveat to soften.
+
+**MemPalace, read as a cautionary tale on purpose, not a drive-by
+mention.** An independent critique (arXiv 2604.21284, "Spatial Metaphors
+for LLM Memory," full PDF read) covers a system that launched April 2026,
+hit 47,900 GitHub stars in two weeks, and claimed 96.6% Recall@5 on
+LongMemEval — "higher than any extraction-based competitor" — attributed
+to its "method of loci" spatial architecture (Wings→Rooms→Closets→Drawers).
+An independent audit (GitHub Issue #29, dial481) found: the 96.6% is the
+performance of **ChromaDB's stock all-MiniLM-L6-v2 embedding model on
+verbatim text — reproducible with a minimal ChromaDB setup, no palace
+structure required at all.** Recall@5 also isn't answer accuracy; real
+end-to-end QA accuracy was ~67.2%, a huge gap from the marketed number.
+Five more claims fell the same way on inspection: a "100%" LongMemEval
+score hid undisclosed iterative LLM reranking; a "100%" LoCoMo score used
+k=50 (functionally the whole conversation handed back); "30x compression,
+zero information loss" was lossy summarization; "semantic contradiction
+detection" was exact-match dedup; a "+34% boost" was ordinary metadata
+filtering under a new name. The maintainer acknowledged all six points
+and retired the disputed numbers — the right ending, but only after
+external audit pressure forced it, not before.
+
+**The lesson to actually hold onto, not just note:** MemPalace's failure
+wasn't fabrication — every debunked number came from a real run — it was
+publishing a headline metric (a generous retrieval score) standing in
+for a harder one (answer accuracy) without saying so, and crediting a
+fancy narrative (the spatial metaphor) for what a boring, standard
+component (an off-the-shelf embedding model) was actually doing. That is
+a structural risk this project has brushed against more than once this
+same session — the 57%/52%/47.5% figures that turned out to be a
+hardcoded result-cap bug, the raw-tier "statistically indistinguishable"
+comparison that was measured hours before the fix for that same bug. The
+difference so far is that winze's numbers get re-verified and corrected
+in this document when the gap is found, not left standing until an
+outsider audits them. Keeping that difference real — publishing the
+caveat *with* the number the first time, not after being asked, and
+periodically checking whether a measured win (knowledge-update, temporal)
+is really coming from the typed/provenance architecture or from
+something a plain baseline would also get right — is the actual, ongoing
+work this cautionary tale asks for. Not a one-time note that MemPalace
+was overstated.

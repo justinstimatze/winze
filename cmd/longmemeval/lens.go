@@ -114,15 +114,30 @@ import (
 // discussing a novel's plot, a scientific paper's sample size, a chess game,
 // a historical cartoon, a technical paper's framerate number — none about the
 // user's own life, all a concrete, nameable detail the assistant stated.
-// Rule 2's own worked example ("recommended the Hotel Meridien in Lyon") is
-// personal-context shaped; neither prompt named "explained a fact from an
-// article" or "produced creative content on request" as the same kind of
-// specific. Both rules now say so explicitly.
+// Broadened both rules.
 //
-// The number this bump answers for is the zero-fact count on the assistant
-// slice, not the score — same caution as v7: a fact arriving is necessary,
-// not sufficient, for the answerer to use it correctly.
-const lensVersion = "v10"
+// v10 caused a real regression, confirmed by a same-day paired A/B holding
+// everything but lens.go fixed: temporal-reasoning went 122/133 (v9) to
+// 111/133 (v10) on the identical 133 questions, 12 regressed against 1
+// improved. Mechanism, read from the actual extractions: v10's rule 2 change
+// applied to the PRIMARY pass, which runs on every session, not just the
+// starved ones — so a temporal session that already had real dated-event
+// facts also picked up extra tangential content (recommendations, informational
+// asides) it never used to, and that competed with the real events for the
+// same k=120 retrieval window. Regressed questions show materially more
+// extracted facts under v10 (e.g. 61->90, 71->96, 130->200) with the wrong
+// specific event surfacing in the answer.
+//
+// v11 reverts the PRIMARY pass's rule 2 to its v9 wording and keeps only the
+// RETRY pass broadened. This is not a guess: of the 18 original assistant-
+// recall failures, 15 were rescued specifically by lensRetrySystem (fires
+// only when the primary pass returns NO_FACTS) — the primary pass's own rule
+// 2 broadening was doing almost none of the assistant-recall work, since a
+// session that starves the primary pass never has the competing-facts problem
+// in the first place. Reverting the primary pass should keep nearly all of
+// the assistant-recall gain while removing the k-dilution nothing needed it
+// for.
+const lensVersion = "v11"
 
 // lensSystem is the extraction rulebook — identical across every session call,
 // so it rides an ephemeral cache_control block (marked in callLens). This is
@@ -142,13 +157,11 @@ Rules:
    - STANDING facts: biographical facts, possessions, plans, stated preferences (e.g. graduation degree, home city, owning a car).
    - DATED EVENTS: specific one-time things the user did or that happened to them, tied to a day — visits, outings, purchases, milestones, helping someone, attending or preparing for an event (e.g. "visited MoMA", "helped my cousin pick out baby-shower gifts", "ran a charity 5K"). These are essential for questions about when things happened or in what order, so capture them even though they are one-time rather than durable.
    Mirror what was said; never infer or embellish.
-2. ALSO extract SPECIFICS THE ASSISTANT SUPPLIED that the user could later ask to be reminded of — about the user's own situation, or about ANY OTHER TOPIC the assistant explained, discussed, or was asked about. A memory that cannot recall what it told someone is half a memory. Capture the concrete, nameable output — not the reasoning around it:
+2. ALSO extract SPECIFICS THE ASSISTANT SUPPLIED that the user could later ask to be reminded of. A memory that cannot recall what it told someone is half a memory. Capture the concrete, nameable output — not the reasoning around it:
    - named things recommended or identified (a venue, a product, a title, a person, a place),
    - concrete values produced (a schedule slot, a quantity, a date, a price, a measurement),
-   - specific attributes described (a colour, a material, a size) where the description is the answer someone would come back for,
-   - facts, findings, quotes, statistics, rules, or moves stated while explaining or discussing a book, article, game, technical paper, or any other subject matter — even when it has nothing to do with the user's own life,
-   - specific content produced on request (a line from a script, poem, or song; a game move; a recipe step) — the user asking "what did you write/say" about this is exactly the case this rule exists for.
-   Skip the generic explanation, the caveats, and the reasoning that surrounded them. "Here are three things to consider when choosing a hotel" is not a fact; "recommended the Hotel Meridien in Lyon" is. Likewise "explained the study's findings" is not a fact; "the study found a 38-subject sample showed significant reductions" is.
+   - specific attributes described (a colour, a material, a size) where the description is the answer someone would come back for.
+   Skip the generic explanation, the caveats, and the reasoning that surrounded them. "Here are three things to consider when choosing a hotel" is not a fact; "recommended the Hotel Meridien in Lyon" is.
 3. One fact per line. Skip small talk and puzzle-solving — but a concrete thing the user did on a given day is a fact, not small talk, and a concrete thing you named for them is a fact, not an explanation.
 3a. NEVER COLLAPSE AN ENUMERATION. When the content is a list, a table, a ranking, a schedule, or a set of items each with their own attributes, emit ONE LINE PER ELEMENT — not one line summarising that a list was given. "provided a shift rotation sheet" is worthless to someone who later asks who works Sunday; the row for each person and day is the fact. Split rather than compress, and never drop a name, number, or date to keep the output short. Specifically:
    - Tables and schedules: one line per cell that carries meaning, with the coordinates in the ATTRIBUTE (e.g. shift_admon_sunday, refinery_lake_charles_processes).
