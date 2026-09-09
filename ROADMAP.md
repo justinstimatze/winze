@@ -1623,3 +1623,33 @@ Left `-rerank` off by default, as it already was — this is a refinement of
 an opt-in path, not a change to the harness's shipped default. n=30 makes
 80.0% a real, checked signal, not a number to generalize from; a larger
 sample is what would turn "first net win" into an actual verdict.
+
+### `gpt4_59c863d7` closed: not a cap problem at all, an extraction naming gap — 2026-09-09
+
+Asked to try a wider cap specifically for this qid. Didn't need to run
+anything: it has 840 total facts, and `rerankCap=1500` (already run above)
+never engages its term-overlap prefilter below 840 — the LLM already saw
+every fact directly, with nothing hidden, and still answered 4/5. There is
+no wider cap than "everything," and "everything" already failed. This
+qid is a relevance-judgment gap like `35a27287`'s language case, not a
+volume gap like `8a2466db`'s — mis-sorted into the volume category
+initially by pattern-matching to `8a2466db` rather than checking each case.
+
+Read the actual extracted fact instead of guessing further: the four kits
+the model finds are each backed by 2-3 facts under a consistent
+`model_kit_*` attribute prefix (`model_kit_b29_bomber`, `model_kit_camaro_scale`,
+`model_kit_revell_f15_eagle`, `model_kit_spitfire_mk_v` — 10 facts total,
+following the convention). The missing fifth kit — a 1/16 scale German
+Tiger I tank — was extracted as a single fact under `Attribute:
+"diorama_scale"`, quoting "I also started working on a diorama featuring a
+1/16 scale German Tiger I tank." The lens keyed off "diorama" as the
+session's salient noun and never gave this one a `model_kit_*` attribute
+like its siblings. No retrieval or reranking mechanism can be expected to
+count this reliably against a "how many model kits" question when its own
+extracted framing doesn't signal "model kit" the way every other instance
+in the same store does — this is a lens naming-consistency gap, not
+something `k`, `rerankCap`, or the retrieval mechanism touches. Genuinely
+closed for the retrieval axis; a real fix here would be lens-side (teaching
+extraction to tag an item by what it structurally is, not by whichever noun
+a sentence happened to lead with), out of scope for tonight's retrieval
+work.
