@@ -893,3 +893,88 @@ when the cached response already was full; `sync` rejecting a directory
 pattern as a dead literal with no "not regex" hint) — dropped as
 `FEEDBACK-winze-session-2026-09-08.md` in defn's own project directory,
 per the standing cross-project feedback convention.
+
+### Two fixes tried on multi-session and preference, both reverted — 2026-09-08
+
+The 450/500 above split unevenly: multi-session sat at 114/133 against raw
+control's 120/133 (-6, the widest per-type gap), preference already led
+control 28/30 to 23/30 (+5, not a gap). Read the 19 multi-session losses
+against real session text before touching anything, following tonight's
+own standing practice. Ten of them were questions a raw-transcript control
+got right that winze did not — meaning the needed fact was in the session,
+never reached the retrieved-facts pipeline. Three confirmed directly: a
+5-gallon betta tank named only in a "by the way" aside inside a session
+about a *different* tank's nitrite levels (`46a3abf7`, gold 3 tanks, winze
+saw 2); a BBQ party at a friend's place mentioned in passing while planning
+an unrelated potluck (`60159905`, gold three dinner parties, winze saw
+two); a Jimmy Choo heels' $500 retail price dropped as an aside in a
+session about affordable fashion brands, sessions away from the $200
+purchase price it needed to pair with (`bb7c3b45`, gold $300 saved, winze
+had no retail price to subtract from). All three: a single-sentence pivot
+into a fact the surrounding session isn't about, missed because the lens
+reads for a session's dominant topic rather than every turn.
+
+**Fix 1 — lens rule 1a, told the primary extraction pass to read every turn
+for these asides.** A 21-question targeted `--only` re-run flipped 7 of 19
+named failures to correct, all three of the above included — the mechanism
+was real. The full-500 re-run told a different story: multi-session 114/133
+-> 113/133, preference 28/30 -> 26/30. Both **worse**, not better, on
+exactly the categories this targeted. Fact counts explain why: they rose
+on nearly every one of the eight NEW regressions this introduced (110->130,
+112->124, 157->173...), several crossing the k=120 retrieval cap for the
+first time, and the newly-competing facts produced their own wrong answers
+— an extra "fourth road trip" the answerer couldn't reconcile with a stated
+three-trip total, a grapefruit garnish mention double-counted as a cocktail
+ingredient, a preference session whose extraction came back with 1 fact
+instead of 15 for reasons that don't trace to the rule's own wording and
+looks like plain non-determinism instead. This is the identical mechanism
+that broke temporal under lens v10 back in the first half of this same
+session: more real, correctly-extracted facts still compete for the same
+fixed k=120 window, so "the model missed a real fact" is not by itself a
+reason to extract more of them — reverted, full account in `lens.go`'s
+`lensVersion` changelog.
+
+**Fix 2 — two answerSystem rules**, tried independent of the lens change:
+scoping "the most recent value wins" to require the two facts describe the
+same context (aimed at `a4996e51`, 45 vs gold 50 — the rule had fired
+across an unrelated "some weeks go up to 45" aside and a specific "peak
+season +10 hours" fact as if one updated the other), and a rule against
+substituting outside/general knowledge for a missing specific number
+(aimed at `09ba9854`/`09ba9854_abs`, which fabricate plausible Narita
+airport transit fares instead of saying I don't know). Isolated on v11's
+lens — warm cache, byte-identical facts to the 450/500 run — the two rules
+alone took the full 500 to **441/500**. Every type went flat or down:
+knowledge-update 74->71, multi-session 114->113, preference 28->25,
+temporal 118->116, assistant and single-user unchanged. 19 questions
+flipped from correct to wrong against only 10 the other way, and unlike
+the lens regression, there is no one clean mechanism behind the 19 — some
+read as ordinary judge/sampling variance on answers no worse in substance
+(`38146c39`'s reworded but equivalent turbinado-sugar suggestion flipped to
+wrong with no visible content difference), and at least one genuinely
+changed shape for the worse in a way neither new rule explains directly
+(`1c0ddc50`'s answer started restating retrieved true-crime/self-
+improvement facts as generic options, exactly what the gold answer says
+the user does not want). Reverted; full account in `answerSystem`'s own
+changelog.
+
+**Both baselines are in git** (`v12-lens1a-attempt-full500.jsonl`,
+`v11-lens-answersys-attempt-full500.jsonl`) for the per-question record,
+per the baselines README.
+
+**The honest total: multi-session and preference are exactly where they
+were at 450/500** — 114/133 and 28/30, gap -6 and +5 respectively. Two
+plausible, independently-reasoned fixes, each validated on a narrow slice
+before being trusted with real API spend, both lost on the full 500 for
+different reasons. This is the same lesson lens v10 already taught,
+applying again to a different rule and a different mechanism: a change
+that flips its own named failures under a targeted check is not evidence
+it helps, and the full 500 has been the only number in this file that's
+ever told the truth. What's left unresolved from this pass: 10 of the 19
+multi-session losses are still real, still confirmed against source text,
+still winze-specific — the aside-extraction problem is real, a narrow
+lens-prompt fix for it just isn't; fixing it without the k=120 collateral
+damage likely needs either a larger k specifically for multi-session
+questions, or a retrieval-time fix (rank asides higher when a session's
+main-topic facts are already well-represented) rather than an extraction-
+time one. Not attempted tonight — a costrel-shaped question for next time,
+not a quick follow-up.

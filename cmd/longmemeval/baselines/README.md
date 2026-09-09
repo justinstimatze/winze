@@ -52,3 +52,17 @@ is not a memory failure, and a diff that shows one is misleading. Check the
   as of 2026-08-06 and the current default (`-k` defaults to 60). Reconstructed
   from that run's log, which predates the `--baseline` flag; the reconstruction
   reproduces the reported 47 correct and the per-type row exactly.
+- `v12-lens1a-attempt-full500.jsonl` — a lens rule tried and reverted the same
+  night (2026-09-08): read every turn for an unrelated aside instead of the
+  session's dominant topic, aimed at multi-session/preference failures where
+  a raw-transcript control had the fact and winze's extraction didn't. 450/500
+  overall (unchanged from `v11-answersys-k120-full500.jsonl`), but worse on
+  both targeted categories — multi-session 114->113, preference 28->26 — via
+  the same k=120 dilution mechanism that broke temporal under lens v10.
+  Superseded by reverting to v11's lens; kept for the per-question record.
+- `v11-lens-answersys-attempt-full500.jsonl` — v11's lens (byte-identical,
+  warm cache) with two answerSystem rules tried and reverted the same night:
+  context-scoping "most recent wins", and a rule against substituting outside
+  knowledge for a missing specific number. 441/500 — every type flat or down
+  from the 450/500 reference, none improved. Isolates the answerSystem-only
+  effect from the lens change above; both were reverted, see `ROADMAP.md`.

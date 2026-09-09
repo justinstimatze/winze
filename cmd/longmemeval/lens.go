@@ -137,6 +137,53 @@ import (
 // in the first place. Reverting the primary pass should keep nearly all of
 // the assistant-recall gain while removing the k-dilution nothing needed it
 // for.
+//
+// v12 was tried and reverted same session (2026-09-08), never shipped past
+// this file: rule 1a told the primary pass to read every turn for an
+// unrelated aside ("by the way...") instead of the session's dominant topic
+// alone, aimed at the 10 of 19 v11 multi-session failures that a raw-
+// transcript control got right and winze did not — meaning the needed fact
+// was in the session text but never reached the retrieved-facts pipeline.
+// Confirmed by reading three of them against source text: a betta tank named
+// only in a "by the way" aside about a different tank's nitrite levels
+// (46a3abf7), a BBQ party mentioned in passing while planning an unrelated
+// potluck (60159905), a $500 retail price for the Jimmy Choo heels dropped as
+// an aside in a session about affordable fashion brands (bb7c3b45).
+//
+// A 21-question targeted re-run flipped 7 of 19 named multi-session failures
+// to correct, all three of the above included, so the mechanism was real. The
+// full-500 re-run told a different story: multi-session went 114/133 (v11) to
+// 113/133 (v12), preference 28/30 to 26/30 — both net WORSE, not better, on
+// exactly the categories rule 1a targeted. The same k=120-dilution mechanism
+// v10 hit is why: fact counts rose across nearly every one of the eight new
+// multi-session regressions (110->130, 112->124, 157->173...), several
+// crossing the k=120 cap for the first time, and the newly-competing facts
+// produced their own wrong answers — an extra "fourth road trip" aside the
+// answerer couldn't reconcile with a stated three-trip total (6c49646a), a
+// grapefruit garnish mention miscounted as a cocktail ingredient (c4a1ceb8),
+// a re-extraction that came back with 1 fact instead of 15 on one preference
+// session for reasons that don't trace to rule 1a's own wording (1c0ddc50) and
+// looks like plain extraction non-determinism instead. Net: seven real fixes,
+// eight new losses, zero net change in the 500-question total (450 both
+// versions) and a worse story on the two categories this pass was for.
+//
+// Reverted rule 1a; lensSystem is byte-identical to v9/v11's (v10's rule 2
+// change is still separately reverted). Restored the literal string "v11"
+// rather than bumping to v13, because lensVersion is the disk-cache key
+// (sha256 of version+model+sessionBody) and the content really is v11's,
+// unchanged — reusing the name lets the still-warm v11 extraction cache serve
+// every session directly, at zero re-extraction cost, instead of forcing a
+// full cold re-run of identical output under a new label. This is a
+// deliberate, one-time exception to "always bump on a prompt change": the
+// prompt did not change from v11, it changed and then changed back within the
+// same session, and v11 already names the content that resulted.
+//
+// The lesson generalizes past this one rule: ANY change that adds real,
+// correctly-extracted facts to a session's output still competes for the
+// same fixed k=120 window, so "the model missed a real fact" is not by itself
+// a reason to extract more — the question is always whether what gets added
+// will out-rank what it displaces, and that has to be measured on the full
+// 500, not inferred from the failures a narrower change was aimed at.
 const lensVersion = "v11"
 
 // lensSystem is the extraction rulebook — identical across every session call,

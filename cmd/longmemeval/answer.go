@@ -34,6 +34,50 @@ import (
 // (Harvard) still hallucinates despite the rule naming this exact shape —
 // left as open, not papered over: some instances of this pattern may not be
 // closable by prompt instruction alone.
+//
+// Full-500 confirmed this batch at 450/500 vs. raw control's 455/500, gap -5.
+// Per-type: knowledge-update 74/78, multi-session 114/133, single-session-
+// assistant 50/56, single-session-preference 28/30, single-session-user
+// 66/70, temporal-reasoning 118/133. This is the reference point every later
+// attempt in this file gets measured against.
+//
+// Two more rules were tried and reverted the same night (2026-09-08), never
+// shipped past this file. First: scoping "the most recent value wins" to
+// require the two facts describe the same specific context, aimed at
+// `a4996e51` (45 vs gold 50 — the rule had fired across an unrelated "some
+// weeks go up to 45" aside and a specific "peak season +10 hours" fact as if
+// one updated the other). Second: an explicit rule against substituting
+// general/outside knowledge for a missing specific number, aimed at
+// `09ba9854`/`09ba9854_abs` (fabricating plausible Narita airport transit
+// fares instead of saying I don't know).
+//
+// Isolated from every other change in flight that night (v11's lens, warm
+// cache, byte-identical facts — see lensVersion's changelog for the full
+// story of the OTHER thing tried and reverted alongside this), the two new
+// rules alone took the full 500 from 450 to 441. Every type went flat or
+// down — knowledge-update 74->71, multi-session 114->113, preference 28->25,
+// temporal 118->116, assistant and single-user flat — and none improved.
+// 19 questions that were correct under the rules above flipped wrong, 10 that
+// were wrong flipped correct, for a net -9. A sample of the 19 regressions
+// does not show one clean mechanism the way the k=120 dilution story does for
+// the lens side: some look like straightforward judge/sampling variance on
+// answers that read as equally correct in substance (`38146c39`'s reworded-
+// but-equivalent turbinado-sugar suggestion flipped to wrong for no visible
+// content reason), and at least one (`1c0ddc50`) got WORSE in a way that
+// traces to the answer restating retrieved true-crime/self-improvement
+// preference facts as generic commute options — exactly what the gold answer
+// says the user does NOT want — despite no rule change touching that
+// question's logic. Two added rules, both individually reasonable, netted a
+// real loss with no clean per-rule attribution; not chasing which of the two
+// carried more of the loss, since neither survives on its own merits.
+//
+// Reverted both; the rule body below is byte-identical to the 450/500
+// version. The lesson: a rule that reads as an obvious, narrow improvement
+// (and even flips its own named failures under a targeted `--only` check)
+// is not evidence it helps — the full 500 is the only number that has ever
+// told the truth in this file, and twice in one night a plausible-sounding
+// fix looked good narrow and lost on the full set for reasons that only
+// showed up once every other question got a chance to be affected too.
 const answerSystem = `You answer a question about a user using ONLY the retrieved memory facts provided. Each fact carries the date it was stated.
 
 Rules:
