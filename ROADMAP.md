@@ -1530,3 +1530,49 @@ self-reported range (Zep 71.2% floor, mem0 94.4%, OMEGA 93.2%) but isn't
 embarrassing — and preference's 1/5 plus the universal k=120 saturation are
 now two concrete, evidenced levers for whoever picks this up next, not
 guesses.
+
+### Preference's 1/5, read directly: three different causes, not one — 2026-09-09
+
+Read all 5 `single-session-preference` questions from the haystack sample
+against their actual extracted facts (grep on the gold-specific term, not
+just the answer text), same discipline as `gpt4_2f8be40d` above. "1/5" hid
+three unrelated mechanisms, only one of which any retrieval-side change can
+touch:
+
+- **Extraction gap** (`0edc2aef`, Miami hotel): zero mentions of "Miami"
+  anywhere in 734 extracted facts. The model correctly says so and points at
+  the Seattle trip it did find instead of inventing one. No retrieval fix
+  reaches this — the fact never existed to retrieve.
+- **Retrieval-volume gap** (`8a2466db`, Adobe Premiere Pro resources):
+  "premiere"/"adobe" each hit exactly once in 911 facts — a real needle,
+  genuinely present but crowded out by everything else competing for the
+  window.
+- **Relevance-judgment gap** (`35a27287`, language-practice preference for
+  "cultural events this weekend"): 47 "french" hits and 37 "language" hits —
+  abundant signal, not buried at all. Still wrong even when the LLM reranker
+  saw the full 840-fact pool directly (`rerankCap=1500`, no term-overlap
+  prefilter in the way). The question's own words share no vocabulary with
+  the preference; neither term overlap nor an LLM judging relevance over
+  everything bridges that gap. No cap size touches this one.
+- `75832dbd` (AI-in-healthcare publication interest) stayed wrong across
+  every configuration tried, with only weak, ambiguous signal ("medical"
+  hits 4 times, "healthcare" 0) — likely a partial extraction gap, not
+  chased further tonight.
+
+**A midpoint `rerankCap=500` confirmed the retrieval-volume mechanism
+directly: 23/30 overall, an exact tie with the 200 baseline, but a
+different composition.** `8a2466db` (the needle case) flipped correct, as
+the mechanism above predicts — and unlike `rerankCap=1500`, this didn't cost
+`06878be2` (the one preference question term overlap already had right).
+The tie instead came from a new, real regression: `51a45a95`
+(single-session-user, "$5 coupon on coffee creamer") flipped wrong under
+500 — checked the actual answer text, not just the flag: term overlap
+confidently says "Target (via Cartwheel, Target's app)", matching gold;
+`cap500` retrieves the same Cartwheel fact but hedges, "doesn't specify
+which store," an inference the reordering apparently no longer had enough
+supporting context to make confidently. Net zero on n=30 is not evidence
+500 beats 200 — it's evidence the mechanism runs in both directions, real
+each way. `rerankCap` stays at 200; no value tried tonight (200, 500, 1500)
+is a confirmed net improvement over it. A policy that targets rerank at
+specifically-diagnosed needle cases rather than blanket-raising the cap for
+every question is the shape a real fix would need — not attempted tonight.

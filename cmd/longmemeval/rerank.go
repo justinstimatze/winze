@@ -43,8 +43,20 @@ Respond with ONLY a JSON array of integers, no other text.`
 // the 6 net regressions. The rest is Haiku's own ranking quality degrading
 // as the candidate list grows from 200 to up to 1500 items in one call --
 // more candidates is not free just because the context window fits them.
-// Left at 200: a real ceiling on this dataset (see ROADMAP.md), but a worse
-// ceiling is not a fix.
+//
+// Also tried at 500 (2026-09-09): 23/30, an exact tie with 200 in aggregate
+// but a different composition -- fixed one real needle-in-haystack case
+// (a preference fact mentioned once in 900+ facts, buried under 200 but
+// visible under 500) while breaking one unrelated single-session-user
+// question through reordering elsewhere (a real content change, not judge
+// noise -- checked the actual answer text on both sides). Net zero on n=30
+// is not evidence 500 is better than 200, just evidence the mechanism is
+// real in both directions. See ROADMAP.md for the full per-question
+// mechanism reading (needle-in-haystack retrieval-volume gaps vs. genuine
+// relevance-judgment gaps vs. extraction gaps -- three different causes
+// hiding under one "1/5 preference" number, only one of which any cap
+// change can touch). Left at 200 -- no cap value tried tonight is a
+// confirmed net improvement over it.
 const rerankCap = 200
 
 // parseFactRerankResponse pulls the JSON id list out of a model response,
