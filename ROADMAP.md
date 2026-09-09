@@ -1572,7 +1572,54 @@ confidently says "Target (via Cartwheel, Target's app)", matching gold;
 which store," an inference the reordering apparently no longer had enough
 supporting context to make confidently. Net zero on n=30 is not evidence
 500 beats 200 — it's evidence the mechanism runs in both directions, real
-each way. `rerankCap` stays at 200; no value tried tonight (200, 500, 1500)
-is a confirmed net improvement over it. A policy that targets rerank at
-specifically-diagnosed needle cases rather than blanket-raising the cap for
-every question is the shape a real fix would need — not attempted tonight.
+each way. A policy that targets rerank at specifically-diagnosed needle
+cases rather than blanket-raising the cap for every question is the shape
+a real fix would need — not attempted with the blanket constant, but see
+below.
+
+### rerankCap scoped by question type, not blanket — the night's first real net win on the haystack axis — 2026-09-09
+
+The blanket 500 test's regression (`51a45a95`) was `single-session-user` —
+outside both categories the needle mechanism was actually diagnosed in
+(`single-session-preference`'s `8a2466db`, `multi-session`'s
+`gpt4_59c863d7`, read directly above and in the preference section).
+Threaded `Question.QuestionType` through `runQuestion` ->
+`syncAndRetrieve` -> `rerankFacts` (build gate + full `go test
+./cmd/longmemeval/...` green) and added `rerankCapWide = 500`, used only
+for `multi-session` and `single-session-preference`; every other type keeps
+`rerankCap = 200`.
+
+**Same warm-cache sample: 24/30 (80.0%), up from term overlap's 76.7% —
+the first clean net gain reranking has produced all night, after three
+straight ties or losses (the oracle-set tie at 451/500, this sample's
+cap=200 tie, cap=1500's regression).** `8a2466db` flipped correct exactly
+as predicted. `51a45a95` — the collateral regression from the blanket test
+— stayed correct, since it's outside both scoped types and still runs at
+cap=200.
+
+Two things temper this before calling it settled, both checked rather than
+assumed:
+
+- `06878be2` (the preference question that broke under the blanket 500)
+  stayed correct here too, even though it's inside the scoped type and
+  genuinely runs at cap=500 in this version. Same cap, same question,
+  different outcome from the earlier run — Haiku's rerank call is
+  `Temperature: 0` but not bit-identical on the Anthropic API (already
+  documented elsewhere in this file), so this could be the scoping working
+  as intended, or it could be ordinary run-to-run noise on a borderline
+  case. Not distinguishable from one more run each; not chased further
+  tonight.
+- `gpt4_59c863d7` (the Tiger I tank case that motivated widening
+  `multi-session`'s cap at all) **did not flip** — still 4/5, still missing
+  the tank. Checked why: at 840 total facts, `rerankCap=500` still
+  prefilters by term overlap before the LLM sees anything, and a fact with
+  only 2 "tiger" hits in the whole set apparently doesn't clear the top-500
+  by literal term overlap either, only the (regression-prone) top-1500.
+  Different needles sit at different depths; one scoped cap value doesn't
+  rescue all of them, and there's no way to know how deep without checking
+  case by case.
+
+Left `-rerank` off by default, as it already was — this is a refinement of
+an opt-in path, not a change to the harness's shipped default. n=30 makes
+80.0% a real, checked signal, not a number to generalize from; a larger
+sample is what would turn "first net win" into an actual verdict.

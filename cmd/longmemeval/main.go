@@ -229,7 +229,7 @@ func (r *runner) runQuestion(q Question, k int) (resultRow, error) {
 	row.buildNS = nowNS() - tBuild
 
 	// Sync through defn + retrieve.
-	retrieved, syncNS, retrieveNS, err := r.syncAndRetrieve(dir, q.Question, k)
+	retrieved, syncNS, retrieveNS, err := r.syncAndRetrieve(dir, q.Question, q.QuestionType, k)
 	if err != nil {
 		return row, err
 	}

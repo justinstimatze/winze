@@ -137,10 +137,19 @@ func (r *runner) callFactRerank(question string, facts []Fact) ([]int, error) {
 // genuinely relevant fact at exactly 0 on a plural/singular or synonym
 // mismatch (confirmed on bf659f65: "eps" vs "ep"); an LLM judging relevance
 // directly doesn't have that specific failure mode.
-func (r *runner) rerankFacts(facts []Fact, question string, k int) []Fact {
+//
+// qtype picks the candidate-pool cap: rerankCapWide for the two question
+// types where a real needle-in-haystack gap was diagnosed, rerankCap
+// otherwise. See rerankCapWide's own comment for why this is scoped rather
+// than a blanket change.
+func (r *runner) rerankFacts(facts []Fact, question, qtype string, k int) []Fact {
+	cap := rerankCap
+	if qtype == "multi-session" || qtype == "single-session-preference" {
+		cap = rerankCapWide
+	}
 	pool := facts
-	if len(pool) > rerankCap {
-		pool = rankFacts(facts, question, rerankCap)
+	if len(pool) > cap {
+		pool = rankFacts(facts, question, cap)
 	}
 	order, err := r.callFactRerank(question, pool)
 	if err != nil {
@@ -171,3 +180,16 @@ func (r *runner) rerankFacts(facts []Fact, question string, k int) []Fact {
 	}
 	return out
 }
+
+// rerankCapWide is rerankCap's value for question types where a 2026-09-09
+// full-haystack sample found a real needle-in-haystack retrieval-volume gap:
+// single-session-preference (`8a2466db`, an Adobe Premiere Pro fact hit once
+// in 911 facts) and multi-session (`gpt4_59c863d7`, a German Tiger I tank
+// model kit hit twice in 840 facts) -- both genuinely present, both crowded
+// out of a 200-candidate rerank pool by everything else competing for it.
+// A blanket rerankCap=500 confirmed the mechanism but netted zero on the
+// same sample, trading that fix for an unrelated new regression on a
+// single-session-user question outside either category -- scoping the wider
+// cap to just the two types where the mechanism was actually diagnosed
+// avoids paying that unrelated cost. See ROADMAP.md for the full reading.
+const rerankCapWide = 500

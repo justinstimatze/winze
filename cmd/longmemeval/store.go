@@ -91,9 +91,9 @@ func (r *runner) buildStore(qid string, facts []Fact) (string, error) {
 // syncAndRetrieve opens the store through defn (triggering the full type-checked
 // ingest), pulls every Fact via LiteralFields, and returns the top-k by term
 // overlap with the question (or by LLM relevance, when r.rerank is set). This
-// is the winze-via-defn read path the whole perf story hangs on — sync time
+// is the winze-via-defn read path the whole perf story hangs on -- sync time
 // and retrieve time are timed separately by the caller.
-func (r *runner) syncAndRetrieve(dir, question string, k int) (facts []Fact, syncNS, retrieveNS int64, err error) {
+func (r *runner) syncAndRetrieve(dir, question, qtype string, k int) (facts []Fact, syncNS, retrieveNS int64, err error) {
 	tSync := nowNS()
 	client, err := defndb.New(dir) // New syncs if the store is stale (always, first open)
 	if err != nil {
@@ -109,7 +109,7 @@ func (r *runner) syncAndRetrieve(dir, question string, k int) (facts []Fact, syn
 	}
 	var ranked []Fact
 	if r.rerank {
-		ranked = r.rerankFacts(all, question, k)
+		ranked = r.rerankFacts(all, question, qtype, k)
 	} else {
 		ranked = rankFacts(all, question, k)
 	}
