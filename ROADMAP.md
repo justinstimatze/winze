@@ -1000,3 +1000,58 @@ The actual fix for the 10 confirmed aside-extraction losses is a genuine
 retrieval-time or ranking-time change (surface an aside-shaped fact higher
 when a session's main-topic facts are already well covered), not a window-
 size knob in either direction. Not attempted tonight.
+
+### The ranking-time fix, checked and closed before it cost a full run — 2026-09-08
+
+Named above as the next real lever. Before writing it, checked which multi-
+session losses the k=120 cutoff could possibly explain: across the full 500,
+only 18 questions ever have `facts > retrieved` at all (k genuinely binds),
+7 of those wrong. Of the three multi-session ones in that 7, two turned out
+to be answerer failures with nothing to do with ranking — `46a3abf7` (tanks)
+and `60159905` (dinner parties) both have their needed fact sitting inside
+the retrieved set with room to spare (57/57 and 94/94, no truncation at
+all); the model just didn't use it. `bb7c3b45` (Jimmy Choo) is a plain
+extraction gap — no fact anywhere in the 32 extracted mentions a retail
+price. Confirmed directly against the warm v11 extraction cache with a
+throwaway test, not by re-reading the prose account of these three from
+earlier tonight, which had assumed retrieval was where they broke.
+
+That left exactly one confirmed case where a real fact was extracted and cut
+by rank: `bf659f65` ("how many albums or EPs have I purchased"), 143 facts
+extracted, the one fact describing an actual EP purchase
+(`whiskey_wanderers_ep_midnight_sky`) ranked #128, eight facts past the
+k=120 cutoff. Wrote a same-session marginal-relevance rerank — discount a
+candidate by how much of its own vocabulary is already covered by facts
+already picked from its own session, so a ninth near-duplicate stops
+crowding out something that says something new — scoped to fire only when
+`facts > k`, a strict no-op on the 482/500 questions that never truncate.
+
+Checked it against the one case it was built for before running anything:
+it can't fix this one. The EP-purchase fact scores exactly **0** against the
+question — none of its terms (`whiskey`, `wanderers`, `ep`, `midnight`,
+`sky`, `bought`, `festival`, `merchandise`, `booth`) overlap the question's
+(`how`, `many`, `music`, `albums`, `eps`, `purchased`, `downloaded`); `ep`
+vs `eps` is an exact-token near-miss with zero credit. The 80 facts that
+outrank it mostly score exactly 1, for one reason: this session's lens
+output happened to name most of its attributes with a `music_` prefix
+(`music_review_tip_8`, `music_recommendation_3`, ...), so "music" alone
+buys a point regardless of relevance — 77 of 143 facts share it. A
+same-session redundancy discount can only ever roughly halve a positive
+score; it cannot manufacture credit for a fact that shares zero literal
+tokens with the question. No discount curve rescues a true zero sitting
+below 80 unrelated ones scored higher by an accident of naming.
+
+The real fix for this exact case is a scoring-function change — normalize
+plurals so `eps`/`ep` and `albums`/`album` match, or move off exact-token
+overlap toward something that credits meaning over spelling — not a
+redistribution of a fixed ranking. That change touches `terms()`, which
+every question of every type scores through, not just the 18 that ever
+truncate — a strictly larger blast radius than either of the two changes
+already reverted tonight, for a confirmed population of one question out of
+500. Reverted the rerank (`store.go` diffs clean to the pre-session byte),
+deleted the throwaway diagnostic test. Not worth a full-500 run to confirm
+what the cached-extraction check already showed for free: this lever's
+real, addressable population is smaller than the noise floor, and the fix
+that would actually reach it is broader than the two blanket changes this
+session already measured as net losses. Multi-session and preference stand
+exactly where the night started: 114/133 and 28/30.
