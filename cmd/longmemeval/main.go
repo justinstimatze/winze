@@ -31,6 +31,7 @@ type runner struct {
 	cacheDir string
 	workDir  string
 	stats    *usageStats
+	rerank   bool // use rerankFacts (LLM relevance) instead of rankFacts (term overlap)
 }
 
 func nowNS() int64 { return time.Now().UnixNano() }
@@ -52,6 +53,7 @@ func main() {
 		probe      = flag.Bool("probe", false, "report whether gold answer turns survive renderSession truncation; no API calls")
 		batch      = flag.Bool("batch", false, "extract through the Message Batches API at 50% off before running. Asynchronous — the batch may take minutes to hours — so this is for large unattended runs, not the interactive loop. Extraction is 97% of a run's spend and every call is independent, so the discount is a straight halving with no effect on the model, the prompts or the sampling. Fills the same content-keyed cache the live path uses, then the run proceeds warm.")
 		raw        = flag.Bool("raw", false, "CONTROL: skip the lens, the typed store, defn and ranking entirely — hand the answerer the chat history verbatim. Same answerer, same judge, same temperature. If this matches the pipeline's score, the pipeline is not earning its keep on this dataset, which is the one comparison every number here has been missing.")
+		rerank     = flag.Bool("rerank", false, "retrieve by LLM relevance judgment (one Haiku call per question, cmd/query's already-shipped winze_recall reranker mechanism ported to facts) instead of rankFacts's literal term overlap. Reuses the already-extracted, already-cached fact set — costs a small rerank call on top of an otherwise-warm run, zero re-extraction, so it is the cheap way to test whether retrieval quality (not the extraction prompt) is the actual ceiling. Fails open to term overlap on any rerank error.")
 		conc       = flag.Int("concurrency", 8, "questions run at once. The loop is ~99% blocked on the API — 12.5s extract + 2.5s answer + 1.1s judge against 0.9s of winze machinery per question — so this is close to a linear speedup until the API rate limit or the per-question `go build` becomes the constraint. 1 restores the old serial behaviour, which is what a concurrency bug should be diffed against.")
 		only       = flag.String("only", "", "comma-separated question ids (prefixes ok) to run instead of the per-type quota. For testing a hypothesis about specific failures without paying for the whole subset — a lensVersion bump makes every question cold, so a six-question check costs six extractions rather than sixty.")
 		baseline   = flag.String("baseline", "", "write per-question outcomes (qid, gold, answer, verdict) as JSONL to this path, for diffing the next configuration against this one question by question. Omits timings on purpose — they churn every row on every run.")
@@ -144,6 +146,7 @@ func main() {
 		cacheDir: cache,
 		workDir:  *workDir,
 		stats:    &usageStats{perModel: map[string]*modelUsage{}},
+		rerank:   *rerank,
 	}
 
 	if *batch && !*raw {

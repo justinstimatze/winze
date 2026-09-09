@@ -1216,3 +1216,99 @@ answerer's phrasing and the judge's leniency on a genuine abstention
 differ.
 
 Shipped. `lensVersion = "v14"`, commit follows this entry.
+
+### The retrieval-mechanism swap: LLM rerank vs. term overlap, a real trade, not a win — 2026-09-09
+
+Asked directly: every fix this session had been a hand-tuned prompt rule or
+a `k` knob, all epicycles on `rankFacts`, which scores retrieval by literal
+token overlap and nothing else. `winze_recall` (the production path) already
+ships an LLM listwise reranker measured elsewhere in this codebase at
+LATER-PROBE hit@5 14% -> 51%. This benchmark harness has never used it.
+
+Ported the mechanism: `cmd/longmemeval/rerank.go`, a `-rerank` flag (off by
+default), `rerankFacts`/`callFactRerank` mirroring `cmd/query`'s
+`rerankTop`/`callRerank` shape — one Haiku call per question, given up to
+`rerankCap`=200 candidate facts, asked to return them ordered by relevance;
+fails open to `rankFacts` on any error. Reuses the already-extracted,
+already-cached fact set, so on a warm extraction cache (no `lensVersion`
+change) this costs one small Haiku call per question and zero
+re-extraction — extraction is 97% of a run's spend per `main.go`'s own
+`-batch` flag comment, so this is the cheapest way to test whether retrieval
+quality, not the extraction prompt, is the actual ceiling.
+
+Checked it first against `bf659f65` — the one case the earlier MMR-rerank
+attempt (see "The ranking-time fix" section above) proved could *never*
+work, because the target fact scored an exact 0 against the question and no
+same-session redundancy discount can lift a true zero. The LLM reranker
+surfaced it prominently in the answer on the first try. The question still
+scored wrong (gold is 3 purchases, the answer found 2 — a separate,
+unrelated extraction gap), but the ranking mechanism itself worked exactly
+where the literal-overlap approach was mathematically incapable of it.
+
+First full-500 attempt died at question 389/500: the Anthropic workspace ran
+out of credit balance mid-run (`400 Bad Request... credit balance is too
+low`), not a code or rate-limit problem. Re-ran clean after the user topped
+up.
+
+**Full 500: 451/500 — an exact tie with v14's 451/500.** Per-type against
+v14: knowledge-update 73/78 (flat), single-session-assistant 52/56 (flat),
+single-session-preference 25/30 (flat), single-session-user 69->67 (-2),
+multi-session 114->112 (-2), temporal-reasoning 118->122 (+4).
+
+The aggregate tie is two real effects canceling, confirmed by reading actual
+answer content on both sides rather than trusting counts:
+
+- **temporal-reasoning: 0 down, 4 up.** A clean, one-directional gain with
+  no collateral inside the type.
+- **The two single-session-user "losses" are not a rerank effect.** Both
+  have `facts == retrieved` in both versions (nothing was ever cut, so
+  reordering had nothing to act on) and near-identical answer text between
+  versions (`58ef2f1c`: "Love is in the Air... in February" both times,
+  missing the same "14th"). Pure answerer/judge sampling noise, the same
+  noise floor `v13`'s experiment already characterized.
+- **multi-session's 9 down / 7 up hides a real, bidirectional mechanism
+  effect that has nothing to do with truncation.** Only 2 of those 16 flips
+  (`88432d0a` down, `c4a1ceb8` up) involve a fact count that actually
+  exceeds k=120. The rest changed with `facts == retrieved` unchanged on
+  both sides — meaning the swap altered PRESENTATION ORDER among facts that
+  all reach the answerer either way, and that alone was enough to flip real
+  answers, not noise:
+  - Fixed (up): `60159905` now finds all 3 dinner parties instead of
+    missing the BBQ-at-Mike's aside that was already inside the retrieved
+    set the whole time; `6c49646a` replaced a fabricated "fourth road trip"
+    with the real Yellowstone leg and got the correct 3,000-mile total;
+    `c4a1ceb8` correctly restricted the citrus count to actual recipes
+    instead of suggestions. All three are named failures from the reverted
+    `v12` aside-extraction attempt — reached here through retrieval-order,
+    with none of `v12`'s extraction-volume dilution risk.
+  - Broken (down): `92a0aa75` replaced a correct subtraction (3y9m total
+    minus 2y4m as Coordinator = the gold 1y5m) with a bare, wrong duration;
+    `aae3761f` replaced a correct 3-destination sum (4+5+6=15 hours,
+    matching gold exactly) with a confused answer naming different
+    destinations entirely. Literal term overlap turns out to be more
+    reliable than LLM relevance judgment specifically on precise multi-fact
+    arithmetic, where reordering can bury or conflate the exact few facts a
+    calculation depends on.
+
+**Not shipped — `-rerank` stays off by default, kept as tooling like
+`-k-multi`.** This isn't a win by this session's bar (a clear gain with no
+new collateral); it's a real, validated axis of the solution space: LLM
+reranking reaches a failure class term overlap structurally cannot (facts
+buried by presentation order, independent of any cutoff), at the cost of a
+new failure class term overlap didn't have (precise arithmetic confused by
+reordering). A hybrid — term overlap as the primary score, LLM rerank only
+breaking ties among close scores or only applied when a session's fact
+count actually exceeds k — is the natural next move to capture the aside
+fix without the arithmetic cost, and is real, uncommitted scope: not
+attempted tonight.
+
+Caching side-note from the same session: audited all five system prompts in
+this file against Anthropic's cacheable-prefix floors (Haiku ~2048 tok,
+Sonnet ~1024 tok) — `lensSystem` 1499, `lensRetrySystem` 894, `answerSystem`
+822, `judgeSystem` 234, `factRerankSystem` 87 tokens. Every one is under its
+floor; `cache_control` is present but a no-op on all five, confirmed by
+`cached=0` on every run tonight. Not worth padding artificially. The real
+cost lever already exists and went unused all night: `-batch`, a flat 50%
+off on extraction specifically (97% of a run's spend) — didn't matter for
+tonight's rerank runs (warm cache, no re-extraction) but should be the
+default for the next `lensVersion` bump's cold run.
