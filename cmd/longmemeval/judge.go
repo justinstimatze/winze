@@ -23,9 +23,23 @@ import (
 // a gold answer offering more than one acceptable value ("Pilsner or Lager")
 // should accept a model naming either one; a real failure (`16c90bf4`) named
 // "Pilsner" alone and was marked incorrect.
+//
+// 2026-09-09: the existing "even if phrased differently or with extra
+// detail" line has two live violations on the v14 full-500 run despite
+// saying the right thing already — `gpt4_93f6379c` (names "Page Turners"
+// with correct reasoning, matching gold exactly, marked INCORRECT) and
+// `89941a94` (matches gold's "road bike" plus one extra correct detail,
+// marked INCORRECT). The rubric text wasn't wrong, it just wasn't
+// specific enough to reliably win against a judge model's own instinct to
+// flag anything not explicitly confirmed. Rewrote the line to name what to
+// check (the conclusion) rather than what to tolerate (extra detail) —
+// telling a grader what the pass condition IS tends to land more reliably
+// than telling it what NOT to fail on, the same direction lensSystem's own
+// history moved in when a prohibition alone kept losing to the model's
+// own priors.
 const judgeSystem = `You are grading whether a model's answer to a question about a user is correct, given the gold answer.
 
-The model answer is CORRECT if it conveys the same information as the gold answer, even if phrased differently or with extra detail.
+The model answer is CORRECT if its actual conclusion — the specific fact, name, or value the question asks for — matches the gold answer. Judge that conclusion, not the completeness of everything stated around it: an additional date, estimate, or supporting detail beyond what the gold answer states does NOT make the answer incorrect, as long as it doesn't contradict the gold answer's own conclusion.
 
 If the gold answer itself states that the information is not available or not enough was provided, a model answer that reaches the same conclusion — declines to answer, says it doesn't know, or says the information isn't there — is CORRECT. Do not penalize an answer for declining when declining is what the gold answer does too.
 

@@ -78,17 +78,49 @@ import (
 // told the truth in this file, and twice in one night a plausible-sounding
 // fix looked good narrow and lost on the full set for reasons that only
 // showed up once every other question got a chance to be affected too.
+//
+// 2026-09-09: read all 49 remaining full-500 failures directly against real
+// question/gold/answer content (v14 baseline, 451/500). One mechanism
+// dominates by frequency, dwarfing everything else found: undercounting on
+// "how many X" questions. At least 8 clean instances across multi-session
+// and knowledge-update -- `gpt4_ab202e7f` found 3 kitchen items against a
+// gold of 5, `gpt4_7fce9456` 3 properties against 4, `gpt4_15e38248` 3
+// furniture pieces against 4, `a08a253f` 3 fitness days against 4,
+// `0a995998` 2 clothing items against 3, `45dc21b6` 2 recipes against 3,
+// `e3038f8c` summed to 100 against a gold of 99 by including an item whose
+// own count was never stated, `681a1674` overcounted 4 Marvel rewatches
+// against a gold of 2. Most of these have facts == retrieved -- nothing was
+// cut by k=120 -- so this is not the extraction-dilution story chased
+// elsewhere in this file; the answerer has the full retrieved list and
+// still doesn't work through all of it. New rule below.
+//
+// Separately, three EXISTING rules each have current, live violations
+// despite already saying the right thing in prose: the premise-mismatch
+// rule's "stop there" is violated by `2133c1b5_abs` (names Harajuku-not-
+// Shinjuku correctly, then answers the Shinjuku duration anyway) and by
+// `a96c20ee_abs` (the same Harvard hallucination the 2026-09-08 changelog
+// entry above already flagged as unresolved -- still unresolved). The
+// most-recent-value rule is violated by `852ce960` (picked a stale $350k
+// pre-approval over an explicitly updated $400k). Rewrote both as an
+// explicit two-step shape (name every candidate, THEN choose) rather than a
+// single sentence of prose, on the theory that already proved out for
+// enumerations in `lensSystem`'s own history: v4 didn't land "never
+// collapse an enumeration" by restating it more emphatically, it landed by
+// turning the instruction into a literal output-shape requirement. Whether
+// prose-to-shape carries over from extraction to answering is the open
+// question this change is testing, not an assumption.
 const answerSystem = `You answer a question about a user using ONLY the retrieved memory facts provided. Each fact carries the date it was stated.
 
 Rules:
 - Answer concisely and directly — a phrase or short sentence, not an essay.
 - For temporal questions, reason over the fact dates (which came first, most recent, etc.). Before computing an elapsed time, an interval, or which of two things came first, name the two dates or quantities involved and the operation that relates them. If a fact already states the relationship directly ("a week before Black Friday", "three months in advance of the trip"), use that relationship as given rather than re-deriving calendar dates independently — recomputing from an assumed date is how a stated relationship turns into a wrong number. Watch for which quantity the question actually asks for: "how many months in advance" and "how many months ago" are different questions even when both facts are true.
-- If a fact was updated, the most recent stated value wins.
+- If more than one fact could answer the same question with a different value, first name every candidate value together with the date it was stated, then answer with the one carrying the latest date — never the one that happens to appear first, last, or largest in the retrieved list. A specific, dated update always overrides an earlier general or approximate mention, even when the general one reads as more prominent or is repeated more often.
 - When the question asks for a "best"/"personal best"/"record" over measurements, reason about which direction is better before choosing: for race or completion times, LOWER is faster and therefore better; for scores or distances, higher is usually better. Pick the actual best by that direction, not the most recently mentioned value. Note that a value the user says they are "hoping to beat" is an EXISTING best, not a target they lack.
-- Some questions ask you to ACT on what you remember rather than report it — "suggest a hotel for my trip", "recommend events this weekend", "what should I cook". There the retrieved facts are the user's preferences and constraints, and a good answer is a suggestion shaped by them. The specific item was never stored and never could be, so its absence is not a reason to refuse. Draw on every retrieved preference relevant to the situation, not just the first or most specific one, and explicitly avoid anything the user has stated they don't want. Make the recommendation and let the remembered preferences do the choosing.
+- When asked to count or list every instance of something ("how many X", "list all the Y I did"), scan every single retrieved fact for a match before answering — do not stop once you have found a plausible few. Missing an instance that sits later in the retrieved list, not near the ones you found first, is the most common way this kind of question goes wrong. Only count something that clearly and confidently satisfies what was asked; if one candidate's own count or category is itself uncertain or unstated, name that uncertainty rather than silently including or excluding it.
+- Some questions ask you to ACT on what you remember rather than report it — "suggest a hotel for my trip", "recommend events this weekend", "what should I cook". There the retrieved facts are the user's preferences and constraints, and a good answer is a suggestion shaped by them. The specific item was never stored and never could be, so its absence is not a reason to refuse. Draw on every retrieved preference relevant to the situation, not just the first or most specific one, and explicitly avoid anything the user has stated they don't want. Lead the answer with what actually builds on the user's own specific stated facts — a generic tip that would apply to anyone is not what these questions are asking for, and belongs after the personalized content, if at all, not before it.
 - If the question asks for something the user or you previously stated, and the facts do not contain it, say exactly: I don't know. Do not use that answer to sidestep a request for a suggestion.
 - A missing piece is not automatically a blocker. If the question asks for a total or comparison across multiple things and one of them was never mentioned, that thing contributes zero or "none found" rather than making the whole answer unknown — answer with what the facts actually support instead of refusing outright.
-- If the question's premise doesn't match anything in the retrieved facts — a wrong employer, wrong activity, wrong place, wrong person, an event that never happened — say so and answer that the premise isn't supported, never as if the premise were true. Stop there: do not go on to answer a hypothetical or related version of the mismatched question, even if the facts could technically support that different question. A specific-sounding answer built on an ungrounded premise is exactly the invention the next rule forbids, even when it sounds plausible.
+- If the question's premise doesn't match anything in the retrieved facts — a wrong employer, wrong activity, wrong place, wrong person, an event that never happened — your answer is the mismatch statement and NOTHING ELSE. The sentence naming the mismatch is the entire response: no second sentence, no answering a hypothetical or nearby version of the question, no supplying the correct information as a courtesy. Any sentence after the one naming the mismatch is exactly the invention the next rule forbids, however accurate or plausible it sounds.
 - Do not invent facts beyond what is retrieved. Applying a stated preference to a new situation is not inventing a fact; asserting a preference nobody stated is.`
 
 // answer asks the reasoner to answer the question from the retrieved facts.

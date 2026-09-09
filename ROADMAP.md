@@ -1312,3 +1312,99 @@ cost lever already exists and went unused all night: `-batch`, a flat 50%
 off on extraction specifically (97% of a run's spend) — didn't matter for
 tonight's rerank runs (warm cache, no re-extraction) but should be the
 default for the next `lensVersion` bump's cold run.
+
+### Reading every remaining failure directly: the biggest single gain of the night — 2026-09-09
+
+Pushed to actually mine tonight's own trajectory instead of proposing another
+benchmark run: read all 45 of the 49 remaining v14 failures directly against
+real question/gold/answer content (all of temporal-reasoning's 15, 14 of
+multi-session's 19 not already read via the rerank diff, all 5 preference,
+all 5 knowledge-update, the 1 single-session-user). Distinct, well-evidenced
+mechanisms, not one diffuse gap:
+
+- **Undercounting/miscounting on "how many X" questions — the strongest
+  signal of the night, 8+ instances**: `gpt4_ab202e7f` found 3 kitchen items
+  against a gold of 5, `gpt4_7fce9456` 3 properties against 4,
+  `gpt4_15e38248` 3 furniture pieces against 4, `a08a253f` 3 fitness days
+  against 4, `0a995998` 2 clothing items against 3, `45dc21b6` 2 recipes
+  against 3, `e3038f8c` summed to 100 against a gold of 99 by including an
+  item whose own count was never stated, `681a1674` overcounted 4 Marvel
+  rewatches against a gold of 2. Most have `facts == retrieved` — nothing
+  cut by k=120 — so this isn't the extraction-dilution story chased
+  elsewhere; the answerer has the full list and doesn't work through it.
+- **Existing rules with live, current violations, not just historical
+  ones**: the premise-mismatch "stop there" rule is violated by
+  `2133c1b5_abs` (names Harajuku-not-Shinjuku correctly, then answers the
+  Shinjuku duration anyway) and by `a96c20ee_abs` (the same Harvard
+  hallucination this file already flagged unresolved back in the
+  2026-09-08 entry above — still unresolved). The most-recent-value rule is
+  violated by `852ce960` (picked a stale $350k pre-approval over an
+  explicitly updated $400k). The judge's "extra detail is fine" line is
+  violated by `gpt4_93f6379c` and `89941a94`, both matching gold's actual
+  conclusion exactly plus additional correct detail, both marked INCORRECT.
+- **Preference answers lead with generic advice instead of the personalized
+  fact**: `09d032c9` opens with five generic battery tips before mentioning
+  the user's own power bank; `57f827a0` opens "I don't have enough context"
+  and only recovers with genuinely good, specific content afterward.
+- Two single-instance temporal gaps read directly: `gpt4_cd90e484` has both
+  numbers needed (binoculars bought "three weeks ago," walk "a week ago")
+  and refuses instead of subtracting (3-1=2, matching gold); `gpt4_d31cdae3`
+  treats a trip only ever mentioned as planned/future as unlocatable in
+  time instead of inferring it must come after an already-happened trip.
+
+Four changes, in one pass since they're all `answerSystem`/`judgeSystem`
+scope (no extraction, no lensVersion bump, so no re-extraction cost and no
+k=120-dilution risk of the kind that burned every lens-side attempt
+tonight): a counting-discipline rule (scan every retrieved fact before
+answering a count, and flag rather than silently include an uncertain
+candidate); rewrote "most recent value wins" into a name-candidates-then-
+choose shape; rewrote the premise-mismatch rule so the mismatch sentence is
+declared the ENTIRE response, not just "stop there"; rewrote the judge's
+extra-detail line to name the pass condition (does the actual conclusion
+match) rather than what to tolerate. The shape-over-prose bet is deliberate
+— mirrors `lensSystem`'s own history, where "never collapse an enumeration"
+didn't land until v4 turned it into a literal output-shape requirement
+rather than a stronger sentence saying the same thing.
+
+Narrow check on 13 named target qids: only 3 flipped clean
+(`gpt4_15e38248` counting, `2133c1b5_abs` premise-mismatch,
+`89941a94` judge extra-detail) — most of the counting targets turned out to
+be genuine extraction gaps (the missing item was never captured as a fact
+at all), not answering-discipline gaps, a real correction to the
+hypothesis caught before spending on anything broader. `852ce960` and
+`a96c20ee_abs` didn't move — consistent with this file's own note that some
+instances of the hallucination pattern aren't closable by prompt alone.
+
+**Full 500: 460/500, up 9 from v14's 451 — the largest single gain of the
+night.** Per-type: knowledge-update 73->76, multi-session 114->113,
+single-session-assistant 52->53, preference 25->28, single-session-user
+69->67, temporal-reasoning 118->123. Diffed all 25 flips (8 down, 17 up)
+before trusting the aggregate. The 17 gains map directly onto the
+mechanisms above: `2133c1b5_abs`, `89941a94`, `gpt4_93f6379c`,
+`gpt4_15e38248` confirm the four rule rewrites; `09d032c9`, `a89d7624`,
+`d6233ab6` confirm the preference lead-with-personalization fix;
+`gpt4_cd90e484` and `gpt4_d31cdae3` are the two temporal gaps read directly
+above, fixed on the first attempt. Of the 8 regressions, `58ef2f1c` and
+`66f24dbb` have byte-identical answer text to v14 and flipped purely on
+judge inconsistency — confirmed noise, not a rule effect. The other six are
+real, honestly-costed trade-offs: `51c32626` got newly over-cautious and
+refused a question it previously answered correctly; `9ee3ecd6` dropped the
+final computed number (300-200=100) after restating only the intermediate
+total; `gpt4_2f8be40d` shows the counting rule's real cost directly — v14
+correctly filtered out uncertain-dated weddings to land on 3 (matching
+gold), the new "scan everything" instruction made the model include all 5
+mentioned regardless of date confidence, overcounting past gold; and
+`gpt4_f420262c`/`28dc39ac` remain genuine k=120 truncation cases the answer
+prompt can't reach either way.
+
+No category collapsed — worst per-type delta is -2, nothing like v10's -11
+or v13's -6. Shipped. `answerSystem` and `judgeSystem` both updated in
+place (no version bump — neither is part of the extraction cache), commit
+follows this entry. The counting rule's overcounting trade-off on
+`gpt4_2f8be40d` is a known, accepted cost, not silently papered over: it
+increases recall on the undercounting cases (the dominant failure shape)
+at some real cost to precision on cases needing selective filtering. Not
+tuned further tonight given the net is strongly positive; a sharper
+selection criterion (something closer to "count only if the confidence and
+date match the question's own scope" rather than "scan everything") is the
+natural next refinement, not attempted.
