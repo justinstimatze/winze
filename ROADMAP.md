@@ -818,3 +818,78 @@ is really coming from the typed/provenance architecture or from
 something a plain baseline would also get right — is the actual, ongoing
 work this cautionary tale asks for. Not a one-time note that MemPalace
 was overstated.
+
+### Full failure-review pass on the oracle set, and the answerer fix it produced — 2026-09-08
+
+New standing practice, decided this session: analyze every failure on a
+full-500 run, not a sample — "it's just not that many," and a sampled
+read already missed a real mechanism earlier tonight. A fork read all 53
+losses on `v11-k120-full500.jsonl` and classified each one: 24 extraction
+misses, 4 truncation, 19 answerer reasoning errors on facts that were
+already correctly retrieved, 3 cross-session duplicate/conflict, 3
+judge-or-gold artifacts. The 19 were the standout — no re-extraction
+needed, four repeatable, independently-nameable shapes:
+
+1. **Premise-mismatch answered as if true** (4 failures) — `a96c20ee_abs`
+   answered "Harvard University" for a poster presentation no fact
+   mentions. A direct violation of the existing "do not invent" rule,
+   just never named for this specific shape.
+2. **Refusal when a missing piece is legitimately zero, not unknown**
+   (2) — `7024f17c` refused to total jogging+yoga hours because yoga was
+   never logged that week, when "never logged" means zero contribution.
+3. **Date-arithmetic errors** (6) — `982b5123` conflated "booked three
+   months in advance" with "how many months ago," a different quantity
+   built from the same two dates.
+4. **Preference under-application** (4) — `54026fce` drew on one stored
+   preference and ignored the rest of what was retrieved.
+
+Checked and dropped as a candidate for this batch: whether the answerer
+uses a fact's verbatim `Quote` over its paraphrased `Value` when a
+question asks for exact wording. `Quote` is already in the prompt
+(`answer()`'s `%q` formatting) but `answerSystem` never told the model to
+prefer it — a real gap, just not the one explaining any of these 53. Every
+remaining assistant-recall failure was upstream of that choice (the fact
+was never extracted at all, in either field).
+
+**Fixed `answerSystem` with four new rules, one per shape above.** Tested
+narrow first: 16 named failures, `--only`, no re-extraction. 7 of 16
+flipped, all 3 pure date-arithmetic cases among them. Two things surfaced
+in that same narrow run, not papered over: `gpt4_93159ced_abs` correctly
+named its premise mismatch ("your employer is NovaTech, not Google") and
+then answered a hypothetical anyway — the rule said to name the mismatch,
+never said to stop there. Fixed with one more line. `a96c20ee_abs`
+(Harvard) still hallucinates despite the rule naming this exact shape —
+left open; not every instance of this pattern is closable by prompt
+instruction alone.
+
+**Full-500 re-run, both sides** (`answerSystem` is shared by `answer()`
+and `answerRaw()`, so the raw control needed re-scoring too, same as the
+judge fix earlier): **winze 450/500 (90%), raw control 455/500 (91%).**
+Both sides gained exactly 3 questions — the fix improved answerer
+reasoning generically, which helps a raw-transcript answerer exactly as
+much as a typed-fact one. The absolute numbers are real; **the relative
+gap did not move, still −5.** Per-type, winze vs. control: knowledge-
+update 74/78 vs 69/78 (+5), single-user 66/70 vs 67/70 (−1), preference
+28/30 vs 23/30 (+5 — the unexplained wobble logged two sections up is
+resolved, in winze's favor, plausibly by the new "apply every preference
+fact" rule, though that's inference not a checked mechanism), temporal
+118/133 vs 121/133 (−3), assistant-recall 50/56 vs 55/56 (−5, unchanged —
+the structural ceiling), multi-session 114/133 vs 120/133 (−6, worse
+than before — the raw control gained more from this fix here than winze
+did, not chased down tonight).
+
+**Two standing practices from tonight, both the user's own call:** run
+the full 500 more often, not just when something feels off — a targeted
+fix silently broke temporal for however many `lensVersion` bumps it
+actually rode, unnoticed. And always read every failure on a full run,
+not a sample — the sample-based reads earlier tonight missed the
+Quote-vs-Value question entirely and would have missed the premise-
+mismatch pattern's actual frequency.
+
+**Filed separately:** three concrete defn usability papercuts hit while
+doing all of the above (`code`'s cache-hit response ignoring `full:true`
+when the cached response already was full; `sync` rejecting a directory
+`overview` itself accepts; `search` silently treating a regex-shaped
+pattern as a dead literal with no "not regex" hint) — dropped as
+`FEEDBACK-winze-session-2026-09-08.md` in defn's own project directory,
+per the standing cross-project feedback convention.
