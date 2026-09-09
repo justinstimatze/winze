@@ -1462,3 +1462,71 @@ config; `58ef2f1c`/`66f24dbb` flipped on byte-identical answer text in the
 460 diff). Closing this as noise, not a live regression to chase; the
 "plausibly the same rule-2 narrowing" guess above was never checked until
 now, and checking it doesn't hold up.
+
+### The first real full-haystack numbers, and rerankCap's blind spot found and (attempted-fix reverted) — 2026-09-09
+
+Winze has never once run the actual `longmemeval_s` haystack (distractors
+included) in this project's history — every number in this file above is
+oracle-set. Built a 30-question stratified sample (5 per type) against
+`cmd/longmemeval/data/longmemeval_s_cleaned.json` instead of the full 500:
+`-dry-run` and `-probe` first (free — confirmed session counts, 44-57/user,
+and zero gold-evidence truncation before spending anything), then a real
+run. Extraction cache is global and content-addressed
+(`os.UserCacheDir()/winze-longmemeval/extractions`, keyed by session
+content, per `main.go`'s own comment that oracle and full-haystack share
+evidence sessions byte-for-byte) — so this and every follow-up below reused
+warm extraction, paying only for retrieval+answer+judge each time.
+
+**Term overlap, default retrieval: 23/30 (76.7%).** Milder than the
+original paper's ~30%-relative-drop figure would project from tonight's 92%
+oracle number (~64%) — not a paired comparison (different questions), just
+a first real read. Per type: single-session-user 5/5, single-session-
+assistant 5/5, temporal-reasoning 5/5, knowledge-update 4/5, multi-session
+3/5, **single-session-preference 1/5** — preference is the standout
+casualty. The number that explains the rest: `retrieved` hit exactly 120
+(=k) on **all 30 questions, no exceptions** — extracted fact counts run
+623-1120/question, so 85-93% of everything extracted gets cut every single
+time. Nothing like this exists on the oracle set, where a question rarely
+fills the window at all; the k=120 dilution mechanism chased narrowly
+elsewhere in this file is universal here instead of occasional.
+
+**Rerank, same sample, same warm cache: 23/30, identical per-type
+breakdown, 0 of 30 verdicts different from term overlap.** Not a near-tie —
+literally the same correctness on every question. Root cause, found by
+reading `rerankFacts` rather than assuming the tie meant "no effect":
+`rerankCap = 200` (`cmd/longmemeval/rerank.go`) prefilters by term overlap
+down to 200 candidates before the LLM ever scores anything, whenever a
+session has more than 200 facts. On the oracle set that never fires
+(45-90 facts/question). On this sample it fires on all 30 (623-1120 facts
+each) — term overlap was making the real candidate-inclusion decision every
+time, and the LLM was only ever reordering within term overlap's own top-200
+pick. The rerank mechanism never got a chance to rescue anything outside
+that window; the earlier oracle-set rerank tie (451/500, see above) never
+exposed this because the cap was never binding there.
+
+**Raised `rerankCap` to 1500, re-ran the same sample: 17/30 (56.7%), net -6,
+knowledge-update collapsing 4/5 -> 0/5. Reverted.** Checked before blaming
+the wrong thing: `callFactRerank`'s own `MaxTokens` guard returns an
+explicit error (fail-open to term overlap) on a truncated response, so this
+isn't silent corruption, and the pre-existing truncated-extraction cohort
+(8 of 30 questions, present identically and unaffected by this change
+across all three runs) only accounts for 2 of the 6 net regressions. The
+rest is Haiku's own ranking quality degrading as the candidate list grows
+from 200 to up to 1500 items in a single call — a bigger context window
+fitting the prompt is not the same as the model reasoning well over it.
+`rerankCap` is back at 200, with both findings in its doc comment: it's a
+real, confirmed ceiling on the full haystack, but raising it blindly is a
+worse ceiling, not a fix. A smarter fix (chunked reranking, a mid-size cap
+tried directly rather than jumping 200->1500, or restricting rerank to a
+pre-filtered relevant subset larger than 200 but well short of the full
+extraction) is real, uncommitted scope — not attempted tonight.
+
+**Where this leaves the SOTA question directly:** winze has a real first
+data point on the harder tier now, at real cost (one 30-question sample,
+extraction paid once, three retrieval-mode passes on the warm cache) rather
+than the $138/70M-token full-500 run this file was talking itself into
+earlier tonight. 76.7% on this sample sits behind the field's own
+self-reported range (Zep 71.2% floor, mem0 94.4%, OMEGA 93.2%) but isn't
+embarrassing — and preference's 1/5 plus the universal k=120 saturation are
+now two concrete, evidenced levers for whoever picks this up next, not
+guesses.

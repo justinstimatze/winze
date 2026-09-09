@@ -26,6 +26,25 @@ Respond with ONLY a JSON array of integers, no other text.`
 // session's extraction produced. Above the cap, term overlap prefilters down
 // to this many first -- the rerank step never sees fewer genuinely-relevant
 // candidates than plain rankFacts would have kept at k=120.
+//
+// Sized for the oracle set (45-90 facts/question, never near this cap) and
+// never re-checked against the full longmemeval_s haystack until 2026-09-09:
+// a 30-question stratified full-haystack sample had 623-1120 facts/question,
+// so the 200 cap bound EVERY question -- term overlap made the real
+// candidate-inclusion decision before rerank ever ran, and the sample tied
+// term overlap exactly, 0 of 30 verdicts differing.
+//
+// Raised to 1500 same day to test that directly and reverted: on the same
+// warm-cache sample, 30/30 -> 17/30 (76.7% -> 56.7%), knowledge-update alone
+// going 4/5 -> 0/5. Not a truncation artifact -- callFactRerank's own
+// MaxTokens guard returns an explicit error (fail-open to term overlap) on
+// a truncated response, and the pre-existing truncated-extraction cohort (8
+// of 30 questions, present identically in every run) only accounts for 2 of
+// the 6 net regressions. The rest is Haiku's own ranking quality degrading
+// as the candidate list grows from 200 to up to 1500 items in one call --
+// more candidates is not free just because the context window fits them.
+// Left at 200: a real ceiling on this dataset (see ROADMAP.md), but a worse
+// ceiling is not a fix.
 const rerankCap = 200
 
 // parseFactRerankResponse pulls the JSON id list out of a model response,
