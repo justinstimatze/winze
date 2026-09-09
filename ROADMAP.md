@@ -1653,3 +1653,19 @@ closed for the retrieval axis; a real fix here would be lens-side (teaching
 extraction to tag an item by what it structurally is, not by whichever noun
 a sentence happened to lead with), out of scope for tonight's retrieval
 work.
+
+### `06878be2`'s noise flag, resolved — 2026-09-09
+
+The type-scoping section above left one thing open: `06878be2` ran correct
+at `rerankCapWide=500` even though the same cap value had broken it under
+the earlier blanket-500 test, and the gap could have been the scoping
+itself or ordinary Anthropic API non-determinism on a borderline case.
+Reran it three more times, independently, same warm cache, same build:
+3/3 correct. The three answers paraphrase differently (different accessory
+lists, different ordering) but every one stays inside "Sony-compatible
+gear" and never recommends a competing brand, which is what the judge is
+actually scoring. Four consecutive correct runs at this cap settles it —
+not a fragile pass, and nothing left to chase on this axis tonight. This
+closes out the type-scoped `rerankCap` work started above: one clean net
+win (76.7%→80.0%), one case resolved as a lens-naming gap no cap can touch,
+and now this one confirmed stable rather than lucky.
