@@ -13,10 +13,11 @@ package winze
 // fragments below ARE the audit trail.
 
 var tunguskaSource = Provenance{
-	Origin:     "Wikipedia (zim 2025-12) / Tunguska_event",
-	IngestedAt: "2026-04-11",
-	IngestedBy: "winze",
-	Quote:      "The Tunguska event was a large explosion of between 3 and 50 megatons TNT equivalent that occurred near the Podkamennaya Tunguska River in Yeniseysk Governorate (now Krasnoyarsk Krai), Russia, on the morning of 30 June 1908.",
+	Origin:       "Wikipedia (zim 2025-12) / Tunguska_event",
+	IngestedAt:   "2026-04-11",
+	IngestedBy:   "winze",
+	Quote:        "The Tunguska event was a large explosion of between 3 and 50 megatons TNT equivalent that occurred near the Podkamennaya Tunguska River in Yeniseysk Governorate (now Krasnoyarsk Krai), Russia, on the morning of 30 June 1908.",
+	EvidenceHash: "32622e7373bc4c0704c5398eaed5f5b61ddbbe843662de0fc6857adab69bc638",
 }
 
 // -----------------------------------------------------------------------------
