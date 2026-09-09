@@ -705,9 +705,28 @@ never the source of the assistant-recall gain and never needed the
 broadening it was paying for. Measured on the same 322 non-trivial
 questions (temporal + multi-session + assistant-recall), v11 vs v10:
 temporal 111→118 (nearly back to 122), assistant-recall held exactly at
-51/56, multi-session 113→111 (inside the noise floor). A full-500 re-run
-under v11 is in progress; the final number replaces the v10 line above
-once it lands.
+51/56, multi-session 113→111 (inside the noise floor).
+
+**The full-500 re-run landed: winze 447/500 (89.4%)** vs. the same raw
+control from before, 452/500 (90.4% — control doesn't touch extraction
+at all, so it didn't need re-running under v11). This supersedes the
+v10 full-500 line above. The gap has now narrowed three times running:
+−12 (pre-fix) → −8 (v10) → **−5 (v11)**. Per-type, winze vs. control:
+knowledge-update 73/78 vs 66/78 (+7), single-user 68/70 vs 67/70 (+1),
+temporal 120/133 vs 122/133 (−2, recovered from v10's −11), multi-session
+111/133 vs 114/133 (−3), assistant-recall 51/56 vs 56/56 (−5, the
+structural ceiling — a raw transcript beats a compressed `Fact` on
+verbatim recall by construction), single-session-preference 24/30 vs
+27/30 (−3).
+
+One new, small, honestly-unexplained wobble: preference went 28/30
+under v10 to 24/30 under v11 — a 4-question drop on a 30-question type,
+which clears this doc's own "only trust a move of three or more" bar but
+wasn't chased down tonight. Rule 2's classic worked example
+("recommended the Hotel Meridien in Lyon") is preference-shaped, so
+narrowing rule 2 back to v9 wording plausibly touches it, but that's an
+inference, not a checked mechanism — logged here for whoever picks this
+up next rather than run to ground in an already-long session.
 
 **The methodology question this raises, and the user's own answer to
 it:** should every `lensVersion` bump require a full-500 regression check
