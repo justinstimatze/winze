@@ -1670,3 +1670,54 @@ not a fragile pass, and nothing left to chase on this axis tonight. This
 closes out the type-scoped `rerankCap` work started above: one clean net
 win (76.7%→80.0%), one case resolved as a lens-naming gap no cap can touch,
 and now this one confirmed stable rather than lucky.
+
+### Tier-2 transcript retrieval shipped; the benchmark extension can't yet exercise it — 2026-09-09
+
+`internal/transcript`, `cmd/query/transcript.go`, and `winze_recall_transcript`
+shipped this session (`24c0778`, `bbe8bee`) per the plan at
+`~/.claude/plans/floofy-giggling-jellyfish.md`: BM25 search over a session's
+own raw Claude Code transcript, keyed by the session-id already sitting in a
+`session-end-capture` entry's `Origin`. Two real bugs caught before shipping,
+neither hypothetical: `flag.Parse()` stops at the first bare positional, so
+a `--transcript <id> <query>` design would have silently dropped `--json`
+(and anything else) appended after it by the MCP call path — fixed by making
+the query its own `--transcript-query` flag instead of a positional; and
+`runCall`'s handler map is separate from `runServe`'s tool registration,
+so registering the new tool in `runServe` alone left `winze-agent call
+winze_recall_transcript` failing with "unknown tool" until added there too.
+
+The benchmark extension (`tier2Recovery` in
+`selfrecall_corpus_test.go`) ran twice against real transcripts and neither
+run gives tier-2 anything to recover:
+
+- n=7 (winze + lexicon, `WINZE_TRANSCRIPT_DIR` pointed at a scratch symlink
+  dir combining both projects' `.jsonl` files): TITLE 100%, LATER PROBE 7/7
+  recalled, hit@5 57%, **0 absolute misses**.
+- n=15 (same plus `cope` and `capitulant`, both public repos, no shared
+  `winze.store` with winze's own): TITLE 93% (1 of 15 outside top-5, still
+  found), LATER PROBE 13/13 recalled, hit@5 54%, **0 absolute misses**
+  again, across a noticeably more heterogeneous topic mix (fusion energy,
+  Buddhism, Picasso, auditory entrainment, alongside winze/lexicon's own
+  material).
+
+Winze's own two-transcript corpus was tried first, as planned, and hard-skips
+(`only 1 sessions carry both a title and an opening ask`, harness needs
+`>=4`) — not a small-sample caveat, a total skip.
+
+`tier2Recovery` only fires on a LATER-PROBE session that scores rank 0 (never
+found by the typed store's search at all) — hit@5 dropping to 54% at n=15
+means more sessions fell *outside the top 5*, not that any went unfound.
+Across both runs, and now 4 different real projects' transcripts, that
+never happened once. Read plainly: at this scale and for this shape of query,
+the typed store's hybrid search practically always surfaces *something* for
+a real held-out question — the measured failure mode is rank degradation,
+not absolute miss. That's a positive finding about the existing mechanism,
+not a negative one about tier-2, but it does mean the benchmark still hasn't
+produced the one number the plan was written to get: does searching the raw
+transcript recover a session that the typed store missed outright. The two
+manual checks from earlier in this session — `ffa99662`'s recovered
+disk-cleanup content, and a live self-query recovering pre-compaction detail
+from this session's own transcript — remain the only direct evidence tier-2
+does what it's for. Getting a scored number would need either a much larger
+combined corpus or a corpus with harder, more paraphrased LATER-PROBE
+queries; not attempted tonight given the hour.

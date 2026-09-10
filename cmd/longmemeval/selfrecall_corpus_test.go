@@ -113,7 +113,7 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	// twice; see probeAll's doc comment for what TITLE and LATER each
 	// establish, and for why a session can own more than one var under
 	// WINZE_NOTE_SHAPE=claims.
-	title, later, noLater := probeAll(t, run, picked, varSets, noteSets, boiler, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
+	title, later, noLater, missedLater := probeAll(t, run, picked, varSets, noteSets, boiler, os.Getenv("WINZE_SELFRECALL_MANIFEST"))
 	if title.found == 0 {
 		t.Fatalf("no note was recalled by its own title at any rank -- %d missing", title.miss)
 	}
@@ -126,6 +126,17 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 		t.Logf("LATER PROBE: %d/%d recalled from text never written into a note, mean rank %.2f, median rank %.1f, hit@5 %.0f%%, "+
 			"%d never surfaced, %d sessions had no second ask",
 			later.found, later.found+later.miss, later.meanRank(), later.medianRank(), 100*later.hitRateWithin(5), later.miss, noLater)
+	}
+	// Tier-2 fallback: for LATER-PROBE misses specifically, does searching the
+	// session's own transcript directly surface anything for the same query?
+	// See tier2Recovery's doc for why this is reported separately rather than
+	// folded into hit@5 -- it is a weaker, differently-shaped bar.
+	if len(missedLater) > 0 {
+		recovered, checked := tier2Recovery(t, run, picked, missedLater, boiler)
+		if checked > 0 {
+			t.Logf("TIER-2 FALLBACK: %d/%d LATER-PROBE misses had non-empty transcript search results (weaker bar than hit@5 -- real term overlap somewhere in the raw transcript, not a verified correct turn)",
+				recovered, checked)
+		}
 	}
 	t.Logf("write-rejection rate %d/%d (%.0f%%) at %d attempted writes for %d sessions",
 		len(rejected), attempted, 100*float64(len(rejected))/float64(attempted), attempted, len(picked))
@@ -277,7 +288,7 @@ func (p probeStats) meanRank() float64 {
 	return float64(p.rankSum) / float64(p.found)
 }
 
-func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, varSets, noteSets [][]string, boiler map[string]bool, manifestPath string) (title, later probeStats, noLater int) {
+func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, varSets, noteSets [][]string, boiler map[string]bool, manifestPath string) (title, later probeStats, noLater int, missedLater []int) {
 	t.Helper()
 	probe := func(query string, want []string) (int, error) {
 		payload := fmt.Sprintf(`{"query":%s,"limit":%d,"brief_chars":0}`, mustJSON(query), len(picked)*6)
@@ -336,6 +347,9 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 			}
 			laterLabel = rankLabel(laterRank)
 			later.record(laterRank)
+			if laterRank == 0 {
+				missedLater = append(missedLater, i)
+			}
 		} else {
 			noLater++
 		}
@@ -354,7 +368,7 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 			manifest.Write(append(rec, '\n'))
 		}
 	}
-	return title, later, noLater
+	return title, later, noLater, missedLater
 }
 
 func writeSessions(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession) (varSets [][]string, noteSets [][]string, rejected []string, attempted int) {
@@ -603,4 +617,42 @@ func attemptNoteWrite(t *testing.T, run func(args ...string) (string, error), i 
 		return v, ""
 	}
 	return "", fmt.Sprintf("[%d] %s %q — %s", i, s.Start.Format("2006-01-02"), note, dedupReason(out))
+}
+
+// tier2Recovery checks, for each LATER-PROBE miss, whether searching that
+// session's own transcript directly (winze_recall_transcript, given the
+// session-id -- no note or entity involved at all) surfaces anything for
+// the same held-out query. This is a genuinely different, weaker bar than
+// the entity-rank hit@5 above: it only asks "is there real term overlap
+// somewhere in the raw transcript," not "does the specific right turn rank
+// well" -- there is no gold-turn label to check against in this
+// self-referential harness, unlike LongMemEval's own annotated dataset.
+// Reported as its own figure, never folded into hit@5, so it can't be
+// misread as a directly comparable number.
+func tier2Recovery(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, missedLater []int, boiler map[string]bool) (recovered, checked int) {
+	t.Helper()
+	for _, i := range missedLater {
+		s := picked[i]
+		q := s.laterAskAvoiding(boiler)
+		if q == "" {
+			continue
+		}
+		if len(q) > 400 {
+			q = q[:400]
+		}
+		checked++
+		payload := fmt.Sprintf(`{"session_id":%s,"query":%s}`, mustJSON(s.ID), mustJSON(q))
+		out, err := run("call", "winze_recall_transcript", payload)
+		if err != nil {
+			t.Logf("tier-2 check %d (%s): %v", i, s.ID[:8], err)
+			continue
+		}
+		var res struct {
+			Count int `json:"count"`
+		}
+		if json.Unmarshal([]byte(out), &res) == nil && res.Count > 0 {
+			recovered++
+		}
+	}
+	return recovered, checked
 }
