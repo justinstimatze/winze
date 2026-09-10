@@ -1750,3 +1750,46 @@ whether tier-2 transcript search ranks *higher* than the typed store for the
 ~59% of LATER-PROBE sessions landing outside top-5 at n=40 — a real,
 already-populated comparison, unlike the always-empty absolute-miss
 population three runs have now confirmed.
+
+**Fourth run: built the divergence comparison named above, caught a
+methodology mistake spanning all three runs above, and got a real number.**
+Two things worth naming plainly rather than folding quietly into a bigger
+number.
+
+First: none of the three runs above set `$WINZE_NOTE_SHAPE`, so all three
+replayed under the harness's *default* shape, `openNote` (title + opening
+ask) — not `outcome` (last substantial turn before the probe), the shape
+`ROADMAP.md` already measured as best in earlier sessions and the one
+production `session-capture` actually ships. The TITLE/LATER PROBE numbers
+above are real numbers for `openNote` specifically, not a general result —
+worth flagging since nothing in the text above named the shape.
+
+Second, and caught before it shipped as a finding: `tier2NoteDivergence`
+(new, `6e9a558`) compares a session's note against `winze_recall_transcript`'s
+top hit for the same query, to test the plan's actual thesis directly — does
+raw-transcript search find something note-compression left out? First run
+came back 29/29 (100%), which is too clean to trust blind. Added a debug
+flag, inspected real pairs, and found every `noteFor` shape prepends a
+`Session YYYY-MM-DD (id): Title` header before the captured content — the
+comparison's fixed prefix window was matching the header against the raw
+turn on every session, guaranteed to differ regardless of actual content.
+Fixed (`stripNoteHeader`), sanity-checked on a small corpus first (6/7, not
+degenerate), then re-run properly.
+
+Corrected final run, `WINZE_NOTE_SHAPE=outcome`, same 218-transcript 6-source
+corpus, n=40 (of 174 usable): TITLE PROBE 68% (down from openNote's 75% on
+this corpus — the two shapes trade wins by corpus, already an established
+pattern, not new), LATER PROBE 29/29 recalled, hit@5 28%, mean rank 10.76 —
+**still 0 absolute misses, a fourth run confirming the same structural
+finding.** But the new number: **TIER-2 NOTE DIVERGENCE 25/29 (86%)** — for
+86% of probed sessions, the raw transcript's top-matching turn for the
+held-out query is a *different* turn than the one the note already captured.
+That's the first real, mechanistic, non-degenerate evidence for the plan's
+core thesis from this harness (rather than the two earlier manual checks
+alone): compressing a note ahead of the query throws away content that
+query-time search over the raw transcript recovers, for the large majority
+of real sessions tried — even though the typed store's cross-session search
+still, separately, almost never returns an absolute zero for the same query.
+The two findings aren't in tension: a session can rank low-but-nonzero
+against its own compressed note while the raw transcript still holds a
+better-matching turn the note never captured at all.

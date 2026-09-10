@@ -671,16 +671,6 @@ func sameTurn(a, b string) bool {
 	return strings.Contains(a, bp) || strings.Contains(b, ap)
 }
 
-// tier2NoteDivergence checks, for every LATER-PROBE session, whether
-// winze_recall_transcript's own top hit for the same held-out query is a
-// different turn than the one already captured in the session's note --
-// a direct test of the tier-2 plan's core thesis: a note compressed ahead
-// of the query can leave better-matching content on the table that only a
-// query-time search of the raw transcript recovers. Reported separately
-// from tier2Recovery: that one asks "is there anything at all," this asks
-// "is there something the note itself didn't already have," and it runs
-// against every probed session rather than only the (so far always empty)
-// set of absolute misses.
 func tier2NoteDivergence(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, noteSets [][]string, boiler map[string]bool) (differs, checked int) {
 	t.Helper()
 	for i, s := range picked {
@@ -691,31 +681,15 @@ func tier2NoteDivergence(t *testing.T, run func(args ...string) (string, error),
 		if q == "" {
 			continue
 		}
-		if len(q) > 400 {
-			q = q[:400]
-		}
 		checked++
-		payload := fmt.Sprintf(`{"session_id":%s,"query":%s}`, mustJSON(s.ID), mustJSON(q))
-		out, err := run("call", "winze_recall_transcript", payload)
-		if err != nil {
-			t.Logf("tier-2 divergence check %d (%s): %v", i, s.ID[:8], err)
-			continue
-		}
-		var res struct {
-			Hits []struct {
-				Quote string `json:"quote"`
-			} `json:"hits"`
-		}
-		if json.Unmarshal([]byte(out), &res) != nil || len(res.Hits) == 0 {
+		top, ok := tier2TopHit(t, run, i, s, q)
+		if !ok {
 			continue
 		}
 		note := stripNoteHeader(noteSets[i][0])
-		if !sameTurn(res.Hits[0].Quote, note) {
+		if !sameTurn(top, note) {
 			differs++
-			if os.Getenv("WINZE_TIER2_DEBUG") != "" {
-				t.Logf("DIVERGE %d (%s) query=%.60q\n  note=%.100q\n  top =%.100q",
-					i, s.ID[:8], q, note, res.Hits[0].Quote)
-			}
+			logDivergence(t, i, s, q, note, top)
 		}
 	}
 	return differs, checked
@@ -751,4 +725,40 @@ func stripNoteHeader(note string) string {
 		return rest
 	}
 	return note
+}
+
+// logDivergence prints a diagnostic triple (query/note/top) when
+// WINZE_TIER2_DEBUG is set -- how the false 100% divergence figure was
+// caught: the raw text showed the note's header eating the whole comparison
+// window.
+func logDivergence(t *testing.T, i int, s *transcriptSession, q, note, top string) {
+	t.Helper()
+	if os.Getenv("WINZE_TIER2_DEBUG") == "" {
+		return
+	}
+	t.Logf("DIVERGE %d (%s) query=%.60q\n  note=%.100q\n  top =%.100q", i, s.ID[:8], q, note, top)
+}
+
+// tier2TopHit runs winze_recall_transcript for one session/query and returns
+// its top hit's quote, or ok=false when the call failed or found nothing.
+func tier2TopHit(t *testing.T, run func(args ...string) (string, error), i int, s *transcriptSession, q string) (string, bool) {
+	t.Helper()
+	if len(q) > 400 {
+		q = q[:400]
+	}
+	payload := fmt.Sprintf(`{"session_id":%s,"query":%s}`, mustJSON(s.ID), mustJSON(q))
+	out, err := run("call", "winze_recall_transcript", payload)
+	if err != nil {
+		t.Logf("tier-2 divergence check %d (%s): %v", i, s.ID[:8], err)
+		return "", false
+	}
+	var res struct {
+		Hits []struct {
+			Quote string `json:"quote"`
+		} `json:"hits"`
+	}
+	if json.Unmarshal([]byte(out), &res) != nil || len(res.Hits) == 0 {
+		return "", false
+	}
+	return res.Hits[0].Quote, true
 }
