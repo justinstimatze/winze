@@ -357,14 +357,6 @@ func probeAll(t *testing.T, run func(args ...string) (string, error), picked []*
 	return title, later, noLater
 }
 
-// writeSessions replays picked sessions oldest-first through winze_remember,
-// pulled out of TestSelfRecallDecaysWithCorpusGrowth so the write phase and
-// the probe phase are each one readable function instead of one long one.
-//
-// noteSets tracks every attempted note/fact's exact text alongside varSets'
-// entity vars -- linkRelatedSessions (linkbuilder_test.go) uses each
-// session's first note as the query text for its --semantic link-suggestion
-// pass.
 func writeSessions(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession) (varSets [][]string, noteSets [][]string, rejected []string, attempted int) {
 	t.Helper()
 	varSets = make([][]string, len(picked))
@@ -407,6 +399,34 @@ func writeSessions(t *testing.T, run func(args ...string) (string, error), picke
 			attempted-len(rejected), len(rejected))
 		t.Logf("extraction cost: %d input tokens (%d cache-read), %d output tokens across %d Haiku calls",
 			inTok, cacheReadTok, outTok, len(picked))
+		for _, r := range rejected {
+			t.Logf("  rejected: %s", r)
+		}
+		return varSets, noteSets, rejected, attempted
+	}
+
+	if os.Getenv("WINZE_NOTE_SHAPE") == "topk" {
+		k := topKN()
+		for i, s := range picked {
+			for _, note := range topKNotes(s, k) {
+				attempted++
+				noteSets[i] = append(noteSets[i], note)
+				out, err := run("call", "winze_remember", `{"note":`+mustJSON(note)+`}`)
+				if err != nil {
+					t.Errorf("write %d note failed to execute: %v\n%s", i, err, out)
+					continue
+				}
+				if v := createdVar(out); v != "" {
+					varSets[i] = append(varSets[i], v)
+				} else {
+					rejected = append(rejected, fmt.Sprintf("[%d] %s %q — %s",
+						i, s.Start.Format("2006-01-02"), note, dedupReason(out)))
+				}
+			}
+		}
+		t.Logf("%d sessions, %d top-%d notes attempted (zero-LLM) in %s; %d stored, %d rejected before storage",
+			len(picked), attempted, k, time.Since(writeStart).Round(time.Second),
+			attempted-len(rejected), len(rejected))
 		for _, r := range rejected {
 			t.Logf("  rejected: %s", r)
 		}
@@ -552,4 +572,62 @@ func outcomeNote(s *transcriptSession) string {
 	}
 	return fmt.Sprintf("Session %s (%s): %s\n\n%s",
 		s.Start.Format("2006-01-02"), s.ID[:8], s.Title, out)
+}
+
+// topKN is how many of a session's longest substantial assistant turns
+// WINZE_NOTE_SHAPE=topk captures, overridable with $WINZE_TOPK_N. Each
+// becomes its own independent note -- never combined into one shared
+// budget, the mechanism that made the earlier multi-turn widen experiment
+// regress (ROADMAP.md). Default 3: enough to cover a session that wandered
+// across a few distinct topics without a large multiplier on write cost.
+func topKN() int {
+	if v := os.Getenv("WINZE_TOPK_N"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 3
+}
+
+// topKNotes returns the k longest substantial assistant turns strictly
+// before the held-out later-ask probe (len >= 40, the same floor
+// outcomeNote/ArcAsks use), longest first, each formatted as its own
+// self-contained note. Mirrors midpointOutcome's exact walk and stop
+// condition -- the earlier version of this function scanned the whole
+// session with no such cutoff, which meant it could pick a turn at or
+// after the held-out probe, an unfair comparison against outcome/claims,
+// both of which strictly respect that boundary. Zero-LLM: pure length
+// ranking over text already on disk. A session with no later-ask, or
+// fewer than k qualifying turns before it, returns nil or fewer than k.
+func topKNotes(s *transcriptSession, k int) []string {
+	held := s.LaterAsk()
+	if held == "" {
+		return nil
+	}
+	seenFirstUser := false
+	var turns []string
+loop:
+	for _, turn := range s.Turns {
+		switch {
+		case turn.Role == "user" && !seenFirstUser:
+			seenFirstUser = true
+		case turn.Role == "user" && cleanAsk(turn.Content) == held:
+			break loop
+		case turn.Role == "assistant" && len(turn.Content) >= 40:
+			turns = append(turns, turn.Content)
+		}
+	}
+	sort.Slice(turns, func(i, j int) bool { return len(turns[i]) > len(turns[j]) })
+	if len(turns) > k {
+		turns = turns[:k]
+	}
+	notes := make([]string, len(turns))
+	for i, t := range turns {
+		if len(t) > 1200 {
+			t = t[:1200] + "…"
+		}
+		notes[i] = fmt.Sprintf("Session %s (%s): %s\n\n%s",
+			s.Start.Format("2006-01-02"), s.ID[:8], s.Title, t)
+	}
+	return notes
 }
