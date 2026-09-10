@@ -1793,3 +1793,46 @@ still, separately, almost never returns an absolute zero for the same query.
 The two findings aren't in tension: a session can rank low-but-nonzero
 against its own compressed note while the raw transcript still holds a
 better-matching turn the note never captured at all.
+
+### `k=120` checked against tonight's actual misses: not the mechanism — 2026-09-09
+
+Before touching the constant, read the 6 wrong answers from tonight's best
+haystack run (`haystack-rerank-scoped-1788992545.log`, 24/30, 80%) against
+their own extracted-fact pools (each question's `facts.go`) and, where still
+unresolved, the raw haystack source itself. `retr` hit exactly 120 on all 30
+questions in this run too, the same universal saturation named earlier
+tonight. None of the 6 misses trace to that cut.
+
+- `35a27287`, `gpt4_59c863d7`, `0edc2aef`, `75832dbd` — already closed above
+  (relevance-judgment gap, lens-naming gap, extraction gap, weak/ambiguous
+  partial extraction).
+- **`852ce960` (Wells Fargo pre-approval, gold $400,000), new**: the raw
+  haystack has two mentions — an earlier "$350,000," and a later "remember
+  when I got pre-approved for $400,000" buried inside an unrelated cable/TV
+  setup sentence — a knowledge-update case exactly like the yoga-classes and
+  Korean-restaurant questions winze already gets right elsewhere in this
+  sample. But `facts.go` has zero occurrences of "400,000" or "400000"
+  anywhere across 646 extracted facts — the lens only ever captured the
+  superseded $350,000 mention. A pure extraction gap: the correct value
+  never entered the candidate pool to be cut from.
+- **`0a995998` (clothing pickups/returns, gold 3), new**: both source items
+  — the blazer dry-cleaning pickup and the Zara boots exchange — are present
+  in `facts.go` (`navy_blazer_*`, `boots_exchange*`), so nothing was cut or
+  missed. The gold key counts the boots exchange as two items (return the
+  old pair, pick up the new pair); the model counted it as one transaction,
+  landing on 2 instead of 3. Same shape as the 10/500-flip noise already
+  named elsewhere in this file — a gold-answer counting convention, not a
+  retrieval failure, and no retrieval mechanism touches it.
+
+**Where this leaves last turn's proposed next move**: raising or
+type-scoping `k` the way `rerankCap` was scoped tonight has nothing to
+recover here. Not one of the 6 misses in the current-best run has its gold
+fact sitting in the extracted pool, cut only by the final top-120 selection
+— `k=120`'s universal saturation is real as a raw statistic but isn't, on
+this evidence, where tonight's wrongness actually comes from. The two levers
+that do show up are both upstream of retrieval: extraction completeness (two
+of six misses tonight are the lens silently dropping a true fact) and a
+semantic/embedding channel for vocabulary-mismatched relevance judgment (one
+of six, the same mechanism `35a27287` already named — `rankFacts` is
+confirmed pure term-overlap counting, no semantic scoring anywhere in this
+pipeline). Neither is a constant to tune.
