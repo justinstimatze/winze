@@ -1721,3 +1721,32 @@ from this session's own transcript — remain the only direct evidence tier-2
 does what it's for. Getting a scored number would need either a much larger
 combined corpus or a corpus with harder, more paraphrased LATER-PROBE
 queries; not attempted tonight given the hour.
+
+**Third run, same night, corpus widened again — the finding holds and now
+reads as structural, not a sample-size gap.** Corrected an over-restrictive
+scoping call: the earlier two runs used only public-GitHub sibling projects,
+conflating "safe to quote into this public repo" with "safe to read into a
+local, ephemeral benchmark store." The two are different bars — nothing
+about this harness commits, publishes, or quotes session content anywhere;
+it computes an aggregate number and deletes the scratch store. Corrected,
+the corpus widened to 6 sources (the 4 above plus `freshet`, private, and
+the harness's own default `~/.claude/projects/-home-gas6amus-Documents`
+directory, 168 general-session transcripts) — 217 transcripts total, still
+deliberately excluding `stope` and `publicai`, both of which carry their own
+standing rule beyond ordinary repo-privacy. Result at n=40 (of 173 usable,
+the harness's own per-run cap): TITLE PROBE 40/40 recalled (hit@5 75%),
+LATER PROBE 34/34 recalled, hit@5 41%, mean rank 13.26 — **still 0 absolute
+misses.** Three runs now (n=7, n=15, n=40), monotonically more diverse and
+harder, and the miss count hasn't moved off zero while mean rank has climbed
+4.00 → 5.46 → 13.26. That pattern reads as structural rather than
+under-sampled: at max store size 40, "found at some rank" only requires a
+nonzero BM25/semantic score against a session's own later-question, which a
+session's own note is, almost by construction, unlikely to score a true
+zero against — the harness may need many hundreds of notes in the store
+before an absolute miss becomes reachable at all, at which point widening
+public/private *scope* further stops being the lever; store *size* is.
+Not chased further tonight. The real next move, named but not built: measure
+whether tier-2 transcript search ranks *higher* than the typed store for the
+~59% of LATER-PROBE sessions landing outside top-5 at n=40 — a real,
+already-populated comparison, unlike the always-empty absolute-miss
+population three runs have now confirmed.
