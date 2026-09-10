@@ -95,20 +95,7 @@ func fuseRankMaps(a, b map[int]int) []int {
 		}
 		return s
 	}
-	seen := map[int]bool{}
-	var idxs []int
-	for idx := range a {
-		if !seen[idx] {
-			seen[idx] = true
-			idxs = append(idxs, idx)
-		}
-	}
-	for idx := range b {
-		if !seen[idx] {
-			seen[idx] = true
-			idxs = append(idxs, idx)
-		}
-	}
+	idxs := collectIndices(a, b)
 	sort.SliceStable(idxs, func(i, j int) bool {
 		si, sj := rrfScore(idxs[i]), rrfScore(idxs[j])
 		if si != sj {
@@ -147,27 +134,14 @@ func (r *runner) embedCached(text string) ([]float32, error) {
 	h := sha256.Sum256([]byte(embedModel() + "\x00" + text))
 	key := hex.EncodeToString(h[:])
 	cachePath := filepath.Join(r.embedCacheDir, key+".json")
-	if b, err := os.ReadFile(cachePath); err == nil {
-		var v []float32
-		if json.Unmarshal(b, &v) == nil {
-			return v, nil
-		}
+	if v, ok := readEmbedCache(cachePath); ok {
+		return v, nil
 	}
 	v, err := embedOllama(text, 3)
 	if err != nil {
 		return nil, err
 	}
-	if b, err := json.Marshal(v); err == nil {
-		if tmp, terr := os.CreateTemp(r.embedCacheDir, key+".*.tmp"); terr == nil {
-			_, werr := tmp.Write(b)
-			cerr := tmp.Close()
-			if werr == nil && cerr == nil {
-				_ = os.Rename(tmp.Name(), cachePath)
-			} else {
-				_ = os.Remove(tmp.Name())
-			}
-		}
-	}
+	writeEmbedCache(r.embedCacheDir, cachePath, v)
 	return v, nil
 }
 
@@ -177,9 +151,7 @@ func (r *runner) embedCached(text string) ([]float32, error) {
 // overlap between the question and the fact (see ROADMAP.md's 35a27287
 // finding -- 47 "french" hits, 37 "language" hits, still wrong, because the
 // question's own words never appear in the stored preference). Fails open to
-// rankFacts if the question itself can't be embedded (ollama unreachable); a
-// single fact's embedding failure only drops that fact from the semantic
-// channel, since term overlap still covers it.
+// rankFacts if the question itself can't be embedded (ollama unreachable).
 func (r *runner) semanticFuseFacts(facts []Fact, question string, k int) []Fact {
 	qv, err := r.embedCached(question)
 	if err != nil {
@@ -190,14 +162,45 @@ func (r *runner) semanticFuseFacts(facts []Fact, question string, k int) []Fact 
 	for rank, idx := range termOrder {
 		termRank[idx] = rank + 1
 	}
+	semRank := r.semanticRankFacts(facts, qv)
+	order := fuseRankMaps(termRank, semRank)
+	out := make([]Fact, 0, k)
+	for i := 0; i < len(order) && i < k; i++ {
+		out = append(out, facts[order[i]])
+	}
+	return out
+}
+
+// collectIndices unions the keys of any number of rank maps, each key once,
+// in first-seen order. Shared by fuseRankMaps so the two-map union isn't two
+// separate nested loops.
+func collectIndices(maps ...map[int]int) []int {
+	seen := map[int]bool{}
+	var idxs []int
+	for _, m := range maps {
+		for idx := range m {
+			if !seen[idx] {
+				seen[idx] = true
+				idxs = append(idxs, idx)
+			}
+		}
+	}
+	return idxs
+}
+
+// semanticRankFacts embeds every fact and scores it by cosine similarity
+// against an already-embedded question, returning a rank map (fact index ->
+// 1-based rank). A single fact's embedding failure only drops that fact from
+// this channel, since term overlap still covers it.
+func (r *runner) semanticRankFacts(facts []Fact, qv []float32) map[int]int {
 	type scored struct {
 		idx   int
 		score float64
 	}
 	var ss []scored
 	for i, f := range facts {
-		fv, ferr := r.embedCached(factSemText(f))
-		if ferr != nil {
+		fv, err := r.embedCached(factSemText(f))
+		if err != nil {
 			continue
 		}
 		ss = append(ss, scored{idx: i, score: dotProduct(qv, fv)})
@@ -212,10 +215,35 @@ func (r *runner) semanticFuseFacts(facts []Fact, question string, k int) []Fact 
 	for rank, s := range ss {
 		semRank[s.idx] = rank + 1
 	}
-	order := fuseRankMaps(termRank, semRank)
-	out := make([]Fact, 0, k)
-	for i := 0; i < len(order) && i < k; i++ {
-		out = append(out, facts[order[i]])
+	return semRank
+}
+
+func readEmbedCache(path string) ([]float32, bool) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
 	}
-	return out
+	var v []float32
+	if json.Unmarshal(b, &v) != nil {
+		return nil, false
+	}
+	return v, true
+}
+
+func writeEmbedCache(dir, path string, v []float32) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return
+	}
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return
+	}
+	_, werr := tmp.Write(b)
+	cerr := tmp.Close()
+	if werr == nil && cerr == nil {
+		_ = os.Rename(tmp.Name(), path)
+	} else {
+		_ = os.Remove(tmp.Name())
+	}
 }
