@@ -131,13 +131,7 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	// session's own transcript directly surface anything for the same query?
 	// See tier2Recovery's doc for why this is reported separately rather than
 	// folded into hit@5 -- it is a weaker, differently-shaped bar.
-	if len(missedLater) > 0 {
-		recovered, checked := tier2Recovery(t, run, picked, missedLater, boiler)
-		if checked > 0 {
-			t.Logf("TIER-2 FALLBACK: %d/%d LATER-PROBE misses had non-empty transcript search results (weaker bar than hit@5 -- real term overlap somewhere in the raw transcript, not a verified correct turn)",
-				recovered, checked)
-		}
-	}
+	reportTier2Fallback(t, run, picked, missedLater, boiler)
 	t.Logf("write-rejection rate %d/%d (%.0f%%) at %d attempted writes for %d sessions",
 		len(rejected), attempted, 100*float64(len(rejected))/float64(attempted), attempted, len(picked))
 }
@@ -655,4 +649,21 @@ func tier2Recovery(t *testing.T, run func(args ...string) (string, error), picke
 		}
 	}
 	return recovered, checked
+}
+
+// reportTier2Fallback runs tier2Recovery over any LATER-PROBE misses and logs
+// the result, or does nothing when there were none to check. Pulled out of
+// TestSelfRecallDecaysWithCorpusGrowth so the test body doesn't carry a
+// second nested nil/count check on top of the ones the two PROBE reports
+// already have.
+func reportTier2Fallback(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, missedLater []int, boiler map[string]bool) {
+	t.Helper()
+	if len(missedLater) == 0 {
+		return
+	}
+	recovered, checked := tier2Recovery(t, run, picked, missedLater, boiler)
+	if checked > 0 {
+		t.Logf("TIER-2 FALLBACK: %d/%d LATER-PROBE misses had non-empty transcript search results (weaker bar than hit@5 -- real term overlap somewhere in the raw transcript, not a verified correct turn)",
+			recovered, checked)
+	}
 }
