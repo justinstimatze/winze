@@ -131,7 +131,7 @@ func TestSelfRecallDecaysWithCorpusGrowth(t *testing.T) {
 	// session's own transcript directly surface anything for the same query?
 	// See tier2Recovery's doc for why this is reported separately rather than
 	// folded into hit@5 -- it is a weaker, differently-shaped bar.
-	reportTier2Fallback(t, run, picked, missedLater, boiler)
+	reportTier2Diagnostics(t, run, picked, noteSets, missedLater, boiler)
 	t.Logf("write-rejection rate %d/%d (%.0f%%) at %d attempted writes for %d sessions",
 		len(rejected), attempted, 100*float64(len(rejected))/float64(attempted), attempted, len(picked))
 }
@@ -651,19 +651,104 @@ func tier2Recovery(t *testing.T, run func(args ...string) (string, error), picke
 	return recovered, checked
 }
 
-// reportTier2Fallback runs tier2Recovery over any LATER-PROBE misses and logs
-// the result, or does nothing when there were none to check. Pulled out of
-// TestSelfRecallDecaysWithCorpusGrowth so the test body doesn't carry a
-// second nested nil/count check on top of the ones the two PROBE reports
-// already have.
-func reportTier2Fallback(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, missedLater []int, boiler map[string]bool) {
+// sameTurn reports whether a and b are substantially the same captured turn
+// rather than two different ones. A stored note can be truncated relative to
+// the raw turn text it came from, so exact equality is too strict -- either
+// string containing a real prefix of the other is enough.
+func sameTurn(a, b string) bool {
+	const probeLen = 80
+	trim := func(s string) string {
+		s = strings.TrimSpace(s)
+		if len(s) > probeLen {
+			s = s[:probeLen]
+		}
+		return s
+	}
+	ap, bp := trim(a), trim(b)
+	if ap == "" || bp == "" {
+		return false
+	}
+	return strings.Contains(a, bp) || strings.Contains(b, ap)
+}
+
+// tier2NoteDivergence checks, for every LATER-PROBE session, whether
+// winze_recall_transcript's own top hit for the same held-out query is a
+// different turn than the one already captured in the session's note --
+// a direct test of the tier-2 plan's core thesis: a note compressed ahead
+// of the query can leave better-matching content on the table that only a
+// query-time search of the raw transcript recovers. Reported separately
+// from tier2Recovery: that one asks "is there anything at all," this asks
+// "is there something the note itself didn't already have," and it runs
+// against every probed session rather than only the (so far always empty)
+// set of absolute misses.
+func tier2NoteDivergence(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, noteSets [][]string, boiler map[string]bool) (differs, checked int) {
 	t.Helper()
-	if len(missedLater) == 0 {
-		return
+	for i, s := range picked {
+		if i >= len(noteSets) || len(noteSets[i]) == 0 {
+			continue
+		}
+		q := s.laterAskAvoiding(boiler)
+		if q == "" {
+			continue
+		}
+		if len(q) > 400 {
+			q = q[:400]
+		}
+		checked++
+		payload := fmt.Sprintf(`{"session_id":%s,"query":%s}`, mustJSON(s.ID), mustJSON(q))
+		out, err := run("call", "winze_recall_transcript", payload)
+		if err != nil {
+			t.Logf("tier-2 divergence check %d (%s): %v", i, s.ID[:8], err)
+			continue
+		}
+		var res struct {
+			Hits []struct {
+				Quote string `json:"quote"`
+			} `json:"hits"`
+		}
+		if json.Unmarshal([]byte(out), &res) != nil || len(res.Hits) == 0 {
+			continue
+		}
+		note := stripNoteHeader(noteSets[i][0])
+		if !sameTurn(res.Hits[0].Quote, note) {
+			differs++
+			if os.Getenv("WINZE_TIER2_DEBUG") != "" {
+				t.Logf("DIVERGE %d (%s) query=%.60q\n  note=%.100q\n  top =%.100q",
+					i, s.ID[:8], q, note, res.Hits[0].Quote)
+			}
+		}
 	}
-	recovered, checked := tier2Recovery(t, run, picked, missedLater, boiler)
-	if checked > 0 {
-		t.Logf("TIER-2 FALLBACK: %d/%d LATER-PROBE misses had non-empty transcript search results (weaker bar than hit@5 -- real term overlap somewhere in the raw transcript, not a verified correct turn)",
-			recovered, checked)
+	return differs, checked
+}
+
+func reportTier2Diagnostics(t *testing.T, run func(args ...string) (string, error), picked []*transcriptSession, noteSets [][]string, missedLater []int, boiler map[string]bool) {
+	t.Helper()
+	if len(missedLater) > 0 {
+		recovered, checked := tier2Recovery(t, run, picked, missedLater, boiler)
+		if checked > 0 {
+			t.Logf("TIER-2 FALLBACK: %d/%d LATER-PROBE misses had non-empty transcript search results (weaker bar than hit@5 -- real term overlap somewhere in the raw transcript, not a verified correct turn)",
+				recovered, checked)
+		}
 	}
+	differs, divChecked := tier2NoteDivergence(t, run, picked, noteSets, boiler)
+	if divChecked > 0 {
+		t.Logf("TIER-2 NOTE DIVERGENCE: %d/%d probed sessions had a different top-matching turn in the raw transcript than the one already captured in their note (does query-time search find something note-compression didn't)",
+			differs, divChecked)
+	}
+}
+
+// stripNoteHeader drops the "Session YYYY-MM-DD (id): Title\n\n" header every
+// noteFor shape prepends (openNote, outcomeNote, arcNote all share it),
+// leaving just the captured content -- the part actually comparable to a raw
+// transcript turn. Without this, tier2NoteDivergence's prefix check compares
+// the header against the turn text and never reaches real content, which is
+// exactly the bug that produced a false 100% divergence figure before this
+// was added: the note's first 80 characters are always the header, on every
+// session, regardless of whether the captured content matches the transcript
+// search's top hit or not.
+func stripNoteHeader(note string) string {
+	if _, rest, ok := strings.Cut(note, "\n\n"); ok {
+		return rest
+	}
+	return note
 }
