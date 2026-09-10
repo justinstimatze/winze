@@ -90,9 +90,10 @@ func (r *runner) buildStore(qid string, facts []Fact) (string, error) {
 
 // syncAndRetrieve opens the store through defn (triggering the full type-checked
 // ingest), pulls every Fact via LiteralFields, and returns the top-k by term
-// overlap with the question (or by LLM relevance, when r.rerank is set). This
-// is the winze-via-defn read path the whole perf story hangs on -- sync time
-// and retrieve time are timed separately by the caller.
+// overlap with the question (or by LLM relevance when r.rerank is set, or by
+// RRF-fused term overlap + embedding cosine when r.semantic is set). This is
+// the winze-via-defn read path the whole perf story hangs on -- sync time and
+// retrieve time are timed separately by the caller.
 func (r *runner) syncAndRetrieve(dir, question, qtype string, k int) (facts []Fact, syncNS, retrieveNS int64, err error) {
 	tSync := nowNS()
 	client, err := defndb.New(dir) // New syncs if the store is stale (always, first open)
@@ -108,9 +109,12 @@ func (r *runner) syncAndRetrieve(dir, question, qtype string, k int) (facts []Fa
 		return nil, syncNS, 0, err
 	}
 	var ranked []Fact
-	if r.rerank {
+	switch {
+	case r.semantic:
+		ranked = r.semanticFuseFacts(all, question, k)
+	case r.rerank:
 		ranked = r.rerankFacts(all, question, qtype, k)
-	} else {
+	default:
 		ranked = rankFacts(all, question, k)
 	}
 	retrieveNS = nowNS() - tRet
@@ -159,32 +163,10 @@ func readFacts(client *defndb.Client) ([]Fact, error) {
 // attribute/value/quote, and returns the top k. Deterministic and dependency-
 // free — the gate role, keeping the answerer's context small.
 func rankFacts(facts []Fact, question string, k int) []Fact {
-	qterms := terms(question)
-	type scored struct {
-		f     Fact
-		score int
-		idx   int
-	}
-	var ss []scored
-	for i, f := range facts {
-		hay := terms(f.Attribute + " " + f.Value + " " + f.Quote)
-		score := 0
-		for t := range qterms {
-			if hay[t] {
-				score++
-			}
-		}
-		ss = append(ss, scored{f: f, score: score, idx: i})
-	}
-	sort.SliceStable(ss, func(a, b int) bool {
-		if ss[a].score != ss[b].score {
-			return ss[a].score > ss[b].score
-		}
-		return ss[a].idx < ss[b].idx // stable tie-break by original order
-	})
-	var out []Fact
-	for i := 0; i < len(ss) && i < k; i++ {
-		out = append(out, ss[i].f)
+	order := scoreByOverlap(facts, question)
+	out := make([]Fact, 0, k)
+	for i := 0; i < len(order) && i < k; i++ {
+		out = append(out, facts[order[i]])
 	}
 	return out
 }
@@ -220,4 +202,38 @@ func runIn(dir, name string, args ...string) (string, error) {
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// scoreByOverlap ranks every fact by term overlap with question, most
+// relevant first. Shared core of rankFacts (returns the top k) and
+// semanticFuseFacts's term-overlap channel, which needs every fact's rank --
+// not just the top k -- to fuse against the semantic channel.
+func scoreByOverlap(facts []Fact, question string) []int {
+	qterms := terms(question)
+	type scored struct {
+		score int
+		idx   int
+	}
+	ss := make([]scored, len(facts))
+	for i, f := range facts {
+		hay := terms(f.Attribute + " " + f.Value + " " + f.Quote)
+		score := 0
+		for t := range qterms {
+			if hay[t] {
+				score++
+			}
+		}
+		ss[i] = scored{score: score, idx: i}
+	}
+	sort.SliceStable(ss, func(a, b int) bool {
+		if ss[a].score != ss[b].score {
+			return ss[a].score > ss[b].score
+		}
+		return ss[a].idx < ss[b].idx // stable tie-break by original order
+	})
+	order := make([]int, len(ss))
+	for i, s := range ss {
+		order[i] = s.idx
+	}
+	return order
 }

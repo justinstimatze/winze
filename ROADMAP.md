@@ -1836,3 +1836,101 @@ semantic/embedding channel for vocabulary-mismatched relevance judgment (one
 of six, the same mechanism `35a27287` already named — `rankFacts` is
 confirmed pure term-overlap counting, no semantic scoring anywhere in this
 pipeline). Neither is a constant to tune.
+
+### Extraction-completeness fix for the mortgage case: deferred, not built — 2026-09-09
+
+Before writing a lens rule for `852ce960`'s shape (a value named as an aside
+inside an unrelated sentence, not the session's dominant topic), checked
+`lensVersion`'s own changelog first. This exact fix has been tried twice
+already, both measured net-negative on the full 500:
+
+- **v10** broadened the primary pass's assistant-specifics rule. Fixed 11/18
+  targeted assistant-recall failures; regressed temporal-reasoning
+  122/133 -> 111/133 on the same 133 questions, because the broadened rule
+  ran on every session, not just the starved ones, and the extra captured
+  content competed for the same fixed k=120 window.
+- **v12** tried a narrower version, specifically for "by the way" asides —
+  the exact shape `852ce960` needs. Flipped 7/19 targeted multi-session
+  failures; full-500 re-run came back multi-session 114/133 -> 113/133,
+  preference 28/30 -> 26/30 — net *worse* on the categories it targeted.
+  Reverted same session.
+
+Both entries end on the same lesson: any extraction change that adds real
+facts still competes for k=120, so a targeted fix can't be judged from the
+cases it targets — only from a full-500 re-run, since the damage lands
+elsewhere. There's no cheap way to check this on `852ce960` alone; a
+single-question or small-sample test is structurally blind to the exact
+failure mode being guarded against.
+
+Asked directly rather than silently building it: don't fund a standalone
+full-500 run just to re-test a fix shape that's already failed twice.
+Decision: leave the lens alone for now, and don't chase a retrieval-side
+supersession detector as a dedicated task either — batch a check of this
+mortgage-style gap into whatever full-500 run happens next for other
+reasons, rather than paying for one on its own.
+
+### Semantic-fusion retrieval channel shipped, measured: 83% (25/30), up from 80% — 2026-09-09
+
+Built the other half of the two-lever finding above: `rankFacts`/`rerankFacts`
+had zero semantic scoring anywhere in the pipeline (`rankFacts` is pure term-
+overlap counting, confirmed by reading it directly), which is exactly why
+`35a27287` stayed wrong even with the LLM seeing every fact directly — real
+signal, zero vocabulary overlap with the question's own words. Added
+`(*runner).semanticFuseFacts` (`cmd/longmemeval/semantic.go`, new), a fourth
+retrieval mode (`-semantic`, alongside default/`-rerank`) that RRF-fuses
+`scoreByOverlap`'s term-overlap ranking (extracted from `rankFacts` as a
+shared, now-testable core) with embedding cosine similarity over every fact,
+local ollama (`all-minilm`, same model and score distribution as the rest of
+winze), disk-cached by content hash exactly like `extractSession`'s own
+cache — same content-hash-plus-atomic-rename shape, same reason: a
+concurrent question loop can miss the same key at once, and per-key files
+make that race harmless. Deliberately not imported from `cmd/query`, which
+has the same mechanics (`embed`, `bestCosine`, `rrfFuse`) already shipped —
+this package keeps its own copies of shared mechanics rather than depending
+on shipped production code, the same boundary the tier-2 transcript plan
+drew. Pure logic (`fuseRankMaps`, the RRF core) covered by unit tests before
+any real run; `scoreByOverlap`'s extraction verified against `rankFacts`'s
+prior behavior.
+
+Checked the single diagnosed case first, cheap, before spending on the
+full sample: `-only 35a27287 -semantic` on the warm extraction cache flipped
+it correct. Then the full same-30-question sample used for every other
+number tonight, cold embedding cache: **83% (25/30), up from the type-scoped
+rerank's 80% (24/30) and term-overlap's 76.7% (23/30).**
+
+Two real, mechanistically distinct recoveries, not one:
+
+- `35a27287` (the French/language preference case) — the one this channel
+  was built for. Fixed as predicted.
+- `gpt4_59c863d7` (the Tiger I tank model-kit count) — previously declared
+  "closed for the retrieval axis" earlier tonight, on the reasoning that its
+  extraction tagged the tank under `diorama_scale` instead of `model_kit_*`
+  like its four siblings, so no retrieval mechanism should be expected to
+  connect it. That reasoning held for term overlap and for LLM rerank (which
+  still starts from a term-overlap-prefiltered candidate pool) but not for
+  embeddings: "a diorama featuring a 1/16 scale German Tiger I tank" sits
+  close enough to "model kit" in embedding space to surface anyway, no
+  attribute-name match needed. Retrieval recovered what extraction mis-named,
+  which the earlier verdict didn't consider because it was only checking
+  whether term-overlap-based mechanisms could reach it.
+
+One real, new regression, checked rather than waved away: `6d550036`
+("how many projects have I led or am currently leading?", gold 2) flipped
+from correct to wrong. The semantic channel pulled a third, previously
+out-of-window fact into the top-120 — a "rural water access project...
+planning/leading" — semantically close enough to "projects I lead" to rank
+in, and the answerer counted it despite gold treating a planning-stage
+mention as not yet a led project. Same shape as every other retrieval change
+tonight: a fix for one case is a plausible new failure mode for an adjacent
+one, not a free lift. Net on this sample: +2 fixed, -1 regressed, +1 overall.
+
+Real cost, measured rather than assumed: the cold run took ~20 minutes at
+concurrency 8 (host load 14-15 from concurrent sessions tonight — a factor,
+not isolated), embedding ~900 facts/question the first time each is seen.
+205MB / 25,806 embeddings now sit in the disk cache
+(`~/.cache/winze-longmemeval/embeddings`, sibling to the extraction cache),
+content-hash keyed the same way, so a warm rerun pays only answer+judge —
+the same warm/cold shape the extraction cache already has, not a new cost
+story. `-semantic` is off by default, same posture as `-rerank`: a refinement
+to test, not a change to the shipped default. n=30 is a real, checked signal
+on this sample, not a number to generalize to the full 500 from.

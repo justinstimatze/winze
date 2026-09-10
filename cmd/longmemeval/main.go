@@ -27,36 +27,39 @@ import (
 )
 
 type runner struct {
-	client   anthropic.Client
-	cacheDir string
-	workDir  string
-	stats    *usageStats
-	rerank   bool // use rerankFacts (LLM relevance) instead of rankFacts (term overlap)
+	client        anthropic.Client
+	cacheDir      string
+	embedCacheDir string
+	workDir       string
+	stats         *usageStats
+	rerank        bool // use rerankFacts (LLM relevance) instead of rankFacts (term overlap)
+	semantic      bool // use semanticFuseFacts (term overlap RRF-fused with embedding cosine) instead of rankFacts
 }
 
 func nowNS() int64 { return time.Now().UnixNano() }
 
 func main() {
 	var (
-		dataset    = flag.String("dataset", "", "path to longmemeval_s.json (required)")
-		cacheDir   = flag.String("cache", "", "extraction cache dir (default: <work>/cache)")
-		workDir    = flag.String("work", "", "working dir for generated stores (required)")
-		nTemporal  = flag.Int("temporal", 2, "number of temporal-reasoning questions")
-		nKnowledge = flag.Int("knowledge", 2, "number of knowledge-update questions")
-		nSingle    = flag.Int("single", 1, "number of single-session-user questions")
-		nMulti     = flag.Int("multi", 0, "number of multi-session questions")
-		nAsst      = flag.Int("assistant", 0, "number of single-session-assistant questions")
-		nPref      = flag.Int("preference", 0, "number of single-session-preference questions")
-		topK       = flag.Int("k", 120, "retrieval top-k facts fed to the answerer. History: 15 (no recorded rationale) -> 60 -> 120. The 2026-08-07 sweep over all 500 oracle questions, extraction held fixed, scored 421/431/424/427 at k=60/120/250/500, so 120 is the peak and the curve turns over rather than saturating. Do not read that as headroom found: recovery of the 15 multi-session failures that overflowed k=60 goes 1/7/4/5, and non-monotone recovery is impossible if capacity is the binding constraint, so past ~120 the extra slots are displacing useful facts rather than admitting them. Beware the noise floor when re-measuring — 10 of 500 questions flip between two runs at identical k and identical extraction, so only the total moves meaningfully, not a per-type story. Costs answerer input tokens only; retrieval searches the whole store either way. See docs/benchmark.md.")
-		kMulti     = flag.Int("k-multi", 0, "override -k for multi-session questions only; 0 = use -k for every type (default). Multi-session sessions have more distinct facts by construction (multiple sessions per question), so the same k=120 window that suits every other type may be the wrong ceiling specifically here — but the 2026-08-07 sweep already found a BLANKET k increase non-monotone and net-negative elsewhere (knowledge-update, preference), so this is scoped rather than raising -k for everyone. Extraction is k-independent (cached per session), so sweeping this costs answer+judge only, not re-extraction.")
-		dryRun     = flag.Bool("dry-run", false, "select subset and report shape only; no API calls")
-		probe      = flag.Bool("probe", false, "report whether gold answer turns survive renderSession truncation; no API calls")
-		batch      = flag.Bool("batch", false, "extract through the Message Batches API at 50% off before running. Asynchronous — the batch may take minutes to hours — so this is for large unattended runs, not the interactive loop. Extraction is 97% of a run's spend and every call is independent, so the discount is a straight halving with no effect on the model, the prompts or the sampling. Fills the same content-keyed cache the live path uses, then the run proceeds warm.")
-		raw        = flag.Bool("raw", false, "CONTROL: skip the lens, the typed store, defn and ranking entirely — hand the answerer the chat history verbatim. Same answerer, same judge, same temperature. If this matches the pipeline's score, the pipeline is not earning its keep on this dataset, which is the one comparison every number here has been missing.")
-		rerank     = flag.Bool("rerank", false, "retrieve by LLM relevance judgment (one Haiku call per question, cmd/query's already-shipped winze_recall reranker mechanism ported to facts) instead of rankFacts's literal term overlap. Reuses the already-extracted, already-cached fact set — costs a small rerank call on top of an otherwise-warm run, zero re-extraction, so it is the cheap way to test whether retrieval quality (not the extraction prompt) is the actual ceiling. Fails open to term overlap on any rerank error.")
-		conc       = flag.Int("concurrency", 8, "questions run at once. The loop is ~99% blocked on the API — 12.5s extract + 2.5s answer + 1.1s judge against 0.9s of winze machinery per question — so this is close to a linear speedup until the API rate limit or the per-question `go build` becomes the constraint. 1 restores the old serial behaviour, which is what a concurrency bug should be diffed against.")
-		only       = flag.String("only", "", "comma-separated question ids (prefixes ok) to run instead of the per-type quota. For testing a hypothesis about specific failures without paying for the whole subset — a lensVersion bump makes every question cold, so a six-question check costs six extractions rather than sixty.")
-		baseline   = flag.String("baseline", "", "write per-question outcomes (qid, gold, answer, verdict) as JSONL to this path, for diffing the next configuration against this one question by question. Omits timings on purpose — they churn every row on every run.")
+		dataset      = flag.String("dataset", "", "path to longmemeval_s.json (required)")
+		cacheDir     = flag.String("cache", "", "extraction cache dir (default: <work>/cache)")
+		workDir      = flag.String("work", "", "working dir for generated stores (required)")
+		nTemporal    = flag.Int("temporal", 2, "number of temporal-reasoning questions")
+		nKnowledge   = flag.Int("knowledge", 2, "number of knowledge-update questions")
+		nSingle      = flag.Int("single", 1, "number of single-session-user questions")
+		nMulti       = flag.Int("multi", 0, "number of multi-session questions")
+		nAsst        = flag.Int("assistant", 0, "number of single-session-assistant questions")
+		nPref        = flag.Int("preference", 0, "number of single-session-preference questions")
+		topK         = flag.Int("k", 120, "retrieval top-k facts fed to the answerer. History: 15 (no recorded rationale) -> 60 -> 120. The 2026-08-07 sweep over all 500 oracle questions, extraction held fixed, scored 421/431/424/427 at k=60/120/250/500, so 120 is the peak and the curve turns over rather than saturating. Do not read that as headroom found: recovery of the 15 multi-session failures that overflowed k=60 goes 1/7/4/5, and non-monotone recovery is impossible if capacity is the binding constraint, so past ~120 the extra slots are displacing useful facts rather than admitting them. Beware the noise floor when re-measuring -- 10 of 500 questions flip between two runs at identical k and identical extraction, so only the total moves meaningfully, not a per-type story. Costs answerer input tokens only; retrieval searches the whole store either way. See docs/benchmark.md.")
+		kMulti       = flag.Int("k-multi", 0, "override -k for multi-session questions only; 0 = use -k for every type (default). Multi-session sessions have more distinct facts by construction (multiple sessions per question), so the same k=120 window that suits every other type may be the wrong ceiling specifically here -- but the 2026-08-07 sweep already found a BLANKET k increase non-monotone and net-negative elsewhere (knowledge-update, preference), so this is scoped rather than raising -k for everyone. Extraction is k-independent (cached per session), so sweeping this costs answer+judge only, not re-extraction.")
+		dryRun       = flag.Bool("dry-run", false, "select subset and report shape only; no API calls")
+		probe        = flag.Bool("probe", false, "report whether gold answer turns survive renderSession truncation; no API calls")
+		batch        = flag.Bool("batch", false, "extract through the Message Batches API at 50% off before running. Asynchronous -- the batch may take minutes to hours -- so this is for large unattended runs, not the interactive loop. Extraction is 97% of a run's spend and every call is independent, so the discount is a straight halving with no effect on the model, the prompts or the sampling. Fills the same content-keyed cache the live path uses, then the run proceeds warm.")
+		raw          = flag.Bool("raw", false, "CONTROL: skip the lens, the typed store, defn and ranking entirely -- hand the answerer the chat history verbatim. Same answerer, same judge, same temperature. If this matches the pipeline's score, the pipeline is not earning its keep on this dataset, which is the one comparison every number here has been missing.")
+		rerank       = flag.Bool("rerank", false, "retrieve by LLM relevance judgment (one Haiku call per question, cmd/query's already-shipped winze_recall reranker mechanism ported to facts) instead of rankFacts's literal term overlap. Reuses the already-extracted, already-cached fact set -- costs a small rerank call on top of an otherwise-warm run, zero re-extraction, so it is the cheap way to test whether retrieval quality (not the extraction prompt) is the actual ceiling. Fails open to term overlap on any rerank error.")
+		semanticFlag = flag.Bool("semantic", false, "retrieve via RRF fusion of term-overlap and embedding-cosine ranking (local ollama, all-minilm by default -- override with WINZE_EMBED_MODEL) instead of rankFacts's term overlap alone. Targets the class of miss term overlap structurally can't reach: real signal present with zero vocabulary overlap between the question and the fact (see ROADMAP.md's 35a27287 finding). Embeddings are disk-cached by content hash exactly like extraction, so a warm rerun costs nothing and a cold run pays one local ollama call per fact, not an API call. Fails open to rankFacts if ollama is unreachable.")
+		conc         = flag.Int("concurrency", 8, "questions run at once. The loop is ~99% blocked on the API -- 12.5s extract + 2.5s answer + 1.1s judge against 0.9s of winze machinery per question -- so this is close to a linear speedup until the API rate limit or the per-question `go build` becomes the constraint. 1 restores the old serial behaviour, which is what a concurrency bug should be diffed against.")
+		only         = flag.String("only", "", "comma-separated question ids (prefixes ok) to run instead of the per-type quota. For testing a hypothesis about specific failures without paying for the whole subset -- a lensVersion bump makes every question cold, so a six-question check costs six extractions rather than sixty.")
+		baseline     = flag.String("baseline", "", "write per-question outcomes (qid, gold, answer, verdict) as JSONL to this path, for diffing the next configuration against this one question by question. Omits timings on purpose -- they churn every row on every run.")
 	)
 	flag.Parse()
 
@@ -73,7 +76,7 @@ func main() {
 	// Sharing one directory across every run is safe by construction, because
 	// the key is sha256(lensVersion + model + session body). Two runs with
 	// different prompts cannot collide, and two runs with the same prompt
-	// SHOULD hit — including across datasets, since the oracle set's evidence
+	// SHOULD hit -- including across datasets, since the oracle set's evidence
 	// sessions also appear inside the longmemeval_s haystack and are
 	// byte-identical there.
 	cache := *cacheDir
@@ -86,6 +89,14 @@ func main() {
 	}
 	if err := os.MkdirAll(cache, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "mkdir cache: %v\n", err)
+		os.Exit(1)
+	}
+	// Embeddings share extraction's parent directory (winze-longmemeval) as a
+	// sibling, not a subdirectory of --work, for the same cross-run reuse
+	// reason: embeddings are also content-hash keyed and safe to share.
+	embedCache := filepath.Join(filepath.Dir(cache), "embeddings")
+	if err := os.MkdirAll(embedCache, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "mkdir embed cache: %v\n", err)
 		os.Exit(1)
 	}
 	if err := os.MkdirAll(*workDir, 0o755); err != nil {
@@ -142,11 +153,13 @@ func main() {
 	}
 
 	r := &runner{
-		client:   anthropic.NewClient(option.WithAPIKey(apiKey)),
-		cacheDir: cache,
-		workDir:  *workDir,
-		stats:    &usageStats{perModel: map[string]*modelUsage{}},
-		rerank:   *rerank,
+		client:        anthropic.NewClient(option.WithAPIKey(apiKey)),
+		cacheDir:      cache,
+		embedCacheDir: embedCache,
+		workDir:       *workDir,
+		stats:         &usageStats{perModel: map[string]*modelUsage{}},
+		rerank:        *rerank,
+		semantic:      *semanticFlag,
 	}
 
 	if *batch && !*raw {
@@ -164,7 +177,7 @@ func main() {
 		return r.runQuestion(q, k)
 	}
 	if *raw {
-		fmt.Println("RAW CONTROL: no extraction, no store, no defn, no retrieval — chat history straight to the answerer")
+		fmt.Println("RAW CONTROL: no extraction, no store, no defn, no retrieval -- chat history straight to the answerer")
 		work = r.runQuestionRaw
 	}
 	rows, errored := runAll(os.Stdout, os.Stderr, questions, *conc, work)
