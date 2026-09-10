@@ -363,7 +363,8 @@ func writeSessions(t *testing.T, run func(args ...string) (string, error), picke
 	noteSets = make([][]string, len(picked))
 	writeStart := time.Now()
 
-	if os.Getenv("WINZE_NOTE_SHAPE") == "claims" {
+	switch os.Getenv("WINZE_NOTE_SHAPE") {
+	case "claims":
 		client, ok := newAnthropicClientFromEnv()
 		if !ok {
 			t.Skip("WINZE_NOTE_SHAPE=claims needs ANTHROPIC_API_KEY (one Haiku call per session, ~700 input + ~150 output tokens each) — skipping")
@@ -381,16 +382,10 @@ func writeSessions(t *testing.T, run func(args ...string) (string, error), picke
 			for _, fact := range facts {
 				attempted++
 				noteSets[i] = append(noteSets[i], fact)
-				out, err := run("call", "winze_remember", `{"note":`+mustJSON(fact)+`}`)
-				if err != nil {
-					t.Errorf("write %d fact %q failed to execute: %v\n%s", i, fact, err, out)
-					continue
-				}
-				if v := createdVar(out); v != "" {
+				if v, r := attemptNoteWrite(t, run, i, s, fact); v != "" {
 					varSets[i] = append(varSets[i], v)
-				} else {
-					rejected = append(rejected, fmt.Sprintf("[%d] %s %q — %s",
-						i, s.Start.Format("2006-01-02"), fact, dedupReason(out)))
+				} else if r != "" {
+					rejected = append(rejected, r)
 				}
 			}
 		}
@@ -399,59 +394,40 @@ func writeSessions(t *testing.T, run func(args ...string) (string, error), picke
 			attempted-len(rejected), len(rejected))
 		t.Logf("extraction cost: %d input tokens (%d cache-read), %d output tokens across %d Haiku calls",
 			inTok, cacheReadTok, outTok, len(picked))
-		for _, r := range rejected {
-			t.Logf("  rejected: %s", r)
-		}
-		return varSets, noteSets, rejected, attempted
-	}
 
-	if os.Getenv("WINZE_NOTE_SHAPE") == "topk" {
+	case "topk":
 		k := topKN()
 		for i, s := range picked {
 			for _, note := range topKNotes(s, k) {
 				attempted++
 				noteSets[i] = append(noteSets[i], note)
-				out, err := run("call", "winze_remember", `{"note":`+mustJSON(note)+`}`)
-				if err != nil {
-					t.Errorf("write %d note failed to execute: %v\n%s", i, err, out)
-					continue
-				}
-				if v := createdVar(out); v != "" {
+				if v, r := attemptNoteWrite(t, run, i, s, note); v != "" {
 					varSets[i] = append(varSets[i], v)
-				} else {
-					rejected = append(rejected, fmt.Sprintf("[%d] %s %q — %s",
-						i, s.Start.Format("2006-01-02"), note, dedupReason(out)))
+				} else if r != "" {
+					rejected = append(rejected, r)
 				}
 			}
 		}
 		t.Logf("%d sessions, %d top-%d notes attempted (zero-LLM) in %s; %d stored, %d rejected before storage",
 			len(picked), attempted, k, time.Since(writeStart).Round(time.Second),
 			attempted-len(rejected), len(rejected))
-		for _, r := range rejected {
-			t.Logf("  rejected: %s", r)
+
+	default:
+		for i, s := range picked {
+			attempted++
+			note := noteFor(s)
+			noteSets[i] = []string{note}
+			if v, r := attemptNoteWrite(t, run, i, s, note); v != "" {
+				varSets[i] = []string{v}
+			} else if r != "" {
+				rejected = append(rejected, r)
+			}
 		}
-		return varSets, noteSets, rejected, attempted
+		t.Logf("%d writes in %s; %d stored, %d rejected before storage",
+			len(picked), time.Since(writeStart).Round(time.Second),
+			len(picked)-len(rejected), len(rejected))
 	}
 
-	for i, s := range picked {
-		attempted++
-		note := noteFor(s)
-		noteSets[i] = []string{note}
-		out, err := run("call", "winze_remember", `{"note":`+mustJSON(note)+`}`)
-		if err != nil {
-			t.Errorf("write %d (%s) failed to execute: %v\n%s", i, s.ID[:8], err, out)
-			continue
-		}
-		if v := createdVar(out); v != "" {
-			varSets[i] = []string{v}
-		} else {
-			rejected = append(rejected, fmt.Sprintf("%s %q — %s",
-				s.Start.Format("2006-01-02"), s.Title, dedupReason(out)))
-		}
-	}
-	t.Logf("%d writes in %s; %d stored, %d rejected before storage",
-		len(picked), time.Since(writeStart).Round(time.Second),
-		len(picked)-len(rejected), len(rejected))
 	for _, r := range rejected {
 		t.Logf("  rejected: %s", r)
 	}
@@ -590,33 +566,13 @@ func topKN() int {
 }
 
 // topKNotes returns the k longest substantial assistant turns strictly
-// before the held-out later-ask probe (len >= 40, the same floor
-// outcomeNote/ArcAsks use), longest first, each formatted as its own
-// self-contained note. Mirrors midpointOutcome's exact walk and stop
-// condition -- the earlier version of this function scanned the whole
-// session with no such cutoff, which meant it could pick a turn at or
-// after the held-out probe, an unfair comparison against outcome/claims,
-// both of which strictly respect that boundary. Zero-LLM: pure length
-// ranking over text already on disk. A session with no later-ask, or
-// fewer than k qualifying turns before it, returns nil or fewer than k.
+// before the held-out later-ask probe (via preProbeAssistantTurns, the same
+// walk midpointOutcome uses), longest first, each formatted as its own
+// self-contained note. Zero-LLM: pure length ranking over text already on
+// disk. A session with no later-ask, or fewer than k qualifying turns,
+// returns nil or fewer than k.
 func topKNotes(s *transcriptSession, k int) []string {
-	held := s.LaterAsk()
-	if held == "" {
-		return nil
-	}
-	seenFirstUser := false
-	var turns []string
-loop:
-	for _, turn := range s.Turns {
-		switch {
-		case turn.Role == "user" && !seenFirstUser:
-			seenFirstUser = true
-		case turn.Role == "user" && cleanAsk(turn.Content) == held:
-			break loop
-		case turn.Role == "assistant" && len(turn.Content) >= 40:
-			turns = append(turns, turn.Content)
-		}
-	}
+	turns := s.preProbeAssistantTurns()
 	sort.Slice(turns, func(i, j int) bool { return len(turns[i]) > len(turns[j]) })
 	if len(turns) > k {
 		turns = turns[:k]
@@ -630,4 +586,21 @@ loop:
 			s.Start.Format("2006-01-02"), s.ID[:8], s.Title, t)
 	}
 	return notes
+}
+
+// attemptNoteWrite writes one note/fact via winze_remember and reports the
+// outcome -- pulled out of writeSessions' three near-identical branches
+// (default, topk, claims) so the write-and-track step exists once instead
+// of three times.
+func attemptNoteWrite(t *testing.T, run func(args ...string) (string, error), i int, s *transcriptSession, note string) (v, rejection string) {
+	t.Helper()
+	out, err := run("call", "winze_remember", `{"note":`+mustJSON(note)+`}`)
+	if err != nil {
+		t.Errorf("write %d %q failed to execute: %v\n%s", i, note, err, out)
+		return "", ""
+	}
+	if v := createdVar(out); v != "" {
+		return v, ""
+	}
+	return "", fmt.Sprintf("[%d] %s %q — %s", i, s.Start.Format("2006-01-02"), note, dedupReason(out))
 }

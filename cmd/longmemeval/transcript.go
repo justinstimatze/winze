@@ -445,21 +445,35 @@ func (s *transcriptSession) laterAskAvoiding(boiler map[string]bool) string {
 }
 
 func (s *transcriptSession) midpointOutcome() string {
-	held := s.LaterAsk()
-	if held == "" {
+	turns := s.preProbeAssistantTurns()
+	if len(turns) == 0 {
 		return ""
 	}
+	return turns[len(turns)-1]
+}
+
+// preProbeAssistantTurns returns every substantial assistant turn (len >= 40)
+// strictly before the session's held-out later-ask probe, in order. Shared by
+// midpointOutcome (keeps the last one) and topKNotes (ranks all of them by
+// length) so both walk the exact same eligible set -- a fairness guarantee
+// that's structural rather than hand-copied between the two callers.
+func (s *transcriptSession) preProbeAssistantTurns() []string {
+	held := s.LaterAsk()
+	if held == "" {
+		return nil
+	}
 	seenFirstUser := false
-	var best string
+	var turns []string
+loop:
 	for _, turn := range s.Turns {
 		switch {
 		case turn.Role == "user" && !seenFirstUser:
 			seenFirstUser = true
 		case turn.Role == "user" && cleanAsk(turn.Content) == held:
-			return best
+			break loop
 		case turn.Role == "assistant" && len(turn.Content) >= 40:
-			best = turn.Content
+			turns = append(turns, turn.Content)
 		}
 	}
-	return best
+	return turns
 }
