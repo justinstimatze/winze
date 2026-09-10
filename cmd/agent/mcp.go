@@ -24,6 +24,9 @@ import (
 //	winze_remember(note, role?, title?, force?)  — store a note as a typed
 //	                        memory (build-gated, auto-committed to the store)
 //	winze_recall(query, limit?, brief_chars?)    — hybrid BM25+semantic recall
+//	winze_recall_transcript(session_id, query)   — tier-2: BM25 search over
+//	                        one session's own transcript for exact quotes a
+//	                        session-capture entry's compressed note dropped
 //	winze_update(var, note, title?)              — revise a Brief in place
 //	winze_link(from, to, rationale, relation?)   — a typed edge between two
 //	                        memories, written as winze's own Conjecture
@@ -52,6 +55,12 @@ func runServe(args []string) {
 		mcp.WithNumber("limit", mcp.Description("Max memories to return (default 5).")),
 		mcp.WithNumber("brief_chars", mcp.Description("Truncate each brief to this many chars to keep results compact (default 240). Set 0 for full briefs — pair with a small limit so the result stays under the tool-result size cap.")),
 	), handleRecall)
+
+	s.AddTool(mcp.NewTool("winze_recall_transcript",
+		mcp.WithDescription("Tier-2 lookup: BM25 search over one real session's own transcript, returning exact quotes rather than a compressed note. Use after winze_recall surfaces a session-capture entry (its Provenance.Origin names the session-id as \"session-end-capture <session-id> <time>\") when the compressed note doesn't have the detail you need — this searches the full original conversation for it. Not a replacement for winze_recall: it only searches ONE already-identified session's transcript, not the whole store."),
+		mcp.WithString("session_id", mcp.Required(), mcp.Description("The session id from a session-capture entry's Provenance.Origin.")),
+		mcp.WithString("query", mcp.Required(), mcp.Description("What to find in that session's transcript.")),
+	), handleRecallTranscript)
 
 	s.AddTool(mcp.NewTool("winze_update",
 		mcp.WithDescription("Revise an existing memory's Brief (and optionally its title/Name) in place, through the build gate, then auto-commit. Use when a remembered fact changed or should be refined — this is what to do instead of storing a near-duplicate when winze_remember reports one."),
@@ -659,4 +668,28 @@ func execDocument(varName, quote, origin string) (string, error) {
 	cmd.Stderr = &buf
 	err := cmd.Run()
 	return buf.String(), err
+}
+
+// handleRecallTranscript is the tier-2 lookup behind a session-capture
+// entry: BM25 search over one real session's own transcript, returning
+// exact quotes rather than a compressed note. The caller reads a
+// winze_recall hit's Provenance.Origin ("session-end-capture <session-id>
+// <time>") to get session_id -- deliberately not auto-chained from
+// winze_recall itself, same posture as suggestLinks: enable the next real
+// action, never invoke it on the caller's behalf.
+func handleRecallTranscript(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	sessionID, ok := req.GetArguments()["session_id"].(string)
+	if !ok || strings.TrimSpace(sessionID) == "" {
+		return mcp.NewToolResultError("session_id: required string argument"), nil
+	}
+	query, ok := req.GetArguments()["query"].(string)
+	if !ok || strings.TrimSpace(query) == "" {
+		return mcp.NewToolResultError("query: required string argument"), nil
+	}
+
+	out, err := runQueryRaw("--transcript", sessionID, "--transcript-query", query, "--json")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("recall-transcript failed: %v", err)), nil
+	}
+	return mcp.NewToolResultText(out), nil
 }

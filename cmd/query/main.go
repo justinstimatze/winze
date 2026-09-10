@@ -102,6 +102,8 @@ func main() {
 	docsFloor := flag.Float64("docs-floor", -1, "with --docs-recall: cosine floor for a section to surface (default 0.30)")
 	docsHook := flag.Bool("docs-hook", false, "UserPromptSubmit-hook mode: read the hook payload from stdin and emit docs-recall pointers (never fails the hook)")
 	docsCoverage := flag.Bool("docs-coverage", false, "gate: fail (exit 1) if any cmd/ binary is named in no doc")
+	transcriptSessionID := flag.String("transcript", "", "tier-2 lookup: BM25 search over one real session's own transcript by session-id (the id named in a session-capture entry's Provenance.Origin), returning exact quotes rather than a compressed note. Requires --transcript-query.")
+	transcriptQuery := flag.String("transcript-query", "", "with --transcript: what to search for in the session's transcript. A separate flag rather than the trailing positional arg every other mode uses, so --json/--limit-style flags after it still parse -- flag.Parse stops at the first bare positional it sees.")
 	flag.Parse()
 
 	dir := "corpus"
@@ -138,6 +140,14 @@ func main() {
 	}
 	if *docsRecall != "" {
 		runDocsRecall(dir, *docsRecall, *docsTopN, *docsFloor, *jsonOut)
+		return
+	}
+
+	// --transcript builds its own transcript-scoped index over one session
+	// file, never the corpus — dispatch before buildIndex the same reason
+	// --docs-recall does.
+	if *transcriptSessionID != "" {
+		runTranscriptSearch(*transcriptSessionID, *transcriptQuery, *jsonOut)
 		return
 	}
 

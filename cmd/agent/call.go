@@ -13,10 +13,11 @@ import (
 
 func runCall(args []string) {
 	handlers := map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
-		"winze_recall":   handleRecall,
-		"winze_remember": handleRemember,
-		"winze_update":   handleUpdate,
-		"winze_link":     handleLink,
+		"winze_recall":            handleRecall,
+		"winze_recall_transcript": handleRecallTranscript,
+		"winze_remember":          handleRemember,
+		"winze_update":            handleUpdate,
+		"winze_link":              handleLink,
 	}
 	if len(args) < 1 {
 		names := make([]string, 0, len(handlers))
