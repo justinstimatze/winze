@@ -15,19 +15,36 @@ reimplement. That is why a write here gets the same `gofmt && go build && go
 vet` gate, the same corpus lock, and the same revert-on-failure as a write from
 an editor session.
 
-## Four faces
+## Five faces
 
 ```
-winze-agent init <dir>      # scaffold a new store, gate-checked before its first commit
-winze-agent serve           # MCP server — the four tools above
-winze-agent recall-hook     # SessionStart / UserPromptSubmit: injects associative recall
-winze-agent capture-guard   # PreToolUse: blocks native-memory writes where a store exists
+winze-agent init <dir>          # scaffold a new store, gate-checked before its first commit
+winze-agent serve               # MCP server — the four tools above
+winze-agent recall-hook         # SessionStart / UserPromptSubmit: injects associative recall
+winze-agent capture-guard       # PreToolUse: blocks native-memory writes where a store exists
+winze-agent session-capture     # SessionEnd: auto-indexes a session's last substantial turn
 winze-agent call <tool> '<json>'   # the same handlers from a shell, for non-MCP hosts
 ```
 
 `call` is what the Hermes provider in `integrations/hermes/winze/` shells out
 to, so a non-MCP host gets the identical handlers rather than a second
 implementation that drifts.
+
+`session-capture` closes the coverage gap named in `ROADMAP.md`'s self-recall
+audit: content an agent never explicitly `winze_remember`'d is otherwise gone.
+It reads the `SessionEnd` hook's `transcript_path`, takes the session's last
+assistant turn with `len(content) >= 40` (mirrors `cmd/longmemeval`'s
+`outcome` shape — measured the best of everything tried: 51-53% hit@5 against
+`claims`' 50%, `topk=3`'s 45%, `topk=1`'s 26%, see `ROADMAP.md`), and writes
+it through the same dedup/gate/commit path `winze_remember` uses, but with an
+`Origin` of `"session-end-capture <session-id> <RFC3339>"` rather than
+`"winze_remember <RFC3339>"` — so a later reader can tell an auto-captured
+entry from an explicit one by its Provenance alone. Only activates where
+`storeRootConfigured()` is already true (the same gate `capture-guard` uses),
+and only after confirming the resolved store's git repo has zero remotes —
+belt-and-suspenders on top of every real store already being local-only by
+design. Never fails the hook: any error, unmet gate, or empty extraction
+exits silently, same posture as `recall-hook`.
 
 ## The tools
 

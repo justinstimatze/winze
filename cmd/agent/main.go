@@ -28,7 +28,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: winze-agent <init|serve|recall-hook|capture-guard|call>")
+		fmt.Fprintln(os.Stderr, "usage: winze-agent <init|serve|recall-hook|capture-guard|session-capture|call>")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -40,10 +40,12 @@ func main() {
 		runServe(os.Args[2:])
 	case "capture-guard":
 		runCaptureGuard()
+	case "session-capture":
+		runSessionCapture()
 	case "call":
 		runCall(os.Args[2:])
 	default:
-		fmt.Fprintf(os.Stderr, "winze-agent: unknown subcommand %q (want init|serve|recall-hook|capture-guard|call)\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "winze-agent: unknown subcommand %q (want init|recall-hook|serve|capture-guard|session-capture|call)\n", os.Args[1])
 		os.Exit(2)
 	}
 }

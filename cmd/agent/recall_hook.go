@@ -19,8 +19,9 @@ const briefMax = 200
 
 // hookInput is the subset of the Claude Code hook stdin payload we read.
 type hookInput struct {
-	HookEventName string `json:"hook_event_name"`
-	Prompt        string `json:"prompt"`
+	HookEventName  string `json:"hook_event_name"`
+	Prompt         string `json:"prompt"`
+	TranscriptPath string `json:"transcript_path"`
 }
 
 type queryHit struct {
