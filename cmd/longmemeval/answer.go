@@ -135,14 +135,46 @@ import (
 // the crowded elapsed-time paragraph into its own separate bullet (content
 // unchanged, only its position) fixed it: two repeats post-move both landed
 // `gpt4_e072b769` correct, `gpt4_e414231f` correct, `gpt4_2f56ae70` correct,
-// `gpt4_59149c78` still wrong (expected, unrelated). A local text insertion
-// changing an adjacent, semantically-unconnected comparison's behavior is
-// the same non-local-effect lesson `lensSystem`'s own history already
-// established for extraction; it applies here too. Not yet confirmed on the
-// full 500 -- narrow `--only` checks are the fast/cheap iteration loop this
-// project is using deliberately, per this file's own 2026-09-08 lesson
-// above that narrow and full can disagree; a full-500 run is the eventual
-// gate before calling this settled, not a step to take on every cheap win.
+// `gpt4_59149c78` still wrong (expected, unrelated).
+//
+// Full 500 confirmed the promoted stack (-semantic -rerank, both now
+// default, plus both rules above) at 444/500 vs. the semantic-only 441/500
+// baseline: 13 wins, 10 losses, net +3. Diffed every flip. Multi-session
+// alone went -4 (2 wins, 6 losses) despite gaining nothing from either new
+// rule -- of the 7 temporal-reasoning wins, only `71017277` and
+// `gpt4_e414231f` looked attributable to the day/timeframe rule at first
+// read; `gpt4_e072b769` traces to the rounding rule, `982b5123` to the
+// most-recent-value two-step rewrite, `6e984302`/`gpt4_483dd43c` to
+// retrieval finding facts semantic-only had missed outright. Isolated the
+// day/timeframe rule directly: removed it alone (rounding, most-recent-
+// value, and placement fix all left untouched) and reran the 5 multi-
+// session/knowledge-update losses plus the 2 apparently-attributable wins,
+// with the other 3 rules' own wins as controls (all 3 controls held).
+// `9aaed6a3` (SaveMart cashback) and `0977f2af` (kitchen gadget) both
+// looked fixed on the first pass, and `gpt4_e414231f` flipped back to
+// wrong as expected if it really depends on the rule -- but `71017277`
+// stayed correct even with the rule gone, meaning it was never actually
+// rule-dependent. Two repeats on the three qids that moved settled it:
+// `9aaed6a3` held fixed 3/3 and `gpt4_e414231f` held broken 3/3 (both
+// clean, reproducible, and reverting the rule is an even trade between
+// them), but `0977f2af` split 2 correct / 1 wrong regardless of which
+// rule text it saw -- an unstable question, not a rule effect, the same
+// shape `gpt4_59149c78` turned out to be earlier in this same investigation.
+// Net: reverting the rule is a wash on its own clean evidence, not a win,
+// so it stays. The other 3 multi-session losses (`7024f17c`, `88432d0a`,
+// `6e984301`) stayed wrong with the rule removed too -- they were never
+// this rule's fault. Two of them show a fact appearing in the -rerank
+// candidate pool that wasn't visible under semantic-only retrieval and
+// wasn't there to help (`6e984301` cites a fabricated-sounding "6 weeks"
+// intermediate that no BEFORE answer used), which points at -rerank's
+// LLM-judged reordering surfacing a different, sometimes-wrong fact for
+// multi-session questions specifically -- not an answerSystem problem, and
+// not yet isolated. That, plus the other 3 non-rule multi-session losses
+// from the same diff (`a56e767c`, `28dc39ac`, `92a0aa75`, none carrying
+// day/weekday language at all), is the next thread on this track: whether
+// -rerank's candidate reordering is systematically worse for multi-session's
+// longer, higher-fact-count sessions than the semantic-only order it
+// replaces.
 const answerSystem = `You answer a question about a user using ONLY the retrieved memory facts provided. Each fact carries the date it was stated.
 
 Rules:

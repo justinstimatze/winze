@@ -2137,3 +2137,50 @@ The 3 remaining single-session-assistant misses are the already-known,
 deliberately-accepted cost of not re-broadening extraction into dense
 unstructured prose (`lensVersion`'s v10/"v12" history, both reverted over a
 confirmed temporal-reasoning regression).
+
+### First full-500 under the complete default stack: 444/500, and a multi-session regression that traces to `-rerank`, not the prompt — 2026-09-10
+
+Ran the full 500 under `-semantic -rerank` both defaulted on, plus the two
+`answerSystem` rules above: 444/500 (88.8%), against the semantic-only
+baseline's 441/500. Diffed every flip: 13 wins, 10 losses, net +3.
+Multi-session alone went -4 (2 wins, 6 losses) — the category the 30-
+question regression check couldn't have caught, since it only carried 5
+multi-session questions total.
+
+Attributed each of the 7 temporal-reasoning wins to a specific mechanism
+before trusting the aggregate: `gpt4_e072b769` to the rounding rule,
+`982b5123` to the most-recent-value two-step rewrite, `6e984302` and
+`gpt4_483dd43c` to retrieval surfacing facts semantic-only had missed
+outright, `gpt4_2f56ae70` to the placement fix already shipped. Only
+`71017277` and `gpt4_e414231f` looked attributable to the new day/timeframe
+rule on first read.
+
+Isolated that rule directly — removed it alone, rebuilt, reran the 5
+affected multi-session/knowledge-update losses plus the 2 apparently-
+attributable wins, with the other 3 rules' wins as controls (all 3 held).
+First pass looked like a clean 2-fixes-1-loss win for reverting. Two
+repeats on the qids that moved settled otherwise: `9aaed6a3` (SaveMart
+cashback) held fixed 3/3 without the rule, `gpt4_e414231f` held broken 3/3
+without it — both clean and reproducible, and an even trade against each
+other. `0977f2af` (kitchen gadget) split 2/1 regardless of which rule text
+it saw, the same pre-existing-instability shape `gpt4_59149c78` turned out
+to be earlier this same night. Net: reverting the rule is a wash on its
+own clean evidence, not a win. Rule stays (full changelog and isolation
+detail in `answerSystem`'s own doc comment, `cmd/longmemeval/answer.go`).
+
+The other 3 multi-session losses (`7024f17c`, `88432d0a`, `6e984301`)
+stayed wrong with the rule removed too — never this rule's fault. `6e984301`
+answers with a "6 weeks" intermediate fact that appears nowhere in the
+semantic-only BEFORE answer, which points at `-rerank`'s LLM-judged
+candidate reordering surfacing a different, sometimes-wrong fact for this
+question than plain semantic fusion did. Combined with the remaining 3
+non-rule multi-session losses from the same diff (`a56e767c`, `28dc39ac`,
+`92a0aa75`, none carrying day/weekday language at all — `92a0aa75`
+specifically shows a different underlying tenure fact getting cited),
+that's 6 of 6 multi-session losses now traced away from the answerer prompt
+and toward retrieval. Not yet isolated. **Next thread on this track**:
+whether `-rerank`'s candidate reordering is systematically worse than
+plain semantic fusion on multi-session's longer, higher-fact-count
+sessions specifically — a per-type A/B (`-rerank` on vs. off, multi-session
+questions only) would separate this cleanly and is cheap, since both
+configurations reuse the same warm extraction and embedding cache.
