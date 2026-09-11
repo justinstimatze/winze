@@ -175,16 +175,58 @@ import (
 // -rerank's candidate reordering is systematically worse for multi-session's
 // longer, higher-fact-count sessions than the semantic-only order it
 // replaces.
+//
+// 2026-09-10 (later same night): read all 56 failures still wrong under the
+// full default stack -- not just the 23 that flipped against the semantic-
+// only baseline, the full remaining population. Counting/enumeration is by
+// far the largest mechanism, 20 of 56 (36%), both directions: undercounting
+// (`gpt4_ab202e7f` 3 kitchen items vs gold 5, `a9f6b44c` 1 bike vs 2,
+// `gpt4_731e37d7` $220 vs $720) and overcounting (`gpt4_2f8be40d` 6
+// weddings vs 3, `d851d5ba` $8,750 vs $3,750, `681a1674` 4 Marvel rewatches
+// vs 2). The existing counting rule already tells the model to scan every
+// fact and name uncertainty rather than silently resolve it -- and several
+// answers show it doing exactly that in prose and then landing on the wrong
+// number anyway: `6d550036` writes "if included, the total would be 4" and
+// answers 3; `gpt4_a56e767c` writes "could bring the count to 4" and
+// answers 3. The uncertainty is being named as a hedge AFTER the number is
+// already picked, not resolved before it -- the same prose-vs-structural-
+// shape gap this file's own 2026-09-09 entry already fixed once for
+// premise-mismatch and most-recent-value. Rewrote the counting rule the
+// same way: require a per-candidate INCLUDE/EXCLUDE line with a one-clause
+// reason before the final number, so a borderline case gets decided in the
+// list instead of leaking into a trailing hedge.
+//
+// Measured narrow (--only) against all 20 target qids above plus 6
+// currently-correct multi-session counting questions as regression
+// controls (gpt4_59c863d7, b5ef892d, e831120c, 3a704032, gpt4_d84a3211,
+// aae3761f -- none touching any of the 20 target qids' content). Result:
+// 4 of 20 targets flipped correct (`c4a1ceb8` citrus dedup, `gpt4_a56e767c`
+// festivals, `gpt4_15e38248` furniture, `a9f6b44c` bikes), all 6 controls
+// held, zero regressions observed. Real and clean, but the fix rate (20%)
+// says the mechanism splits in two and this rule only reaches one half:
+// the 4 that flipped all had the missing/extra item already sitting in the
+// retrieved facts -- the failure was purely a resolution call the rule
+// now forces correctly. Of the 16 that didn't move, several
+// (`46a3abf7`, `28dc39ac`, `gpt4_ab202e7f`) don't even list the missing
+// item as a candidate considered and excluded -- it never reached the
+// list at all, which this rule structurally cannot fix, since it only
+// governs how to decide among candidates the model already has. The other
+// ~16/20 (80% of this population) is very likely a retrieval-completeness
+// gap, not an answering gap -- worth returning to once the -rerank/multi-
+// session retrieval thread below is further along, since a retrieval fix
+// there could shrink this same residual for free. Shipped anyway: real,
+// controls-clean, no reason to hold it while the retrieval half is
+// investigated separately.
 const answerSystem = `You answer a question about a user using ONLY the retrieved memory facts provided. Each fact carries the date it was stated.
 
 Rules:
-- Answer concisely and directly — a phrase or short sentence, not an essay.
+- Answer concisely and directly — a phrase or short sentence, not an essay. The one exception is the counting rule below, whose candidate list is required working, not prose to trim.
 - For temporal questions, reason over the fact dates (which came first, most recent, etc.). Before computing an elapsed time, an interval, or which of two things came first, name the two dates or quantities involved and the operation that relates them. If a fact already states the relationship directly ("a week before Black Friday", "three months in advance of the trip"), use that relationship as given rather than re-deriving calendar dates independently — recomputing from an assumed date is how a stated relationship turns into a wrong number. Watch for which quantity the question actually asks for: "how many months in advance" and "how many months ago" are different questions even when both facts are true.
 - When computing an elapsed amount of time that doesn't land on an exact number of the unit the question asks for, round to the nearest whole unit rather than truncating down — 20 days since something happened is 3 weeks ago, not 2 weeks (and some days).
 - Before citing a fact as the answer to a question anchored to a specific day, weekday, or timeframe ("last Saturday", "the past weekend", "on Tuesday", "in March"), check that the fact's own date actually falls within that window. A fact from a different day or outside the stated range is not a match no matter how topically relevant it otherwise looks — set it aside for one that does fall in the window, or answer "I don't know" if none does.
 - If more than one fact could answer the same question with a different value, first name every candidate value together with the date it was stated, then answer with the one carrying the latest date — never the one that happens to appear first, last, or largest in the retrieved list. A specific, dated update always overrides an earlier general or approximate mention, even when the general one reads as more prominent or is repeated more often.
 - When the question asks for a "best"/"personal best"/"record" over measurements, reason about which direction is better before choosing: for race or completion times, LOWER is faster and therefore better; for scores or distances, higher is usually better. Pick the actual best by that direction, not the most recently mentioned value. Note that a value the user says they are "hoping to beat" is an EXISTING best, not a target they lack.
-- When asked to count or list every instance of something ("how many X", "list all the Y I did"), scan every single retrieved fact for a match before answering — do not stop once you have found a plausible few. Missing an instance that sits later in the retrieved list, not near the ones you found first, is the most common way this kind of question goes wrong. Only count something that clearly and confidently satisfies what was asked; if one candidate's own count or category is itself uncertain or unstated, name that uncertainty rather than silently including or excluding it.
+- When asked to count or total instances of something ("how many X", "list all the Y I did", "how much did I spend on X in total"), first list every candidate fact that could plausibly match, each on its own line marked INCLUDE or EXCLUDE with a one-clause reason, before stating a final number — scan every single retrieved fact for a candidate before starting this list, since missing one that sits later in the retrieved list is the most common way this goes wrong. Decide every borderline case explicitly in that list: a case you are unsure about still gets marked INCLUDE or EXCLUDE there, never left ambiguous for a hedge sentence after the number. The final answer is the count (or sum) of INCLUDE lines only — do not adjust it up or down afterward based on a case you didn't resolve in the list.
 - Some questions ask you to ACT on what you remember rather than report it — "suggest a hotel for my trip", "recommend events this weekend", "what should I cook". There the retrieved facts are the user's preferences and constraints, and a good answer is a suggestion shaped by them. The specific item was never stored and never could be, so its absence is not a reason to refuse. Draw on every retrieved preference relevant to the situation, not just the first or most specific one, and explicitly avoid anything the user has stated they don't want. Lead the answer with what actually builds on the user's own specific stated facts — a generic tip that would apply to anyone is not what these questions are asking for, and belongs after the personalized content, if at all, not before it.
 - If the question asks for something the user or you previously stated, and the facts do not contain it, say exactly: I don't know. Do not use that answer to sidestep a request for a suggestion.
 - A missing piece is not automatically a blocker. If the question asks for a total or comparison across multiple things and one of them was never mentioned, that thing contributes zero or "none found" rather than making the whole answer unknown — answer with what the facts actually support instead of refusing outright.

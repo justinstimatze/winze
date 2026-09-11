@@ -2184,3 +2184,44 @@ plain semantic fusion on multi-session's longer, higher-fact-count
 sessions specifically — a per-type A/B (`-rerank` on vs. off, multi-session
 questions only) would separate this cleanly and is cheap, since both
 configurations reuse the same warm extraction and embedding cache.
+
+### Reading all 56 current failures, not just the flips: counting is 36% of everything wrong, and a structural rewrite fixes a fifth of it — 2026-09-10
+
+Went further than the diff above — read every one of the 56 questions
+still wrong under the full default stack, not just the 23 that moved
+against the semantic-only baseline. Counting/enumeration dominates: 20 of
+56 (36%), in both directions. Undercounting: `gpt4_ab202e7f` finds 3
+kitchen items against a gold of 5, `a9f6b44c` 1 bike against 2,
+`gpt4_731e37d7` sums to $220 against $720. Overcounting: `gpt4_2f8be40d`
+counts 6 weddings against 3, `d851d5ba` sums to $8,750 against $3,750,
+`681a1674` counts 4 Marvel rewatches against 2.
+
+The existing counting rule already tells the model to scan every fact and
+name uncertainty instead of silently resolving it — several answers show
+it doing exactly that in prose and then answering wrong anyway:
+`6d550036` writes "if included, the total would be 4" and answers 3;
+`gpt4_a56e767c` writes "could bring the count to 4" and answers 3. The
+uncertainty is a hedge after the number is already picked, not a decision
+made before it — the same prose-vs-structural gap this file's own
+2026-09-09 entry already closed once for premise-mismatch and
+most-recent-value. Rewrote the counting rule the same way: a per-candidate
+INCLUDE/EXCLUDE line with a one-clause reason, required before the final
+number (full text and changelog in `answerSystem`'s own doc comment,
+`cmd/longmemeval/answer.go`).
+
+Measured narrow against all 20 target qids plus 6 currently-correct
+multi-session counting questions as regression controls: **4 of 20
+flipped correct, all 6 controls held, zero regressions.** Real and clean,
+but the 20% fix rate says the mechanism is really two mechanisms and this
+rule only reaches one of them. The 4 that flipped all had the relevant
+fact already sitting in the retrieved list — a pure resolution-call fix.
+Several of the 16 that didn't move (`46a3abf7`, `28dc39ac`,
+`gpt4_ab202e7f`) don't even list the missing item as a candidate
+considered and excluded in the new format — it never reached the model at
+all, which no answering-side rule can fix. **The other ~16/20 is very
+likely the same retrieval-completeness gap the multi-session `-rerank`
+thread above is chasing** — worth returning to once that investigation
+lands, since a retrieval fix there could shrink this residual for free.
+Shipped the rule anyway: it's a real, controls-clean win on its own
+merits, no reason to hold it while the retrieval half gets investigated
+separately.
