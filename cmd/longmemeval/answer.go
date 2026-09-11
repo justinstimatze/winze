@@ -217,6 +217,34 @@ import (
 // there could shrink this same residual for free. Shipped anyway: real,
 // controls-clean, no reason to hold it while the retrieval half is
 // investigated separately.
+//
+// The -rerank/multi-session thread, resolved same night: ran all 133
+// multi-session questions twice, -rerank=true vs -rerank=false, same
+// binary/prompt (this file's current text, counting rule included) held
+// fixed so only retrieval mode varied -- 103/133 on, 101/133 off. The
+// hypothesis above (that -rerank's candidate reordering is systematically
+// worse for multi-session) does NOT hold under a controlled test: -rerank
+// nets +2 for this category, not negative. Read all 10 flips. Two of the
+// four "-rerank hurts" cases are the most-recent-value rule misfiring, not
+// retrieval: `28dc39ac` (70+5+30+10+25=140=gold under -rerank=false, since
+// two Last-of-Us-II hour values for DIFFERENT difficulty completions are
+// both counted; -rerank=true collapses them into "the later one supersedes"
+// and gets 110) and `efc3f7c2` (a later-dated general weekday wake-time
+// fact wrongly treated as updating an earlier, differently-scoped "other
+// weekdays" fact). `e3038f8c` is the exact case already named in the
+// 2026-09-09 entry above, predating -rerank. `73d42213` is the day/timeframe
+// rule's known self-doubt pattern, striking under -rerank=false this time --
+// further evidence that pattern isn't tied to which retrieval mode is live.
+// The original 6 multi-session losses this thread was chasing mostly don't
+// reproduce under a same-prompt controlled A/B; the earlier diff's -4 was
+// largely run-to-run noise and prompt-rule effects, not a -rerank defect.
+// -rerank stays on. New, better-evidenced lead surfaced instead: the
+// most-recent-value rule's scope-mismatch blind spot is now confirmed on
+// THREE separate qids across two sessions (`618f13b2`, `28dc39ac`,
+// `efc3f7c2`), up from the two anecdotes (`a4996e51`, `07741c45`) that got
+// it flagged-but-left-alone on 2026-09-10 -- worth revisiting with an
+// actual fix attempt now that there's a real pattern instead of a
+// contradiction between two cases.
 const answerSystem = `You answer a question about a user using ONLY the retrieved memory facts provided. Each fact carries the date it was stated.
 
 Rules:

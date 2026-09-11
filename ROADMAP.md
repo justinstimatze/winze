@@ -2225,3 +2225,37 @@ lands, since a retrieval fix there could shrink this residual for free.
 Shipped the rule anyway: it's a real, controls-clean win on its own
 merits, no reason to hold it while the retrieval half gets investigated
 separately.
+
+### The `-rerank`/multi-session retrieval A/B: a rejected hypothesis, and a better lead in its place — 2026-09-10
+
+Ran the queued A/B properly: all 133 multi-session questions, twice,
+`-rerank=true` vs `-rerank=false`, same binary and prompt held fixed (this
+file's current `answerSystem`, counting rule included) so only retrieval
+mode varied. **103/133 with `-rerank` on, 101/133 off — `-rerank` nets +2
+for multi-session, not the regression the earlier diff suggested.** The
+"-4 net" observed in that full-500 diff doesn't reproduce under a
+controlled, same-prompt test.
+
+Read all 10 flips to find out why the earlier signal pointed the wrong
+way. Two of the four "`-rerank` hurts" cases turned out to be the
+most-recent-value rule misfiring, nothing to do with retrieval:
+`28dc39ac` (gaming hours) has two Last-of-Us-II playtime values for
+*different difficulty completions* — both should count (70+5+30+10+25=140,
+matches gold), but `-rerank=true` treats the later one as an update and
+collapses to 110. `efc3f7c2` shows the same shape: a later-dated general
+weekday wake-time fact wrongly overriding an earlier, differently-scoped
+one. `e3038f8c` is the exact case already named in the 2026-09-09 entry
+above — predates `-rerank` entirely. `73d42213` is the day/timeframe
+rule's known self-doubt pattern, this time striking under `-rerank=false`
+— further evidence that pattern isn't tied to retrieval mode at all.
+Most of the original 6 multi-session losses this thread was chasing don't
+reproduce under control; the earlier -4 was largely run-to-run noise and
+prompt-rule effects wearing a retrieval costume.
+
+`-rerank` stays on — no code change from this thread. What it surfaced
+instead is a better-evidenced lead: **the most-recent-value rule's
+scope-mismatch blind spot is now confirmed on three separate qids across
+two sessions** (`618f13b2`, `28dc39ac`, `efc3f7c2`), up from the two
+anecdotes (`a4996e51`, `07741c45`) that got it flagged-but-left-alone on
+2026-09-10. Worth an actual fix attempt now that there's a repeatable
+pattern instead of two cases pulling in opposite directions.
