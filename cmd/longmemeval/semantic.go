@@ -80,22 +80,23 @@ func factSemText(f Fact) string {
 	return f.Attribute + " " + f.Value + " " + f.Quote
 }
 
-// fuseRankMaps combines two rank maps (fact index -> 1-based rank) via
-// reciprocal rank fusion and returns fact indices ordered by descending
-// fused score, highest first. Pure and deterministic -- the testable core of
-// semanticFuseFacts, independent of term-overlap scoring and embedding calls.
-func fuseRankMaps(a, b map[int]int) []int {
+// fuseRankMaps combines any number of rank maps (fact index -> 1-based
+// rank) via reciprocal rank fusion and returns fact indices ordered by
+// descending fused score, highest first. Pure and deterministic -- the
+// testable core of semanticFuseFacts, independent of term-overlap scoring
+// and embedding calls. With exactly two maps this must produce identical
+// output to the original two-argument version it generalizes.
+func fuseRankMaps(maps ...map[int]int) []int {
 	rrfScore := func(idx int) float64 {
 		var s float64
-		if r, ok := a[idx]; ok {
-			s += 1 / float64(rrfK+r)
-		}
-		if r, ok := b[idx]; ok {
-			s += 1 / float64(rrfK+r)
+		for _, m := range maps {
+			if r, ok := m[idx]; ok {
+				s += 1 / float64(rrfK+r)
+			}
 		}
 		return s
 	}
-	idxs := collectIndices(a, b)
+	idxs := collectIndices(maps...)
 	sort.SliceStable(idxs, func(i, j int) bool {
 		si, sj := rrfScore(idxs[i]), rrfScore(idxs[j])
 		if si != sj {
@@ -145,25 +146,15 @@ func (r *runner) embedCached(text string) ([]float32, error) {
 	return v, nil
 }
 
-// semanticFuseFacts retrieves by RRF-fusing scoreByOverlap's term-overlap
-// ranking with embedding cosine similarity, targeting the class of miss term
-// overlap structurally can't reach: real signal present with zero vocabulary
-// overlap between the question and the fact (see ROADMAP.md's 35a27287
-// finding -- 47 "french" hits, 37 "language" hits, still wrong, because the
-// question's own words never appear in the stored preference). Fails open to
-// rankFacts if the question itself can't be embedded (ollama unreachable).
-func (r *runner) semanticFuseFacts(facts []Fact, question string, k int) []Fact {
-	qv, err := r.embedCached(question)
+// semanticFuseFacts retrieves the top k by semanticFusedOrder (term overlap
+// RRF-fused with embedding cosine, and optionally date proximity -- see
+// semanticFusedOrder). Fails open to rankFacts if the question itself can't
+// be embedded (ollama unreachable).
+func (r *runner) semanticFuseFacts(facts []Fact, question, questionDate string, k int) []Fact {
+	order, err := r.semanticFusedOrder(facts, question, questionDate)
 	if err != nil {
 		return rankFacts(facts, question, k)
 	}
-	termOrder := scoreByOverlap(facts, question)
-	termRank := make(map[int]int, len(termOrder))
-	for rank, idx := range termOrder {
-		termRank[idx] = rank + 1
-	}
-	semRank := r.semanticRankFacts(facts, qv)
-	order := fuseRankMaps(termRank, semRank)
 	out := make([]Fact, 0, k)
 	for i := 0; i < len(order) && i < k; i++ {
 		out = append(out, facts[order[i]])
@@ -246,4 +237,93 @@ func writeEmbedCache(dir, path string, v []float32) {
 	} else {
 		_ = os.Remove(tmp.Name())
 	}
+}
+
+// rerankFusedFacts is rerankFacts with its candidate pool drawn from
+// semanticFusedOrder instead of plain term overlap -- the LLM's relevance
+// judgment (rerankFacts's own advantage: it doesn't share term overlap's
+// exact-vocabulary-match blind spot) runs over a pool the embedding channel
+// has already pulled real near-misses into, rather than one that never saw
+// them because term overlap scored them at 0 and rerankFacts's own prefilter
+// cut them before the LLM ever looked. Fails open to semanticFuseFacts (not
+// rerankFacts) on either failure, since a fused order that couldn't be
+// computed at all means the fallback should be the strongest channel that
+// doesn't need it.
+func (r *runner) rerankFusedFacts(facts []Fact, question, qtype, questionDate string, k int) []Fact {
+	cap := rerankCap
+	if qtype == "multi-session" || qtype == "single-session-preference" {
+		cap = rerankCapWide
+	}
+	order, err := r.semanticFusedOrder(facts, question, questionDate)
+	if err != nil {
+		return r.rerankFacts(facts, question, qtype, k)
+	}
+	n := len(order)
+	if n > cap {
+		n = cap
+	}
+	pool := make([]Fact, n)
+	for i := 0; i < n; i++ {
+		pool[i] = facts[order[i]]
+	}
+	llmOrder, err := r.callFactRerank(question, pool)
+	if err != nil {
+		return r.semanticFuseFacts(facts, question, questionDate, k)
+	}
+	byID := make(map[int]Fact, len(pool))
+	for i, f := range pool {
+		byID[i] = f
+	}
+	seen := make(map[int]bool, len(pool))
+	out := make([]Fact, 0, k)
+	for _, id := range llmOrder {
+		if f, ok := byID[id]; ok && !seen[id] {
+			out = append(out, f)
+			seen[id] = true
+			if len(out) == k {
+				return out
+			}
+		}
+	}
+	for i, f := range pool { // ids the model omitted -- append after, original order preserved
+		if !seen[i] {
+			out = append(out, f)
+			if len(out) == k {
+				break
+			}
+		}
+	}
+	return out
+}
+
+// semanticFusedOrder returns every fact's index in RRF-fused order -- term
+// overlap fused with embedding cosine (and, when r.temporalBoost resolves an
+// anchor, date proximity too) -- highest-ranked first, over the full fact
+// set with nothing capped to k. Shared by semanticFuseFacts, which truncates
+// the result to k directly, and rerankFusedFacts, which truncates it to the
+// rerank candidate cap before handing that pool to the LLM -- so the LLM
+// judges relevance over a pool the embedding channel already improved,
+// instead of rerankFacts's plain term-overlap prefilter (the exact mechanism
+// behind the rerankCap blind spot: term overlap can score a genuinely
+// relevant fact at 0 on a plural/singular or synonym mismatch, so a
+// term-overlap-only prefilter can exclude it from the LLM's candidate pool
+// entirely, before the LLM ever gets a chance to judge it).
+func (r *runner) semanticFusedOrder(facts []Fact, question, questionDate string) ([]int, error) {
+	qv, err := r.embedCached(question)
+	if err != nil {
+		return nil, err
+	}
+	termOrder := scoreByOverlap(facts, question)
+	termRank := make(map[int]int, len(termOrder))
+	for rank, idx := range termOrder {
+		termRank[idx] = rank + 1
+	}
+	semRank := r.semanticRankFacts(facts, qv)
+	maps := []map[int]int{termRank, semRank}
+	if r.temporalBoost {
+		if anchor, ok := resolveAnchorDate(question, questionDate); ok {
+			maps = append(maps, dateProximityRankFacts(facts, anchor))
+		}
+	}
+	return fuseRankMaps(maps...), nil
 }

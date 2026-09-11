@@ -109,11 +109,47 @@ import (
 // turning the instruction into a literal output-shape requirement. Whether
 // prose-to-shape carries over from extraction to answering is the open
 // question this change is testing, not an assumption.
+//
+// 2026-09-10: read all 44 remaining failures from the semantic+rerank-fused
+// full run (cmd/longmemeval's haystack SOTA-comparison track, a separate
+// measurement axis from the oracle-set full-500 numbers elsewhere in this
+// file -- see ROADMAP.md). Two clean, narrow answerer-side mechanisms:
+// `gpt4_e072b769` computes "20 days apart... approximately 2 weeks (and 6
+// days)" against a gold of "3 weeks ago" -- right arithmetic, wrong rounding
+// convention (floor instead of nearest). `gpt4_e414231f` cites a fact dated
+// "Wednesday, March 15th" as the answer to "the past weekend" -- prints its
+// own contradiction and doesn't act on it.
+//
+// First draft appended the rounding sentence inline into the existing
+// elapsed-time paragraph and added the day/timeframe check as its own new
+// bullet. A narrow --only test (18 qids) flipped both named targets exactly
+// as predicted, but flagged two apparent regressions. Isolated both before
+// trusting either: `gpt4_59149c78` turned out wrong under the OLD rules too
+// on two repeats -- never a real regression, just an unstable question (the
+// one "correct" reading earlier was a fluke). `gpt4_2f56ae70` was real:
+// reliably correct under the old rules (Disney+ "last month" beats Apple
+// TV+ "a few months"), reliably wrong under the new ones (picks Apple TV+)
+// across three repeats -- and it isn't even the shape either new rule's
+// content addresses; there's no exact elapsed-time count to round and no
+// weekday/timeframe anchor to verify. Moving the rounding sentence out of
+// the crowded elapsed-time paragraph into its own separate bullet (content
+// unchanged, only its position) fixed it: two repeats post-move both landed
+// `gpt4_e072b769` correct, `gpt4_e414231f` correct, `gpt4_2f56ae70` correct,
+// `gpt4_59149c78` still wrong (expected, unrelated). A local text insertion
+// changing an adjacent, semantically-unconnected comparison's behavior is
+// the same non-local-effect lesson `lensSystem`'s own history already
+// established for extraction; it applies here too. Not yet confirmed on the
+// full 500 -- narrow `--only` checks are the fast/cheap iteration loop this
+// project is using deliberately, per this file's own 2026-09-08 lesson
+// above that narrow and full can disagree; a full-500 run is the eventual
+// gate before calling this settled, not a step to take on every cheap win.
 const answerSystem = `You answer a question about a user using ONLY the retrieved memory facts provided. Each fact carries the date it was stated.
 
 Rules:
 - Answer concisely and directly — a phrase or short sentence, not an essay.
 - For temporal questions, reason over the fact dates (which came first, most recent, etc.). Before computing an elapsed time, an interval, or which of two things came first, name the two dates or quantities involved and the operation that relates them. If a fact already states the relationship directly ("a week before Black Friday", "three months in advance of the trip"), use that relationship as given rather than re-deriving calendar dates independently — recomputing from an assumed date is how a stated relationship turns into a wrong number. Watch for which quantity the question actually asks for: "how many months in advance" and "how many months ago" are different questions even when both facts are true.
+- When computing an elapsed amount of time that doesn't land on an exact number of the unit the question asks for, round to the nearest whole unit rather than truncating down — 20 days since something happened is 3 weeks ago, not 2 weeks (and some days).
+- Before citing a fact as the answer to a question anchored to a specific day, weekday, or timeframe ("last Saturday", "the past weekend", "on Tuesday", "in March"), check that the fact's own date actually falls within that window. A fact from a different day or outside the stated range is not a match no matter how topically relevant it otherwise looks — set it aside for one that does fall in the window, or answer "I don't know" if none does.
 - If more than one fact could answer the same question with a different value, first name every candidate value together with the date it was stated, then answer with the one carrying the latest date — never the one that happens to appear first, last, or largest in the retrieved list. A specific, dated update always overrides an earlier general or approximate mention, even when the general one reads as more prominent or is repeated more often.
 - When the question asks for a "best"/"personal best"/"record" over measurements, reason about which direction is better before choosing: for race or completion times, LOWER is faster and therefore better; for scores or distances, higher is usually better. Pick the actual best by that direction, not the most recently mentioned value. Note that a value the user says they are "hoping to beat" is an EXISTING best, not a target they lack.
 - When asked to count or list every instance of something ("how many X", "list all the Y I did"), scan every single retrieved fact for a match before answering — do not stop once you have found a plausible few. Missing an instance that sits later in the retrieved list, not near the ones you found first, is the most common way this kind of question goes wrong. Only count something that clearly and confidently satisfies what was asked; if one candidate's own count or category is itself uncertain or unstated, name that uncertainty rather than silently including or excluding it.

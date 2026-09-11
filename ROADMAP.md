@@ -1934,3 +1934,206 @@ the same warm/cold shape the extraction cache already has, not a new cost
 story. `-semantic` is off by default, same posture as `-rerank`: a refinement
 to test, not a change to the shipped default. n=30 is a real, checked signal
 on this sample, not a number to generalize to the full 500 from.
+
+### First-ever full-500 haystack run, a costrel consult, and a free audit before spending on anything bigger — 2026-09-10
+
+Every full-500 number before tonight (444 through 460, the "gap narrowed
+-12 to -5" line above) was scored on the **oracle set** — evidence sessions
+only, no distractors. The 30-question haystack sample above was the
+project's first-ever attempt against the real `longmemeval_s` haystack, and
+only at n=30. Ran the full 500 against the real haystack for the first time
+tonight, default term-overlap retrieval: **409/500 (81.8%)** —
+knowledge-update 73/78, multi-session 92/133, single-session-assistant
+52/56, single-session-preference 19/30, single-session-user 67/70,
+temporal-reasoning 106/133. Not a regression from anything — the first
+measurement this axis has ever had.
+
+Before proposing a bigger or different run, mined the 91 wrong answers
+already sitting in that baseline's jsonl. 33 of them are multi-session
+counting questions ("how many X"), averaging 14.2% fact-coverage at k=120 —
+a much narrower window, relative to fact volume, than any type this project
+had previously characterized at haystack scale. A costrel consult (fable)
+on what to do next corrected two things in the brief before it even fired:
+the `-k-multi` idea (`91be5e9`, already tried and closed) had been measured
+in the *oracle* regime, not this one, and even there the tested delta
+(112/133, 111/133 vs 114/133 at k=200/300 vs k=120) turned out to be
+measurement noise on a near no-op — the cap barely bound at k=120 in that
+regime at all, so the "closed" verdict's own claimed mechanism (ranker
+admits garbage as the window grows) was never actually demonstrated.
+Fable's recommendation: a free, zero-API offline audit of the 33 cases'
+actual retrieval status before spending on anything paid.
+
+Built the audit as a throwaway test reproducing `scoreByOverlap`'s exact
+ranking against each question's already-built store (extraction cached,
+zero live calls, 31s for all 33). Result: **0 fully admitted, 20 partially
+admitted, 13 fully excluded** — every one of the 33 has *some* retrieval
+truncation touching its gold evidence; none is a pure answerer bug with
+full access. Deleted the test once its output was read (`audit-counts.json`
+remains in session scratch, not committed).
+
+### Semantic-fusion full-500: 441/500 (88.2%), and what the audit predicted actually held — 2026-09-10
+
+Ran the full 500 under `-semantic` (RRF-fused term overlap + embedding
+cosine, shipped 2026-09-09 above): **441/500 (88.2%)**, up from term
+overlap's 409/500 (81.8%) on the identical 500 questions. Every category
+flat or up, zero categories regressed: knowledge-update 73/78 (flat),
+single-session-user 67/70 (flat), single-session-assistant 53/56 (+1),
+single-session-preference 24/30 (+5), temporal-reasoning 115/133 (+9),
+multi-session 109/133 (+17).
+
+Cross-referenced the 33 counting-shaped misses against this run directly:
+**20/33 flip to correct**, split almost evenly by how bad the original
+retrieval gap was — 8/13 of the fully-excluded cases and 12/20 of the
+partially-admitted ones. Embedding proximity closed cases with literally
+zero term-overlap visibility just as often as it nudged borderline ones,
+which wasn't the expected shape going in. A second offline audit of the
+remaining 13, reproducing the *fused* ranking this time (same technique,
+warm caches, 12.7s): **none are fully excluded anymore** — every one now
+has partial admission (best_rank 0-71 across their gold sessions). The
+uncapped-cluster-expansion structural fix fable sketched isn't the right
+next lever for this specific 13; there's no blindness left to expand into.
+The bottleneck moved from "can retrieval find it" to "does the answerer
+correctly enumerate a count from a partial fact set."
+
+Diffed every flip against the term-overlap baseline, not just the counting
+subset, per this file's own standing discipline: 44 wins, 12 regressions
+across the full 500. Three of the twelve read cleanly enough to name a
+mechanism: `eace081b` is pure judge noise (near-identical answer text
+scored differently in each run — "Oahu, no hotel mentioned" both times);
+`b86304ba` is an extraction-naming gap (a "flea market find" fact never
+literally says "painting"/"sunset," and a different ranking neighborhood
+made it harder for the answerer to bridge); `07741c45` is a
+most-recent-value-wins rule applied inconsistently depending on retrieved-
+context ordering.
+
+**`-semantic` promoted to the tool's actual default** (`main.go`,
+`semanticFlag` now defaults `true`) — there was no remaining reason for the
+strongest-evidenced retrieval mode this project has to still require an
+explicit flag. `-semantic=false` recovers the old term-overlap baseline for
+an A/B. `-rerank` stays opt-in, default `false`.
+
+### Temporal-reasoning date-proximity channel (`-temporal-boost`): built, measured, left opt-in — 2026-09-10
+
+Mining the 59 semantic-run failures (post-promotion) found temporal-
+reasoning as the largest remaining wrong-count of any category (18/133),
+and every one of the 18 has 762-1025 total facts against the k=120 cap —
+neither term overlap nor embedding cosine scores by date proximity to the
+question's own temporal anchor at all. Categorized all 133 temporal-
+reasoning questions by shape first: 57/133 are order/sequence, ~48 are
+event-to-event duration, and only ~25-30 are the single-anchor-relative-
+date shape ("two weeks ago," "last Saturday") a date-proximity signal can
+actually help — order/sequence and event-to-event need multi-event
+coverage, not one guessed anchor, and scoping this narrowly (rather than
+"fix temporal-reasoning" broadly) was the point, not an afterthought. Full
+design and SOTA/history grounding in the session's own plan file (see
+`git log` around this date for `cmd/longmemeval/temporal.go`'s addition);
+summary here.
+
+Built `resolveAnchorDate`/`dateProximityRankFacts`
+(`cmd/longmemeval/temporal.go`, new) as a third RRF channel, gated behind a
+new `-temporal-boost` flag (no-op without `-semantic`), and generalized
+`fuseRankMaps` from two arguments to variadic to carry it — verified the
+two-argument case stays byte-identical via the existing unit tests,
+unmodified. Per this session's own established practice going forward
+(target known failures directly with `--only`, not a fresh stratified
+sample, since a representative sample under-populates whatever narrow shape
+a targeted fix addresses): tested against the exact 10 single-anchor-shaped
+qids currently wrong, twice. Result was noisier than hoped — two of the ten
+flip-flopped between the two identical runs (this project's own documented
+run-to-run answer/judge noise), leaving exactly one reproducible fix
+(`gpt4_e414231f`) across repeats. Left off by default; the mechanism is
+real (zero cost, zero regression risk by construction — it only reorders
+existing candidates, never adds new ones) but the confirmed yield at this
+sample size doesn't clear this project's own "move of three or more" bar.
+
+### `-rerank` combined with `-semantic`: 14/59 (24%) of current failures flip — 2026-09-10
+
+`rerankFacts`'s LLM-relevance pass has always prefiltered its candidate
+pool with plain `rankFacts` (term overlap) — the exact mechanism behind the
+rerankCap blind spot (`7e52231`): term overlap can score a genuinely
+relevant fact at 0 on a plural/synonym mismatch, excluding it from the
+LLM's pool before the LLM ever sees it. `-semantic` and `-rerank` were
+mutually exclusive in `syncAndRetrieve`'s dispatch, so this was never
+fixable by combining them — until tonight. Extracted `semanticFusedOrder`
+(the full RRF-fused index order, previously inlined in `semanticFuseFacts`)
+and added `rerankFusedFacts`: the LLM's candidate pool now comes from the
+semantic-fused order instead of plain term overlap, fixing the blind spot
+at its source instead of just widening the cap (which regressed net -6 in
+`7e52231` because Haiku's ranking quality itself degrades over very long
+candidate lists — a different failure mode this doesn't touch, since the
+pool size is unchanged, only its composition).
+
+Tested against all 59 questions currently wrong under `-semantic` alone
+(not a sample — the exact failure population, per this session's practice):
+**15/59 flip to correct**, one of which (`eace081b`) is the same judge-noise
+case flagged above, so **14/59 (24%) real**. Spans five of six question
+types (6 multi-session, 6 temporal-reasoning, 1 each preference/knowledge-
+update/single-session-user) — several of the same temporal qids
+`-temporal-boost` was chasing mechanically (`71017277`, `6e984302`,
+`982b5123`, `gpt4_483dd43c`) recovered instead by the LLM reasoning about
+dates directly against a richer pool, no hand-rolled parser needed.
+`b86304ba` (the painting/flea-market naming gap flagged as a regression
+above) is fixed here too — the richer pool gave the LLM enough context to
+bridge it. The regression check ran the same day: `-semantic -rerank`
+against the existing 30-question sample, diffed against `-semantic`-only on
+the identical 30 — **25/30 both before and after, zero regressions, zero
+incidental changes**, every currently-correct answer byte-unaffected.
+**`-rerank` promoted to default** (`main.go`, now `true`) alongside
+`-semantic` on that combined evidence — a real, mechanism-explained lift on
+the exact failure population plus a clean sample-level regression check,
+the same evidence shape that got `-semantic` promoted, just not yet run at
+full-500 scale. `-rerank=false` (or `-semantic=false`) recovers either
+prior baseline for an A/B.
+
+### Mining the 44 remaining rerank-fused failures: two clean answerer-prompt fixes, several open threads — 2026-09-10
+
+Read all 44 questions still wrong under `-semantic -rerank` directly
+against real question/gold/answer text, per this project's own "mine
+before proposing anything bigger" discipline — applied here one level
+deeper than usual: after the run that already targeted known failures,
+not just before the first run. Two clean, narrow, purely textual
+mechanisms surfaced, both added to `answerSystem`
+(`cmd/longmemeval/answer.go`; full changelog and isolation story in that
+const's own doc comment, not duplicated here):
+
+- **Elapsed-time rounding.** `gpt4_e072b769` computes "20 days apart...
+  approximately 2 weeks (and 6 days)" against a gold of "3 weeks ago" —
+  correct arithmetic, wrong rounding convention (floor instead of nearest).
+- **No day-of-week/timeframe sanity check.** `gpt4_e414231f` cites a fact
+  dated "Wednesday, March 15th" as the answer to "the past weekend" —
+  prints its own contradiction and doesn't act on it.
+
+Both rules were added, tested narrow (`--only`, 18 qids), and both named
+targets flipped exactly as predicted — but two other questions appeared to
+regress. Isolated both before trusting either, the same way this const's
+2026-09-08 entry already learned to: `gpt4_59149c78` turned out wrong under
+the *old* rules too on repeat — never a real regression, an unstable
+question. `gpt4_2f56ae70` was real (reliably correct old, reliably wrong
+new, three repeats each) — and traced to *placement*, not content: the
+rounding sentence had been appended inline into the existing elapsed-time
+paragraph, and that shifted the model's handling of an unrelated adjacent
+comparison (two vague relative-duration phrases) it used to get right.
+Moving the sentence into its own separate bullet fixed it, confirmed by two
+more repeats. Not yet run at any scale beyond this 4-question isolation
+check — a real full-500 (or at minimum the 30-question sample) is the
+eventual gate before trusting this net-positive, per the same file's own
+two prior entries where a narrow win didn't survive contact with the full
+set.
+
+Other findings from the 44, thinner evidence, not yet acted on: two
+instances (`a96c20ee_abs`, `09ba9854_abs`) of the answerer fabricating a
+confident answer from an adjacent-but-not-actually-responsive fact instead
+of recognizing insufficient information — a gap in the existing premise-
+mismatch-stop rule's coverage, but only two clean instances so far. The
+most-recent-value-wins rule contradicts itself across two cases in opposite
+directions (`618f13b2` wants the earlier value, `07741c45`'s gold treats a
+stated future intention as already current) — flagged, no fix proposed,
+since tightening the rule one way plausibly breaks the other. The 8
+remaining off-by-one counting cases in multi-session have now survived two
+successive retrieval upgrades (semantic fusion, then rerank-fusion), each
+closing part of the original 33-case gap — increasingly looks like an
+answerer counting-precision ceiling rather than a remaining retrieval gap.
+The 3 remaining single-session-assistant misses are the already-known,
+deliberately-accepted cost of not re-broadening extraction into dense
+unstructured prose (`lensVersion`'s v10/"v12" history, both reverted over a
+confirmed temporal-reasoning regression).
