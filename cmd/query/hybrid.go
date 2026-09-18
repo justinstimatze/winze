@@ -94,10 +94,18 @@ func runHybrid(kb *kbIndex, query, dir, typeFilter string, expand, jsonOut, incl
 		}
 	}
 
+	// Fail open on the semantic signal, same as the graph channel two lines
+	// below (seedFused passes a nil graphRank) and the same philosophy
+	// rerankFused already uses: RRF's fusedHit already treats "0 = absent
+	// from that list" as a normal case for two of the three signals, so an
+	// unreachable embedder (ollama down, model not pulled) degrading to
+	// lex+graph-only is consistent with the algorithm, not a workaround for
+	// it. --semantic (runSemantic) still errors loud -- there the user asked
+	// for semantic ranking specifically, so silently returning none would be
+	// misleading rather than a graceful degradation.
 	semHits, err := semanticRank(kb, query, dir, forms)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "hybrid: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "hybrid: semantic ranking unavailable, falling back to lex+graph: %v\n", err)
 	}
 	semRank := make(map[int]int, len(semHits))
 	for i, h := range semHits {
