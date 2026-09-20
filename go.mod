@@ -3,10 +3,10 @@ module github.com/justinstimatze/winze
 go 1.26.2
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.66.0
+	github.com/anthropics/anthropic-sdk-go v1.69.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/justinstimatze/defn v0.26.96
+	github.com/justinstimatze/defn v0.26.97
 	github.com/justinstimatze/gozim v0.2.1
 	github.com/justinstimatze/onsetter v0.6.0
 	github.com/mark3labs/mcp-go v0.48.0
@@ -84,8 +84,8 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	modernc.org/libc v1.74.4 // indirect
+	modernc.org/libc v1.75.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.57.0 // indirect
+	modernc.org/memory v1.12.1 // indirect
+	modernc.org/sqlite v1.58.0 // indirect
 )
